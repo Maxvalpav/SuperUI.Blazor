@@ -15,11 +15,10 @@ function getFocusableElements(element) {
     ));
 }
 
-export function attach(modalElement, dotnetRef, closeOnEscape) {
+export function attach(modalElement, dotnetRef, closeOnEscape, fullScreen) {
     const previousFocus = document.activeElement;
     let isDisposed = false;
 
-    // Lock body scroll if it's the first modal
     if (modalStack.length === 0) {
         previousScrollPosition = window.scrollY || document.documentElement.scrollTop;
         document.body.style.overflow = 'hidden';
@@ -30,10 +29,8 @@ export function attach(modalElement, dotnetRef, closeOnEscape) {
         element: modalElement,
         dotnet: dotnetRef,
         closeOnEscape,
+        fullScreen: !!fullScreen,
         previousFocus,
-        dragHandler: null,
-        dragMoveHandler: null,
-        dragEndHandler: null,
         isDisposed: false,
         dispose: () => {
             entry.isDisposed = true;
@@ -43,7 +40,6 @@ export function attach(modalElement, dotnetRef, closeOnEscape) {
 
     modalStack.push(entry);
 
-    // Global handlers if not already added
     if (!escapeHandler) {
         escapeHandler = (e) => {
             if (e.key === 'Escape') {
@@ -68,7 +64,6 @@ export function attach(modalElement, dotnetRef, closeOnEscape) {
 
             const focusableElements = getFocusableElements(top.element);
             if (focusableElements.length === 0) {
-                // If no focusable elements, focus the modal itself
                 e.preventDefault();
                 top.element.focus();
                 return;
@@ -100,7 +95,9 @@ export function attach(modalElement, dotnetRef, closeOnEscape) {
             if (focusableElements.length > 0) {
                 focusableElements[0].focus();
             } else {
-                entry.element.focus();
+                const body = entry.element.querySelector('.sgc-modal-body');
+                if (body) body.focus();
+                else entry.element.focus();
             }
         }
     }, 50);
@@ -120,7 +117,6 @@ export function initDrag(modalElement, headerElement) {
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         
-        // Remove centering transform and set absolute position
         modalElement.style.transform = 'none';
         modalElement.style.left = `${initialX + dx}px`;
         modalElement.style.top = `${initialY + dy}px`;
@@ -138,7 +134,6 @@ export function initDrag(modalElement, headerElement) {
     headerElement.style.userSelect = 'none';
     
     headerElement.addEventListener('pointerdown', (e) => {
-        // Don't drag if clicking on interactive elements
         if (e.target.closest('button, input, [role="button"]')) return;
         
         isDragging = true;
@@ -161,24 +156,21 @@ export function detach(modalElement) {
 
     const entry = modalStack.splice(index, 1)[0];
 
-    // Mark as disposed first
     if (entry.dispose) entry.dispose();
 
-    // Restore previous focus if this was the top modal
     if (index === modalStack.length && entry.previousFocus && typeof entry.previousFocus.focus === 'function') {
         try {
             entry.previousFocus.focus();
         } catch (e) { }
     }
 
-    // If no more modals, cleanup global handlers and unlock scroll
     if (modalStack.length === 0) {
         document.body.style.overflow = '';
         document.body.style.paddingRight = '';
         
-        // Restore scroll position
         if (previousScrollPosition > 0) {
             window.scrollTo(0, previousScrollPosition);
+            previousScrollPosition = 0;
         }
         
         if (escapeHandler) {

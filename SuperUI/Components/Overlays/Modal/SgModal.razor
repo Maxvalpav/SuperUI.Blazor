@@ -7,24 +7,49 @@
 @if (Visible || IsClosing)
 {
     <SgPortal>
-        <div class="sgc-modal-backdrop @(IsClosing ? "sgc-closing" : "")" style="z-index: @BackdropZIndex" @onclick="BackdropClickAsync">
-            <div class="sgc-modal sgc-modal-anim-@AnimationClass" 
-                 style="@GetStyle()" 
-                 role="dialog" 
-                 aria-modal="true" 
+        <div class="@GetBackdropClasses()"
+             style="z-index: @BackdropZIndex"
+             @onclick="BackdropClickAsync">
+            <div class="@GetModalClasses()"
+                 style="@GetStyle()"
+                 role="dialog"
+                 aria-modal="true"
                  aria-labelledby="@_titleId"
                  aria-describedby="@_bodyId"
                  tabindex="-1"
                  @ref="RootRef"
                  @onclick:stopPropagation="true">
-                <div class="sgc-modal-header" @ref="_headerRef">
-                    <span id="@_titleId" class="sgc-modal-title">@Title</span>
+                <div class="@GetHeaderClasses()" @ref="_headerRef">
+                    @if (HeaderContent is not null)
+                    {
+                        @HeaderContent
+                    }
+                    else
+                    {
+                        <div class="sgc-modal-header-inner">
+                            @if (Icon is not null)
+                            {
+                                <SgIcon Icon="@Icon" Size="20px" Color="var(--sg-primary)" />
+                            }
+                            <span id="@_titleId" class="sgc-modal-title">@Title</span>
+                        </div>
+                    }
                     @if (ShowClose)
                     {
-                        <button class="sgc-modal-x" type="button" @onclick="CloseAsync" aria-label="@Localizer["Common_Close"]">×</button>
+                        <button class="sgc-modal-x" type="button" @onclick="CloseAsync" aria-label="@Localizer["Common_Close"]">
+                            @if (CloseIcon is not null)
+                            {
+                                <SgIcon Icon="@CloseIcon" Size="18px" />
+                            }
+                            else
+                            {
+                                @* — SVG X mark *@
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            }
+                        </button>
                     }
                 </div>
-                <div id="@_bodyId" class="sgc-modal-body">
+                <div id="@_bodyId" class="@GetBodyClasses()">
                     @ChildContent
                 </div>
                 @if (FooterContent is not null)
@@ -37,12 +62,10 @@
 }
 
 @code {
-    // ID должны быть стабильны между prerender (server) и interactive (client),
-    // иначе aria-labelledby/aria-describedby ломают гидрацию. StableIdFor возвращает
-    // одно значение для всего жизненного цикла одного экземпляра компонента.
     private string _titleId => SgIdGenerator.StableIdFor(this, "modal-title");
     private string _bodyId  => SgIdGenerator.StableIdFor(this, "modal-body");
     private ElementReference _headerRef;
+    private bool _openedFired;
 
     /// <summary>
     /// Gets or sets the modal title text.
@@ -58,6 +81,21 @@
     /// Gets or sets the modal footer content.
     /// </summary>
     [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets custom header content. When set, replaces the default title/icon rendering.
+    /// </summary>
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional icon (SVG markup from SgHeroicons) displayed next to the title.
+    /// </summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>
+    /// Gets or sets a custom close icon (SVG markup). When not set, uses the default X mark.
+    /// </summary>
+    [Parameter] public string? CloseIcon { get; set; }
 
     /// <summary>
     /// Gets or sets whether to show the close button in the header. Default is true.
@@ -85,54 +123,185 @@
     [Parameter] public bool Draggable { get; set; }
 
     /// <summary>
-    /// Gets or sets the modal width (e.g., "600px", "50%").
+    /// Gets or sets the modal width (e.g., "600px", "50%"). When set, overrides size presets.
     /// </summary>
     [Parameter] public string? Width { get; set; }
+
+    /// <summary>
+    /// Gets or sets the modal max-width (e.g., "90vw", "1200px").
+    /// </summary>
+    [Parameter] public string? MaxWidth { get; set; }
+
+    /// <summary>
+    /// Gets or sets the modal size preset. Overridden by <see cref="Width"/> and <see cref="FullScreen"/>.
+    /// </summary>
+    [Parameter] public SgModalSize Size { get; set; } = SgModalSize.Md;
+
+    /// <summary>
+    /// Gets or sets whether the modal is displayed in full screen. Overrides <see cref="Size"/> and <see cref="Width"/>.
+    /// </summary>
+    [Parameter] public bool FullScreen { get; set; }
+
+    /// <summary>
+    /// Gets or sets the vertical position of the modal. Default is <see cref="SgModalPosition.Center"/>.
+    /// </summary>
+    [Parameter] public SgModalPosition Position { get; set; } = SgModalPosition.Center;
+
+    /// <summary>
+    /// Gets or sets additional CSS class for the modal body.
+    /// </summary>
+    [Parameter] public string? BodyClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS class for the modal header.
+    /// </summary>
+    [Parameter] public string? HeaderClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS class for the modal footer.
+    /// </summary>
+    [Parameter] public string? FooterClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to remove body padding.
+    /// </summary>
+    [Parameter] public bool NoPadding { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to apply a glassmorphism effect to the modal.
+    /// </summary>
+    [Parameter] public bool Glass { get; set; }
+
+    /// <summary>
+    /// Gets or sets the CSS z-index for the backdrop.
+    /// </summary>
+    [Parameter] public int? CustomZIndex { get; set; }
 
     /// <summary>
     /// Callback invoked when the modal is closed.
     /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
+    /// <summary>
+    /// Callback invoked when the modal starts closing (before animation).
+    /// </summary>
+    [Parameter] public EventCallback OnClosing { get; set; }
+
+    /// <summary>
+    /// Callback invoked after the modal has opened (after animation).
+    /// </summary>
+    [Parameter] public EventCallback OnOpened { get; set; }
+
     [Inject]
     private ISuperUILocalizer Localizer { get; set; } = default!;
 
     protected override string ModulePath => "./_content/SuperUI/superui-modal.js";
-    protected override int    ZIndexBase => SgZIndexService.ModalBase;
+    protected override int    ZIndexBase => CustomZIndex ?? SgZIndexService.ModalBase;
     protected override string IdPrefix   => "sg-modal";
-    protected override int    ClosingAnimationMs => 200;
+    protected override int    ClosingAnimationMs => Animation == SgModalAnimation.None ? 0 : 200;
 
     protected override async ValueTask OnOpeningAsync()
     {
-        await SafeInvokeVoidAsync("attach", RootRef, SelfRef, CloseOnEscape);
-        if (Draggable)
+        _openedFired = false;
+        await SafeInvokeVoidAsync("attach", RootRef, SelfRef, CloseOnEscape, FullScreen);
+        if (Draggable && !FullScreen)
             await SafeInvokeVoidAsync("initDrag", RootRef, _headerRef);
+    }
+
+    protected override async ValueTask OnOpenedAsync()
+    {
+        if (_openedFired) return;
+        _openedFired = true;
+        if (OnOpened.HasDelegate)
+            await OnOpened.InvokeAsync();
     }
 
     protected override async ValueTask OnClosingAsync()
     {
+        if (OnClosing.HasDelegate)
+            await OnClosing.InvokeAsync();
         await SafeInvokeVoidAsync("detach", RootRef);
     }
 
     protected override async ValueTask OnClosedAsync()
     {
-        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+        if (OnClose.HasDelegate)
+            await OnClose.InvokeAsync();
     }
 
     [JSInvokable]
     public override Task RequestCloseAsync() => CloseAsync();
 
+    private string GetBackdropClasses()
+    {
+        var sb = new List<string> { "sgc-modal-backdrop" };
+        if (IsClosing) sb.Add("sgc-closing");
+        if (Position == SgModalPosition.Top) sb.Add("sgc-modal-backdrop-top");
+        if (Position == SgModalPosition.Bottom) sb.Add("sgc-modal-backdrop-bottom");
+        return string.Join(" ", sb);
+    }
+
+    private string GetModalClasses()
+    {
+        var sb = new List<string> { "sgc-modal" };
+        sb.Add("sgc-modal-anim-" + AnimationClass);
+        if (FullScreen) sb.Add("sgc-modal-fullscreen");
+        else sb.Add("sgc-modal-size-" + SizeClass);
+        if (Position == SgModalPosition.Top) sb.Add("sgc-modal-pos-top");
+        if (Position == SgModalPosition.Bottom) sb.Add("sgc-modal-pos-bottom");
+        if (NoPadding) sb.Add("sgc-modal-no-padding");
+        if (Glass) sb.Add("sg-glass");
+        return string.Join(" ", sb);
+    }
+
+    private string GetHeaderClasses()
+    {
+        var sb = new List<string> { "sgc-modal-header" };
+        if (Draggable && !FullScreen) sb.Add("sgc-modal-header-draggable");
+        if (!string.IsNullOrEmpty(HeaderClass)) sb.Add(HeaderClass);
+        return string.Join(" ", sb);
+    }
+
+    private string GetBodyClasses()
+    {
+        var sb = new List<string> { "sgc-modal-body" };
+        if (!string.IsNullOrEmpty(BodyClass)) sb.Add(BodyClass);
+        return string.Join(" ", sb);
+    }
+
     private string AnimationClass => Animation switch
     {
-        SgModalAnimation.Fade  => "fade",
-        SgModalAnimation.Slide => "slide",
-        _                      => "scale"
+        SgModalAnimation.None      => "none",
+        SgModalAnimation.Fade      => "fade",
+        SgModalAnimation.Zoom      => "zoom",
+        SgModalAnimation.SlideUp   => "slide-up",
+        SgModalAnimation.SlideDown => "slide-down",
+        SgModalAnimation.SlideLeft => "slide-left",
+        SgModalAnimation.SlideRight=> "slide-right",
+        SgModalAnimation.Scale     => "scale",
+        SgModalAnimation.Slide     => "slide",
+        _                          => "scale"
     };
 
-    private string GetStyle() => Styles()
-        .AddStyle("z-index", ZIndexValue.ToString(), ZIndexValue > 0)
-        .AddStyle("width",   Width, !string.IsNullOrEmpty(Width))
-        .Build();
+    private string SizeClass => Size switch
+    {
+        SgModalSize.Sm  => "sm",
+        SgModalSize.Md  => "md",
+        SgModalSize.Lg  => "lg",
+        SgModalSize.Xl  => "xl",
+        _               => "md"
+    };
+
+    private string GetStyle()
+    {
+        var b = Styles();
+        b.AddStyle("z-index", ZIndexValue.ToString(), ZIndexValue > 0);
+        if (!string.IsNullOrEmpty(Width))
+            b.AddStyle("width", Width);
+        if (!string.IsNullOrEmpty(MaxWidth))
+            b.AddStyle("max-width", MaxWidth);
+        return b.Build();
+    }
 
     private Task BackdropClickAsync()
         => CloseOnBackdrop ? CloseAsync() : Task.CompletedTask;
