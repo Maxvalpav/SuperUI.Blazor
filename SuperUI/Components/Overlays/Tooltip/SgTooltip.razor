@@ -1,6 +1,4 @@
 @namespace SuperUI.Components
-@using SuperUI.Enums
-@using SuperUI.Services
 @inherits SgOverlayComponentBase
 
 <span class="sgc-tt-wrap"
@@ -9,161 +7,26 @@
       @onmouseleave="OnMouseLeaveAsync"
       @onfocus="OnFocusAsync"
       @onblur="OnBlurAsync"
-      @onclick="OnClickAsync">
+      @onclick="OnClickAsync"
+      @attributes="AdditionalAttributes">
     @ChildContent
     @if (Visible)
     {
         <SgPortal>
-            <span class="sgc-tt"
+            <span class="@TooltipCssClass"
                   @ref="_tooltipRef"
                   role="tooltip"
                   aria-hidden="@(!Visible)"
-                  style="@TooltipStyle">
-                @Text
+                  style="@TooltipInlineStyle">
+                @if (RichContent is not null)
+                {
+                    @RichContent
+                }
+                else
+                {
+                    @Text
+                }
             </span>
         </SgPortal>
     }
 </span>
-
-@code {
-    private ElementReference _tooltipRef;
-    private bool _attached;
-
-    private readonly SgDebouncer _showDebouncer = new();
-    private readonly SgDebouncer _hideDebouncer = new();
-
-    /// <summary>
-    /// Gets or sets the tooltip text to display. Required.
-    /// </summary>
-    [Parameter, EditorRequired] public string Text { get; set; } = default!;
-
-    /// <summary>
-    /// Gets or sets the content that triggers the tooltip on hover.
-    /// </summary>
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>
-    /// Gets or sets the preferred placement of the tooltip. Default is <see cref="SgPlacement.Top"/>.
-    /// </summary>
-    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.Top;
-
-    /// <summary>
-    /// Gets or sets the trigger behavior for the tooltip. Default is <see cref="SgTrigger.Hover"/>.
-    /// </summary>
-    [Parameter] public SgTrigger Trigger { get; set; } = SgTrigger.Hover;
-
-    /// <summary>
-    /// Gets or sets the delay in milliseconds before showing the tooltip. Default 0.
-    /// </summary>
-    [Parameter] public int OpenDelay { get; set; }
-
-    /// <summary>
-    /// Gets or sets the delay in milliseconds before hiding the tooltip. Default 0.
-    /// </summary>
-    [Parameter] public int CloseDelay { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether the tooltip is disabled.
-    /// </summary>
-    [Parameter] public bool Disabled { get; set; }
-
-    protected override string ModulePath => "./_content/SuperUI/superui-tooltip.js";
-    protected override int    ZIndexBase => SgZIndexService.TooltipBase;
-    protected override int    ClosingAnimationMs => 0; // мгновенное скрытие тултипа
-
-    private string TooltipStyle =>
-        $"position:fixed;pointer-events:none;opacity:0;transition:opacity .15s;z-index:{ZIndexValue};";
-
-    private string PlacementString => Placement switch
-    {
-        SgPlacement.Bottom => "bottom",
-        SgPlacement.Left   => "left",
-        SgPlacement.Right  => "right",
-        _                  => "top"
-    };
-
-    // ── Триггеры ──────────────────────────────────────────────────────────────
-
-    private Task OnMouseEnterAsync() => HandleTriggerAsync(SgTrigger.Hover, true);
-    private Task OnMouseLeaveAsync() => HandleTriggerAsync(SgTrigger.Hover, false);
-    private Task OnFocusAsync()      => HandleTriggerAsync(SgTrigger.Focus, true);
-    private Task OnBlurAsync()       => HandleTriggerAsync(SgTrigger.Focus, false);
-    private Task OnClickAsync()      => HandleTriggerAsync(SgTrigger.Click, !Visible);
-
-    private Task HandleTriggerAsync(SgTrigger triggerType, bool show)
-    {
-        if (Trigger != triggerType) return Task.CompletedTask;
-        return show ? ShowAsync() : HideAsync();
-    }
-
-    /// <summary>Manually shows the tooltip. For use when Trigger is "manual".</summary>
-    public async Task ShowAsync()
-    {
-        if (IsDisposed || Visible || Disabled) return;
-        _hideDebouncer.Cancel();
-
-        if (OpenDelay > 0)
-            await _showDebouncer.RunAsync(
-                _ => InvokeAsync(SetVisibleTrueAsync),
-                TimeSpan.FromMilliseconds(OpenDelay));
-        else
-            await SetVisibleTrueAsync();
-    }
-
-    /// <summary>Manually hides the tooltip. For use when Trigger is "manual".</summary>
-    public async Task HideAsync()
-    {
-        if (IsDisposed || !Visible) return;
-        _showDebouncer.Cancel();
-
-        if (CloseDelay > 0)
-            await _hideDebouncer.RunAsync(
-                _ => InvokeAsync(SetVisibleFalseAsync),
-                TimeSpan.FromMilliseconds(CloseDelay));
-        else
-            await SetVisibleFalseAsync();
-    }
-
-    private async Task SetVisibleTrueAsync()
-    {
-        if (Visible) return;
-        Visible = true;
-        if (VisibleChanged.HasDelegate) await VisibleChanged.InvokeAsync(true);
-        StateHasChanged(); // OnAfterRenderSafeAsync базы выполнит OnOpeningAsync/OnOpenedAsync
-    }
-
-    private Task SetVisibleFalseAsync() =>
-        CloseAsync(); // CloseAsync вызовет OnClosingAsync и поднимет VisibleChanged(false)
-
-    // ── Lifecycle (контракт SgOverlayComponentBase) ───────────────────────────
-
-    protected override async ValueTask OnOpeningAsync()
-    {
-        // Всегда attach перед show, чтобы гарантировать актуальность ссылки на элемент,
-        // так как при Visible=false -> true _tooltipRef может измениться.
-        await SafeInvokeVoidAsync("attach", RootRef, _tooltipRef, PlacementString, SelfRef);
-        _attached = true;
-        await SafeInvokeVoidAsync("show", RootRef, _tooltipRef, PlacementString, ZIndexValue);
-    }
-
-    protected override async ValueTask OnClosingAsync()
-    {
-        await SafeInvokeVoidAsync("hide", _tooltipRef);
-    }
-
-    [JSInvokable]
-    public Task HideFromJsAsync() => HideAsync();
-
-    protected override ValueTask OnDisposingAsync()
-    {
-        _showDebouncer.Dispose();
-        _hideDebouncer.Dispose();
-
-        if (_attached)
-        {
-            _ = SafeInvokeVoidAsync("detach", RootRef);
-            _attached = false;
-        }
-        return base.OnDisposingAsync();
-    }
-}
