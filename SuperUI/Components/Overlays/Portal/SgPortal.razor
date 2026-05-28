@@ -1,20 +1,31 @@
 @namespace SuperUI.Components
 @inherits SgJsComponentBase
 
-<div @ref="RootRef" style="display: contents;">
+<div @ref="RootRef" style="display: contents;" class="@Class" id="@Id">
     @ChildContent
 </div>
 
 @code {
+    /// <summary>Content to render inside the portal. Teleported to document.body.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Optional CSS class applied to the portal wrapper.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Optional inline style applied to the portal wrapper.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Optional HTML id for the portal wrapper element.</summary>
+    [Parameter] public string? Id { get; set; }
+
+    /// <summary>Optional z-index override. Applied via JS after teleport.</summary>
+    [Parameter] public int? ZIndex { get; set; }
 
     protected override string ModulePath => "./_content/SuperUI/superui-portal.js";
 
     protected override async Task OnAfterRenderSafeAsync(bool firstRender)
     {
-        // Teleport on EVERY render because Blazor's diff can snap the element
-        // back to its original position on re-render (StateHasChanged in parent).
-        await SafeInvokeVoidAsync("teleport", RootRef);
+        await SafeInvokeVoidAsync("teleport", RootRef, ZIndex);
     }
 
     protected override async ValueTask OnDisposingAsync()

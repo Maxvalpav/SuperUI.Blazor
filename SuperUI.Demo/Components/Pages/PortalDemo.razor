@@ -1,70 +1,503 @@
 @page "/portal-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
 @using SuperUI.Demo.Models
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Portal - SUI</PageTitle>
+<PageTitle>SgPortal — Teleport — SuperUI</PageTitle>
 
-<SgCard Title="SgPortal"
-        Subtitle="Компонент для рендеринга содержимого в конце document.body.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>SgPortal - Портал</h2>
-        <p>Позволяет «телепортировать» элементы в корень документа, чтобы избежать проблем с z-index, overflow: hidden или позиционированием в глубоко вложенных структурах.</p>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Примеры использования">
-                <div style="display: flex; flex-direction: column; gap: 16px;">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. SgPortal — Basic Usage                                         -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgPortal — Basic Usage
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Teleports content to the end of <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">document.body</SgTypography>, escaping <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">overflow: hidden</SgTypography>, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">transform</SgTypography>, and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">z-index</SgTypography> stacking contexts.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Базовый пример</div>
-                        <SgButton Text="@(_showPortal ? "Скрыть портал" : "Показать портал")" 
-                                  Variant="SgButtonVariant.Primary" 
-                                  OnClick="() => _showPortal = !_showPortal" />
-                        
-                        @if (_showPortal)
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Simple Notification Banner
+                        </SgTypography>
+                        <SgSpace>
+                            <SgButton Text="@(_showBanner ? "Hide Banner" : "Show Banner")"
+                                      Variant="SgButtonVariant.Primary"
+                                      OnClick="() => _showBanner = !_showBanner" />
+                            <SgButton Text="Show Toast (Top-Right)"
+                                      Variant="SgButtonVariant.Outlined"
+                                      OnClick="() => _showToast = !_showToast" />
+                        </SgSpace>
+
+                        @if (_showBanner)
                         {
-                            <SgPortal>
-                                <div style="position: fixed; top: 20px; right: 20px; padding: 16px; background: var(--sui-primary); color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 9999;">
-                                    <div style="display: flex; align-items: center; gap: 12px;">
-                                        <span>Привет! Я отрендерен через SgPortal в конце body.</span>
-                                        <SgButton Text="Закрыть" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" style="color: white;" OnClick="() => _showPortal = false" />
+                            <SgPortal ZIndex="9999">
+                                <div class="portal-banner">
+                                    <SgHeroicon Name="@SgHeroicons.Names.Megaphone" Variant="Solid" Size="18px" />
+                                    <span style="flex:1;">I am teleported to <code style="background:rgba(255,255,255,0.15);padding:1px 6px;border-radius:4px;">document.body</code> via SgPortal!</span>
+                                    <button type="button" class="portal-close-btn" @onclick="() => _showBanner = false">
+                                        <SgHeroicon Name="@SgHeroicons.Names.XMark" Size="16px" />
+                                    </button>
+                                </div>
+                            </SgPortal>
+                        }
+
+                        @if (_showToast)
+                        {
+                            <SgPortal ZIndex="9999">
+                                <div class="portal-toast">
+                                    <div style="display:flex;align-items:flex-start;gap:10px;">
+                                        <div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#10b981;color:#fff;flex-shrink:0;">
+                                            <SgHeroicon Name="@SgHeroicons.Names.Check" Variant="Solid" Size="16px" />
+                                        </div>
+                                        <div style="flex:1;min-width:0;">
+                                            <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm" Color="#fff">Operation Successful</SgTypography>
+                                            <SgTypography Size="SgTypographySize.Xs" Color="rgba(255,255,255,0.7)" Style="margin-top:2px;">
+                                                The portal rendered this outside any parent container.
+                                            </SgTypography>
+                                        </div>
+                                        <button type="button" class="portal-close-btn" style="color:rgba(255,255,255,0.6);" @onclick="() => _showToast = false">
+                                            <SgHeroicon Name="@SgHeroicons.Names.XMark" Size="14px" />
+                                        </button>
                                     </div>
                                 </div>
                             </SgPortal>
                         }
                     </div>
-                    
-                    <SgDivider />
-                    
+
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Описание</div>
-                        <p style="font-size: 13px; line-height: 1.6;">
-                            SgPortal использует JavaScript для перемещения своего DOM-узла в <code>document.body</code> сразу после рендеринга. 
-                            Это гарантирует, что контент портала всегда будет поверх остальных элементов, если задан соответствующий z-index, 
-                            и на него не будут влиять стили <code>overflow: hidden</code> или <code>transform</code> родительских контейнеров.
-                        </p>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Modal Dialog (Simple)
+                        </SgTypography>
+                        <SgButton Text="@(_showModal ? "Close Modal" : "Open Modal")"
+                                  Variant="SgButtonVariant.Default"
+                                  OnClick="() => _showModal = !_showModal" />
+
+                        @if (_showModal)
+                        {
+                            <SgPortal ZIndex="10000">
+                                <div class="portal-backdrop" @onclick="() => _showModal = false"></div>
+                                <div class="portal-modal">
+                                    <SgStack Vertical Space="SgSize.Md">
+                                        <div style="display:flex;align-items:center;justify-content:space-between;">
+                                            <SgTypography Variant="SgTypographyVariant.Heading6" Weight="SgTypographyWeight.Bold">Dialog Title</SgTypography>
+                                            <button type="button" class="portal-close-btn" @onclick="() => _showModal = false">
+                                                <SgHeroicon Name="@SgHeroicons.Names.XMark" Size="16px" />
+                                            </button>
+                                        </div>
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                            This dialog is rendered via SgPortal at the end of document.body.
+                                            Click the backdrop or the close button to dismiss.
+                                        </SgTypography>
+                                        <SgSpace Justify="SgJustifyContent.End">
+                                            <SgButton Text="Cancel" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm" OnClick="() => _showModal = false" />
+                                            <SgButton Text="Confirm" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="() => _showModal = false" />
+                                        </SgSpace>
+                                    </SgStack>
+                                </div>
+                            </SgPortal>
+                        }
                     </div>
-                </div>
+
+                    <SgAlert Variant="SgAlertVariant.Info" Title="Technical Detail">
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                            <code>SgPortal</code> is the foundation for <code>SgModal</code>, <code>SgDrawer</code>, <code>SgPopover</code>, and <code>SgTooltip</code>.
+                            It uses JavaScript to move its DOM node to <code>document.body</code> after every render.
+                        </SgTypography>
+                    </SgAlert>
+                </SgStack>
             </SgCard>
-            
-            <SgCard Title="Свойства компонента">
+
+            <SgCard Title="SgPortal Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_portalProperties" />
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <SgAlert Variant="SgAlertVariant.Info" Title="Техническая деталь">
-            Компонент <code>SgPortal</code> является основой для таких компонентов как <code>SgModal</code>, <code>SgDrawer</code>, <code>SgPopover</code> и <code>SgTooltip</code>.
-        </SgAlert>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Live Constructor                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgPortal Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure position, appearance, and behavior. Click any demo box to see the generated code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Portal Open -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Portal State</SgTypography>
+                            <SgSegmented TValue="bool"
+                                         Value="_ctorOpen"
+                                         ValueChanged="v => { _ctorOpen = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_boolSegOptions" />
+                        </SgStack>
+
+                        <!-- Theme -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Style Variant</SgTypography>
+                            <SgSegmented TValue="int"
+                                         Value="_ctorVariant"
+                                         ValueChanged="v => { _ctorVariant = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_variantOptions" />
+                        </SgStack>
+
+                        <!-- Z-Index -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Z-Index</SgTypography>
+                            <SgSelect TValue="int"
+                                      @bind-Value="_ctorZIndex"
+                                      Items="_zIndexItems"
+                                      Block="true" />
+                        </SgStack>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Open</SgTypography>
+                                    <SgBadge Variant="@(_ctorOpen ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorOpen ? "Visible" : "Hidden")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Style</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorVariantLabel" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Z-Index</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorZIndex.ToString()" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            <div class="constructor-preview" style="min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;">
+                                @if (_ctorOpen)
+                                {
+                                    <SgPortal ZIndex="_ctorZIndex">
+                                        <div class="portal-ctor-card @GetVariantClass()">
+                                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                                <SgHeroicon Name="@SgHeroicons.Names.Sparkles" Variant="Solid" Size="28px" Color="@GetVariantIconColor()" />
+                                                <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">SgPortal Live Preview</SgTypography>
+                                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                                    I am teleported to document.body
+                                                </SgTypography>
+                                                <SgButton Text="Dismiss" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="() => { _ctorOpen = false; UpdateConstructorCode(); }" />
+                                            </SgStack>
+                                        </div>
+                                    </SgPortal>
+                                }
+                                else
+                                {
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                        Toggle portal state to see the result
+                                    </SgTypography>
+                                }
+                            </div>
+                        </SgStack>
+
+                        <!-- Code with Copy -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="copy-icon">@_copyIcon</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
     </div>
 
+    </ChildContent>
 </SgCard>
 
-@code {
-    private bool _showPortal;
+<style>
+    /* ── Portal demo styles ────────────────────────────────────────────────── */
+    .portal-banner {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 10px 20px;
+        background: linear-gradient(135deg, #3b82f6, #6366f1);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+        z-index: 9999;
+        animation: portal-slide-down 0.3s ease;
+    }
+    .portal-toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        width: 340px;
+        background: linear-gradient(135deg, #1e293b, #334155);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 14px 16px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        z-index: 9999;
+        animation: portal-slide-right 0.3s ease;
+    }
+    .portal-modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 400px;
+        max-width: calc(100vw - 32px);
+        background: var(--sg-bg, #fff);
+        border: 1px solid var(--sg-border);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+        z-index: 10000;
+        animation: portal-fade-in 0.2s ease;
+    }
+    .portal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.35);
+        z-index: 9999;
+        animation: portal-fade-in 0.15s ease;
+    }
+    .portal-ctor-card {
+        padding: 20px 24px;
+        border-radius: 14px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        min-width: 260px;
+        animation: portal-fade-in 0.2s ease;
+    }
+    .portal-ctor-card.variant-info {
+        background: linear-gradient(135deg, #eff6ff, #dbeafe);
+        border: 1px solid #93c5fd;
+        color: #1e40af;
+    }
+    .portal-ctor-card.variant-success {
+        background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+        border: 1px solid #86efac;
+        color: #166534;
+    }
+    .portal-ctor-card.variant-warning {
+        background: linear-gradient(135deg, #fffbeb, #fef3c7);
+        border: 1px solid #fcd34d;
+        color: #92400e;
+    }
+    .portal-ctor-card.variant-dark {
+        background: linear-gradient(135deg, #1e293b, #0f172a);
+        border: 1px solid #334155;
+        color: #e2e8f0;
+    }
+    .portal-close-btn {
+        background: none;
+        border: none;
+        padding: 4px;
+        cursor: pointer;
+        opacity: 0.7;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.15s, background 0.15s;
+    }
+    .portal-close-btn:hover {
+        opacity: 1;
+        background: rgba(255,255,255,0.1);
+    }
 
+    @@keyframes portal-slide-down {
+        from { transform: translateY(-100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    @@keyframes portal-slide-right {
+        from { transform: translateX(20px); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    @@keyframes portal-fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+</style>
+
+@code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                    <polyline points="10 17 15 12 10 7"/>
+                    <line x1="15" y1="12" x2="3" y2="12"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Portal</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    SgPortal — teleports content to <code>document.body</code> to escape CSS stacking contexts, overflow clipping, and transform restrictions.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── Demo state ───────────────────────────────────────────────────────
+    private bool _showBanner;
+    private bool _showToast;
+    private bool _showModal;
+
+    // ── Constructor state ────────────────────────────────────────────────
+    private bool _ctorOpen;
+    private int _ctorVariant;
+    private int _ctorZIndex = 9999;
+
+    private string _ctorVariantLabel => _ctorVariant switch
+    {
+        0 => "Info",
+        1 => "Success",
+        2 => "Warning",
+        3 => "Dark",
+        _ => "Info"
+    };
+
+    private string GetVariantClass() => _ctorVariant switch
+    {
+        0 => "variant-info",
+        1 => "variant-success",
+        2 => "variant-warning",
+        3 => "variant-dark",
+        _ => "variant-info"
+    };
+
+    private string GetVariantIconColor() => _ctorVariant switch
+    {
+        0 => "#3b82f6",
+        1 => "#10b981",
+        2 => "#f59e0b",
+        3 => "#6366f1",
+        _ => "#3b82f6"
+    };
+
+    // ── Code generation ──────────────────────────────────────────────────
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegOptions = new()
+    {
+        new() { Value = false, Label = "Hidden" },
+        new() { Value = true,  Label = "Visible" },
+    };
+
+    private readonly List<SgSegmentedOption<int>> _variantOptions = new()
+    {
+        new() { Value = 0, Label = "Info" },
+        new() { Value = 1, Label = "Success" },
+        new() { Value = 2, Label = "Warning" },
+        new() { Value = 3, Label = "Dark" },
+    };
+
+    private readonly List<int> _zIndexItems = new() { 100, 500, 1000, 5000, 9999, 10000, 99999 };
+
+    // ── Lifecycle ────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add("<SgPortal" + (_ctorZIndex != 9999 ? $" ZIndex=\"{_ctorZIndex}\"" : "") + ">");
+        lines.Add("    <div class=\"portal-content\">");
+        lines.Add($"        <!-- {_ctorVariantLabel} style portal content -->");
+        lines.Add("        <p>Your portal content here</p>");
+        lines.Add("    </div>");
+        lines.Add("</SgPortal>");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property table ───────────────────────────────────────────────────
     private List<PropertyPanelItem> _portalProperties = new()
     {
-        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Содержимое портала", BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "ChildContent", Value = "RenderFragment?",  BadgeText = "Portal Content", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ZIndex",       Value = "int?",             BadgeText = "Stack Order",    BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Class",        Value = "string?",          BadgeText = "CSS Class",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Style",        Value = "string?",          BadgeText = "Inline Style",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Id",           Value = "string?",          BadgeText = "HTML ID",        BadgeVariant = SgBadgeVariant.Default },
     };
 }
