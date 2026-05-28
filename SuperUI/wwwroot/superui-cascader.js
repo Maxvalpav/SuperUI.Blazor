@@ -134,5 +134,9 @@ export function repositionMenu(root) {
     const menu = root.querySelector('.sgc-cascader-menu');
     if (!menu) return;
     const placement = root._sgCascaderPlacement || 'BottomStart';
+    menu.style.opacity = '0';
     positionMenu(root, menu, placement);
+    requestAnimationFrame(() => {
+        if (menu) menu.style.opacity = '';
+    });
 }

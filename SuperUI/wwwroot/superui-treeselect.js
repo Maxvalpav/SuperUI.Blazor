@@ -117,7 +117,11 @@ export function repositionMenu(root) {
     if (!menu) return;
     const placement = root._sgTreeSelectPlacement || 'BottomStart';
     const matchWidth = root._sgTreeSelectMatchWidth;
+    menu.style.opacity = '0';
     positionMenu(root, menu, placement, matchWidth);
+    requestAnimationFrame(() => {
+        if (menu) menu.style.opacity = '';
+    });
 }
 
 export function scrollToSelected(root) {

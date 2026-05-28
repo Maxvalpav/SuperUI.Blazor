@@ -7,6 +7,7 @@ export function attach(root, triggerElement, menuElement, dotnetRef, closeOnOuts
 
     // ── Portal: position menu at fixed coords ──
     if (usePortal && menuElement) {
+        menuElement.style.opacity = '0';
         const rect = triggerElement.getBoundingClientRect();
         menuElement.style.position = 'fixed';
         menuElement.style.left = rect.left + 'px';
@@ -23,6 +24,9 @@ export function attach(root, triggerElement, menuElement, dotnetRef, closeOnOuts
             if (flipY) menuElement.style.top = (rect.top - (menuElement.offsetHeight || menuH) - 4) + 'px';
             try { dotnetRef?.invokeMethodAsync("ApplyFlip", flipX, flipY)?.catch(() => {}); } catch {}
         }
+        requestAnimationFrame(() => {
+            if (menuElement) menuElement.style.opacity = '';
+        });
     }
 
     // ── Flip detection (non-portal) ──
