@@ -2,14 +2,20 @@
 @using SuperUI.Enums
 @using SuperUI.Localization
 @using SuperUI.Services
+@using Microsoft.JSInterop
 @inherits SgOverlayComponentBase
 
-@if (Visible || IsClosing)
+@if (Visible || IsClosing || _responsiveFull)
 {
     <SgPortal>
         <div class="@GetBackdropClasses()"
-             style="z-index: @BackdropZIndex"
-             @onclick="BackdropClickAsync">
+             style="@GetBackdropStyle()"
+             @onclick="BackdropClickAsync"
+             @ref="_backdropRef">
+            @if (BackdropContent is not null)
+            {
+                <div class="sgc-modal-backdrop-content">@BackdropContent</div>
+            }
             <div class="@GetModalClasses()"
                  style="@GetStyle()"
                  role="dialog"
@@ -19,6 +25,19 @@
                  tabindex="-1"
                  @ref="RootRef"
                  @onclick:stopPropagation="true">
+                @if (Loading)
+                {
+                    <div class="sgc-modal-loading-overlay">
+                        @if (LoadingContent is not null)
+                        {
+                            @LoadingContent
+                        }
+                        else
+                        {
+                            <SgSpinner Type="SgSpinnerType.Dots" Size="SgSize.Lg" Label="Loading..." />
+                        }
+                    </div>
+                }
                 <div class="@GetHeaderClasses()" @ref="_headerRef">
                     @if (HeaderContent is not null)
                     {
@@ -34,27 +53,55 @@
                             <span id="@_titleId" class="sgc-modal-title">@Title</span>
                         </div>
                     }
-                    @if (ShowClose)
-                    {
-                        <button class="sgc-modal-x" type="button" @onclick="CloseAsync" aria-label="@Localizer["Common_Close"]">
-                            @if (CloseIcon is not null)
-                            {
-                                <SgIcon Icon="@CloseIcon" Size="18px" />
-                            }
-                            else
-                            {
-                                @* — SVG X mark *@
-                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                            }
-                        </button>
-                    }
+                    <div class="sgc-modal-header-actions">
+                        @if (ShowMaximize && !FullScreen && !_responsiveFull)
+                        {
+                            <button class="sgc-modal-header-btn" type="button"
+                                    @onclick="ToggleMaximized"
+                                    aria-label="@(_isMaximized ? "Restore" : "Maximize")"
+                                    title="@(_isMaximized ? "Restore" : "Maximize")">
+                                @if (_isMaximized)
+                                {
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+                                }
+                                else
+                                {
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                                }
+                            </button>
+                        }
+                        @if (ShowClose)
+                        {
+                            <button class="sgc-modal-x" type="button" @onclick="CloseAsync" aria-label="@Localizer["Common_Close"]">
+                                @if (CloseIcon is not null)
+                                {
+                                    <SgIcon Icon="@CloseIcon" Size="18px" />
+                                }
+                                else
+                                {
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                }
+                            </button>
+                        }
+                    </div>
                 </div>
                 <div id="@_bodyId" class="@GetBodyClasses()">
                     @ChildContent
                 </div>
                 @if (FooterContent is not null)
                 {
-                    <div class="sgc-modal-footer">@FooterContent</div>
+                    <div class="@GetFooterClasses()">@FooterContent</div>
+                }
+                @if (Resizable)
+                {
+                    <div class="sgc-modal-resize-handle sgc-modal-resize-n" data-dir="n"></div>
+                    <div class="sgc-modal-resize-handle sgc-modal-resize-s" data-dir="s"></div>
+                    <div class="sgc-modal-resize-handle sgc-modal-resize-e" data-dir="e"></div>
+                    <div class="sgc-modal-resize-handle sgc-modal-resize-w" data-dir="w"></div>
+                    <div class="sgc-modal-resize-handle sgc-modal-resize-ne" data-dir="ne"></div>
+                    <div class="sgc-modal-resize-handle sgc-modal-resize-nw" data-dir="nw"></div>
+                    <div class="sgc-modal-resize-handle sgc-modal-resize-se" data-dir="se"></div>
+                    <div class="sgc-modal-resize-handle sgc-modal-resize-sw" data-dir="sw"></div>
                 }
             </div>
         </div>
@@ -65,147 +112,110 @@
     private string _titleId => SgIdGenerator.StableIdFor(this, "modal-title");
     private string _bodyId  => SgIdGenerator.StableIdFor(this, "modal-body");
     private ElementReference _headerRef;
+    private ElementReference _backdropRef;
     private bool _openedFired;
+    private bool _isMaximized;
+    private bool _responsiveFull;
+    private DotNetObjectReference<SgModal>? _selfRef;
+    private CancellationTokenSource? _resizeCts;
 
-    /// <summary>
-    /// Gets or sets the modal title text.
-    /// </summary>
+    // ── Core parameters ─────────────────────────────────────────────────
+
     [Parameter] public string? Title { get; set; }
-
-    /// <summary>
-    /// Gets or sets the modal body content.
-    /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>
-    /// Gets or sets the modal footer content.
-    /// </summary>
     [Parameter] public RenderFragment? FooterContent { get; set; }
-
-    /// <summary>
-    /// Gets or sets custom header content. When set, replaces the default title/icon rendering.
-    /// </summary>
     [Parameter] public RenderFragment? HeaderContent { get; set; }
-
-    /// <summary>
-    /// Gets or sets an optional icon (SVG markup from SgHeroicons) displayed next to the title.
-    /// </summary>
     [Parameter] public string? Icon { get; set; }
-
-    /// <summary>
-    /// Gets or sets a custom close icon (SVG markup). When not set, uses the default X mark.
-    /// </summary>
     [Parameter] public string? CloseIcon { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether to show the close button in the header. Default is true.
-    /// </summary>
+    // ── Behavior ────────────────────────────────────────────────────────
+
     [Parameter] public bool ShowClose { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether clicking the backdrop closes the modal. Default is true.
-    /// </summary>
     [Parameter] public bool CloseOnBackdrop { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether pressing ESC closes the modal. Default is true.
-    /// </summary>
     [Parameter] public bool CloseOnEscape { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets the modal animation type. Default is <see cref="SgModalAnimation.Scale"/>.
-    /// </summary>
     [Parameter] public SgModalAnimation Animation { get; set; } = SgModalAnimation.Scale;
-
-    /// <summary>
-    /// Gets or sets whether the modal is draggable by its header.
-    /// </summary>
     [Parameter] public bool Draggable { get; set; }
 
-    /// <summary>
-    /// Gets or sets the modal width (e.g., "600px", "50%"). When set, overrides size presets.
-    /// </summary>
+    // ── Sizing ──────────────────────────────────────────────────────────
+
     [Parameter] public string? Width { get; set; }
-
-    /// <summary>
-    /// Gets or sets the modal max-width (e.g., "90vw", "1200px").
-    /// </summary>
     [Parameter] public string? MaxWidth { get; set; }
-
-    /// <summary>
-    /// Gets or sets the modal size preset. Overridden by <see cref="Width"/> and <see cref="FullScreen"/>.
-    /// </summary>
     [Parameter] public SgModalSize Size { get; set; } = SgModalSize.Md;
-
-    /// <summary>
-    /// Gets or sets whether the modal is displayed in full screen. Overrides <see cref="Size"/> and <see cref="Width"/>.
-    /// </summary>
     [Parameter] public bool FullScreen { get; set; }
 
-    /// <summary>
-    /// Gets or sets the vertical position of the modal. Default is <see cref="SgModalPosition.Center"/>.
-    /// </summary>
+    // ── Position ────────────────────────────────────────────────────────
+
     [Parameter] public SgModalPosition Position { get; set; } = SgModalPosition.Center;
 
-    /// <summary>
-    /// Gets or sets additional CSS class for the modal body.
-    /// </summary>
+    // ── Backdrop ────────────────────────────────────────────────────────
+
+    [Parameter] public RenderFragment? BackdropContent { get; set; }
+    [Parameter] public bool BackdropDismiss { get; set; } = true;
+    [Parameter] public string? BackdropBlur { get; set; }
+
+    // ── Advanced ────────────────────────────────────────────────────────
+
+    [Parameter] public bool ShowMaximize { get; set; }
+    [Parameter] public bool Resizable { get; set; }
+    [Parameter] public bool ResponsiveMode { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public RenderFragment? LoadingContent { get; set; }
     [Parameter] public string? BodyClass { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional CSS class for the modal header.
-    /// </summary>
     [Parameter] public string? HeaderClass { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional CSS class for the modal footer.
-    /// </summary>
     [Parameter] public string? FooterClass { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether to remove body padding.
-    /// </summary>
     [Parameter] public bool NoPadding { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether to apply a glassmorphism effect to the modal.
-    /// </summary>
     [Parameter] public bool Glass { get; set; }
-
-    /// <summary>
-    /// Gets or sets the CSS z-index for the backdrop.
-    /// </summary>
     [Parameter] public int? CustomZIndex { get; set; }
+    [Parameter] public string? ShortcutSubmit { get; set; }
+    [Parameter] public EventCallback OnSubmit { get; set; }
 
-    /// <summary>
-    /// Callback invoked when the modal is closed.
-    /// </summary>
+    // ── Events ──────────────────────────────────────────────────────────
+
     [Parameter] public EventCallback OnClose { get; set; }
-
-    /// <summary>
-    /// Callback invoked when the modal starts closing (before animation).
-    /// </summary>
     [Parameter] public EventCallback OnClosing { get; set; }
-
-    /// <summary>
-    /// Callback invoked after the modal has opened (after animation).
-    /// </summary>
     [Parameter] public EventCallback OnOpened { get; set; }
+    [Parameter] public EventCallback<bool> OnMaximizedChanged { get; set; }
 
-    [Inject]
-    private ISuperUILocalizer Localizer { get; set; } = default!;
+    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
     protected override string ModulePath => "./_content/SuperUI/superui-modal.js";
     protected override int    ZIndexBase => CustomZIndex ?? SgZIndexService.ModalBase;
     protected override string IdPrefix   => "sg-modal";
     protected override int    ClosingAnimationMs => Animation == SgModalAnimation.None ? 0 : 200;
 
+    // ── Lifecycle ────────────────────────────────────────────────────────
+
     protected override async ValueTask OnOpeningAsync()
     {
         _openedFired = false;
-        await SafeInvokeVoidAsync("attach", RootRef, SelfRef, CloseOnEscape, FullScreen);
-        if (Draggable && !FullScreen)
+        _responsiveFull = false;
+
+        if (ResponsiveMode)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            var isMobile = await JSRuntime.InvokeAsync<bool>("eval", "window.innerWidth <= 768");
+            if (isMobile) _responsiveFull = true;
+        }
+
+        await SafeInvokeVoidAsync("attach", RootRef, SelfRef, CloseOnEscape, FullScreen || _responsiveFull);
+
+        if (Draggable && !FullScreen && !_responsiveFull)
             await SafeInvokeVoidAsync("initDrag", RootRef, _headerRef);
+
+        if (Resizable)
+            await SafeInvokeVoidAsync("initResize", RootRef);
+
+        if (!string.IsNullOrEmpty(ShortcutSubmit))
+            await SafeInvokeVoidAsync("initShortcuts", RootRef, SelfRef, ShortcutSubmit);
+
+        if (ResponsiveMode)
+        {
+            _resizeCts?.Cancel();
+            _resizeCts?.Dispose();
+            _resizeCts = new CancellationTokenSource();
+            _ = WatchResizeAsync(_resizeCts.Token);
+        }
     }
 
     protected override async ValueTask OnOpenedAsync()
@@ -218,6 +228,7 @@
 
     protected override async ValueTask OnClosingAsync()
     {
+        _resizeCts?.Cancel();
         if (OnClosing.HasDelegate)
             await OnClosing.InvokeAsync();
         await SafeInvokeVoidAsync("detach", RootRef);
@@ -225,12 +236,65 @@
 
     protected override async ValueTask OnClosedAsync()
     {
+        _selfRef?.Dispose();
+        _selfRef = null;
+        _resizeCts?.Dispose();
+        _resizeCts = null;
         if (OnClose.HasDelegate)
             await OnClose.InvokeAsync();
     }
 
+    protected override void Dispose(bool disposing)
+    {
+        _selfRef?.Dispose();
+        _resizeCts?.Cancel();
+        _resizeCts?.Dispose();
+        base.Dispose(disposing);
+    }
+
+    // ── JS-invokable ────────────────────────────────────────────────────
+
     [JSInvokable]
     public override Task RequestCloseAsync() => CloseAsync();
+
+    [JSInvokable]
+    public async Task OnSubmitAsync()
+    {
+        if (OnSubmit.HasDelegate)
+            await OnSubmit.InvokeAsync();
+    }
+
+    // ── API ──────────────────────────────────────────────────────────────
+
+    public async Task ToggleMaximized()
+    {
+        _isMaximized = !_isMaximized;
+        if (OnMaximizedChanged.HasDelegate)
+            await OnMaximizedChanged.InvokeAsync(_isMaximized);
+    }
+
+    // ── Responsive watcher ──────────────────────────────────────────────
+
+    private async Task WatchResizeAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(300, ct);
+                if (ct.IsCancellationRequested) break;
+                var isMobile = await JSRuntime.InvokeAsync<bool>("eval", "window.innerWidth <= 768");
+                if (isMobile != _responsiveFull)
+                {
+                    _responsiveFull = isMobile;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    // ── CSS classes ──────────────────────────────────────────────────────
 
     private string GetBackdropClasses()
     {
@@ -238,27 +302,40 @@
         if (IsClosing) sb.Add("sgc-closing");
         if (Position == SgModalPosition.Top) sb.Add("sgc-modal-backdrop-top");
         if (Position == SgModalPosition.Bottom) sb.Add("sgc-modal-backdrop-bottom");
+        if (!BackdropDismiss) sb.Add("sgc-modal-backdrop-static");
         return string.Join(" ", sb);
+    }
+
+    private string GetBackdropStyle()
+    {
+        var b = Styles();
+        b.AddStyle("z-index", BackdropZIndex.ToString(), BackdropZIndex > 0);
+        if (!string.IsNullOrEmpty(BackdropBlur))
+            b.AddStyle("backdrop-filter", $"blur({BackdropBlur})");
+        return b.Build();
     }
 
     private string GetModalClasses()
     {
         var sb = new List<string> { "sgc-modal" };
         sb.Add("sgc-modal-anim-" + AnimationClass);
-        if (FullScreen) sb.Add("sgc-modal-fullscreen");
+        if (FullScreen || _responsiveFull) sb.Add("sgc-modal-fullscreen");
         else sb.Add("sgc-modal-size-" + SizeClass);
+        if (_isMaximized && !FullScreen && !_responsiveFull) sb.Add("sgc-modal-maximized");
         if (Position == SgModalPosition.Top) sb.Add("sgc-modal-pos-top");
         if (Position == SgModalPosition.Bottom) sb.Add("sgc-modal-pos-bottom");
         if (NoPadding) sb.Add("sgc-modal-no-padding");
         if (Glass) sb.Add("sg-glass");
+        if (Resizable) sb.Add("sgc-modal-resizable");
         return string.Join(" ", sb);
     }
 
     private string GetHeaderClasses()
     {
         var sb = new List<string> { "sgc-modal-header" };
-        if (Draggable && !FullScreen) sb.Add("sgc-modal-header-draggable");
+        if (Draggable && !FullScreen && !_responsiveFull) sb.Add("sgc-modal-header-draggable");
         if (!string.IsNullOrEmpty(HeaderClass)) sb.Add(HeaderClass);
+        if (ShowMaximize) sb.Add("sgc-modal-header-has-maximize");
         return string.Join(" ", sb);
     }
 
@@ -266,6 +343,13 @@
     {
         var sb = new List<string> { "sgc-modal-body" };
         if (!string.IsNullOrEmpty(BodyClass)) sb.Add(BodyClass);
+        return string.Join(" ", sb);
+    }
+
+    private string GetFooterClasses()
+    {
+        var sb = new List<string> { "sgc-modal-footer" };
+        if (!string.IsNullOrEmpty(FooterClass)) sb.Add(FooterClass);
         return string.Join(" ", sb);
     }
 
@@ -304,5 +388,5 @@
     }
 
     private Task BackdropClickAsync()
-        => CloseOnBackdrop ? CloseAsync() : Task.CompletedTask;
+        => BackdropDismiss && CloseOnBackdrop ? CloseAsync() : Task.CompletedTask;
 }

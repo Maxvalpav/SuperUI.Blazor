@@ -1,8 +1,9 @@
-// superui-modal.js - Modal focus-trap, ESC handling, scroll-lock, and drag support
+// superui-modal.js - Modal focus-trap, ESC handling, scroll-lock, drag, resize, and keyboard shortcut support
 
 const modalStack = [];
 let escapeHandler = null;
 let focusTrapHandler = null;
+let shortcutHandler = null;
 let previousScrollPosition = 0;
 
 function getTopModal() {
@@ -17,7 +18,6 @@ function getFocusableElements(element) {
 
 export function attach(modalElement, dotnetRef, closeOnEscape, fullScreen) {
     const previousFocus = document.activeElement;
-    let isDisposed = false;
 
     if (modalStack.length === 0) {
         previousScrollPosition = window.scrollY || document.documentElement.scrollTop;
@@ -88,7 +88,6 @@ export function attach(modalElement, dotnetRef, closeOnEscape, fullScreen) {
         document.addEventListener('keydown', focusTrapHandler, true);
     }
 
-    // Focus first focusable element in modal
     setTimeout(() => {
         if (!entry.isDisposed && entry.element && entry.element.isConnected) {
             const focusableElements = getFocusableElements(entry.element);
@@ -113,10 +112,8 @@ export function initDrag(modalElement, headerElement) {
     const onPointerMove = (e) => {
         if (!isDragging) return;
         e.preventDefault();
-        
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
-        
         modalElement.style.transform = 'none';
         modalElement.style.left = `${initialX + dx}px`;
         modalElement.style.top = `${initialY + dy}px`;
@@ -132,22 +129,104 @@ export function initDrag(modalElement, headerElement) {
 
     headerElement.style.cursor = 'move';
     headerElement.style.userSelect = 'none';
-    
+
     headerElement.addEventListener('pointerdown', (e) => {
         if (e.target.closest('button, input, [role="button"]')) return;
-        
         isDragging = true;
         startX = e.clientX;
         startY = e.clientY;
-        
         const rect = modalElement.getBoundingClientRect();
         initialX = rect.left;
         initialY = rect.top;
-
         document.addEventListener('pointermove', onPointerMove);
         document.addEventListener('pointerup', onPointerUp);
         document.addEventListener('pointercancel', onPointerUp);
     });
+}
+
+export function initResize(modalElement) {
+    if (!modalElement) return;
+
+    const handles = modalElement.querySelectorAll('.sgc-modal-resize-handle');
+    let isResizing = false;
+    let startX, startY, startW, startH, startL, startT, dir;
+
+    const onPointerMove = (e) => {
+        if (!isResizing) return;
+        e.preventDefault();
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        if (dir.includes('e')) modalElement.style.width = `${Math.max(300, startW + dx)}px`;
+        if (dir.includes('w')) {
+            modalElement.style.width = `${Math.max(300, startW - dx)}px`;
+            modalElement.style.left = `${startL + dx}px`;
+        }
+        if (dir.includes('s')) modalElement.style.height = `${Math.max(200, startH + dy)}px`;
+        if (dir.includes('n')) {
+            modalElement.style.height = `${Math.max(200, startH - dy)}px`;
+            modalElement.style.top = `${startT + dy}px`;
+        }
+    };
+
+    const onPointerUp = () => {
+        isResizing = false;
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+        document.removeEventListener('pointercancel', onPointerUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    };
+
+    handles.forEach(handle => {
+        handle.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isResizing = true;
+            dir = handle.dataset.dir;
+            const rect = modalElement.getBoundingClientRect();
+            startX = e.clientX;
+            startY = e.clientY;
+            startW = rect.width;
+            startH = rect.height;
+            startL = rect.left;
+            startT = rect.top;
+            document.body.style.cursor = getComputedStyle(handle).cursor;
+            document.body.style.userSelect = 'none';
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp);
+            document.addEventListener('pointercancel', onPointerUp);
+        });
+    });
+}
+
+export function initShortcuts(modalElement, dotnetRef, shortcutKey) {
+    if (!shortcutKey) return;
+
+    const handler = (e) => {
+        const top = getTopModal();
+        if (!top || top.element !== modalElement || top.isDisposed) return;
+
+        const parts = shortcutKey.toLowerCase().split('+');
+        const key = parts[parts.length - 1];
+        const ctrl = parts.includes('ctrl');
+        const shift = parts.includes('shift');
+        const alt = parts.includes('alt');
+
+        if (e.key.toLowerCase() === key && e.ctrlKey === ctrl && e.shiftKey === shift && e.altKey === alt) {
+            e.preventDefault();
+            try {
+                dotnetRef.invokeMethodAsync('OnSubmitAsync').catch(() => {});
+            } catch { }
+        }
+    };
+
+    document.addEventListener('keydown', handler, true);
+    // Store cleanup
+    if (!shortcutHandler) {
+        shortcutHandler = [];
+    }
+    shortcutHandler.push({ modalElement, handler });
 }
 
 export function detach(modalElement) {
@@ -164,15 +243,27 @@ export function detach(modalElement) {
         } catch (e) { }
     }
 
+    // Cleanup shortcuts for this modal
+    if (shortcutHandler) {
+        shortcutHandler = shortcutHandler.filter(s => {
+            if (s.modalElement === modalElement) {
+                document.removeEventListener('keydown', s.handler, true);
+                return false;
+            }
+            return true;
+        });
+        if (shortcutHandler.length === 0) shortcutHandler = null;
+    }
+
     if (modalStack.length === 0) {
         document.body.style.overflow = '';
         document.body.style.paddingRight = '';
-        
+
         if (previousScrollPosition > 0) {
             window.scrollTo(0, previousScrollPosition);
             previousScrollPosition = 0;
         }
-        
+
         if (escapeHandler) {
             document.removeEventListener('keydown', escapeHandler, true);
             escapeHandler = null;
@@ -188,19 +279,19 @@ let _cachedScrollbarWidth = null;
 
 function getScrollbarWidth() {
     if (_cachedScrollbarWidth !== null) return _cachedScrollbarWidth;
-    
+
     const outer = document.createElement('div');
     outer.style.visibility = 'hidden';
     outer.style.overflow = 'scroll';
     outer.style.position = 'absolute';
     outer.style.top = '-9999px';
     document.body.appendChild(outer);
-    
+
     const inner = document.createElement('div');
     outer.appendChild(inner);
-    
+
     _cachedScrollbarWidth = outer.offsetWidth - inner.offsetWidth;
     outer.parentNode.removeChild(outer);
-    
+
     return _cachedScrollbarWidth;
 }

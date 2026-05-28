@@ -166,7 +166,89 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 5. Live Constructor                                               -->
+    <!-- 5. Events Log (Real-time)                                         -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Events Log
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Real-time events emitted by SgModal. Open any modal below to trigger events.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="8">
+                <SgCard Title="Advanced Features" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgRow Space="SgSize.Md">
+                        <SgCol Md="4">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgButton Text="Loading State" Variant="SgButtonVariant.Outlined"
+                                          OnClick="@(() => OpenLoadingModal())"
+                                          PrefixIcon="@SgHeroicons.Outline.ArrowPath" />
+                                <SgButton Text="Backdrop Static" Variant="SgButtonVariant.Outlined"
+                                          OnClick="@(() => _showBackdropStatic = true)"
+                                          PrefixIcon="@SgHeroicons.Outline.LockClosed" />
+                                <SgButton Text="Backdrop Blur" Variant="SgButtonVariant.Outlined"
+                                          OnClick="@(() => _showBackdropBlur = true)"
+                                          PrefixIcon="@SgHeroicons.Outline.Sparkles" />
+                            </SgStack>
+                        </SgCol>
+                        <SgCol Md="4">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgButton Text="Maximize" Variant="SgButtonVariant.Outlined"
+                                          OnClick="@(() => _showMaximize = true)"
+                                          PrefixIcon="@SgHeroicons.Outline.ArrowsPointingOut" />
+                                <SgButton Text="Resizable" Variant="SgButtonVariant.Outlined"
+                                          OnClick="@(() => _showResizable = true)"
+                                          PrefixIcon="@SgHeroicons.Outline.AdjustmentsHorizontal" />
+                                <SgButton Text="Keyboard Shortcut" Variant="SgButtonVariant.Outlined"
+                                          OnClick="@(() => _showShortcut = true)"
+                                          PrefixIcon="@SgHeroicons.Outline.Keyboard" />
+                            </SgStack>
+                        </SgCol>
+                        <SgCol Md="4">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgButton Text="Stacked Modal" Variant="SgButtonVariant.Outlined"
+                                          OnClick="@(() => _showStacked1 = true)"
+                                          PrefixIcon="@SgHeroicons.Outline.Layers" />
+                                <SgButton Text="Responsive Mode" Variant="SgButtonVariant.Outlined"
+                                          OnClick="@(() => _showResponsive = true)"
+                                          PrefixIcon="@SgHeroicons.Outline.DevicePhoneMobile" />
+                            </SgStack>
+                        </SgCol>
+                    </SgRow>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Event Log" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <div class="events-log">
+                        @if (_events.Count == 0)
+                        {
+                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">No events yet. Open a modal.</SgTypography>
+                        }
+                        @foreach (var evt in _events.AsEnumerable().Reverse().Take(10))
+                        {
+                            <div class="event-entry">
+                                <SgBadge Variant="@(evt.Type == "opened" ? SgBadgeVariant.Success : evt.Type == "closed" ? SgBadgeVariant.Warn : SgBadgeVariant.Info)"
+                                         Size="SgSize.Sm" Text="@evt.Type" Standalone="true" />
+                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Style="flex:1;">@evt.Message</SgTypography>
+                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Style="font-family:monospace;font-size:10px;">@evt.Time</SgTypography>
+                            </div>
+                        }
+                        @if (_events.Count > 10)
+                        {
+                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">... and @(_events.Count - 10) more</SgTypography>
+                        }
+                    </div>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Live Constructor                                               -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <div class="demo-section">
         <div class="demo-section-header">
@@ -316,7 +398,7 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 6. API Reference                                                  -->
+    <!-- 7. API Reference                                                  -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <div class="demo-section">
         <div class="demo-section-header">
@@ -363,6 +445,142 @@
 
 </ChildContent>
 </SgCard>
+
+@* ── Advanced Feature Modals ───────────────────────────────────────────── *@
+
+<!-- Loading Modal -->
+<SgModal @bind-Visible="@_showLoadingTmp" Title="Loading Demo"
+         Loading="@_isLoading" Size="SgModalSize.Sm">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center" Style="text-align:center;">
+            <SgTypography>Content loads after 2 seconds...</SgTypography>
+        </SgStack>
+    </ChildContent>
+</SgModal>
+
+<!-- Backdrop Static (no dismiss) -->
+<SgModal @bind-Visible="@_showBackdropStatic" Title="Static Backdrop"
+         BackdropDismiss="false" Size="SgModalSize.Sm">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgIcon Icon="@SgHeroicons.Outline.LockClosed" Size="40px" Color="var(--sg-primary)" />
+            <SgTypography>You must use the close button to dismiss this modal.</SgTypography>
+        </SgStack>
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="Close" OnClick="@(() => _showBackdropStatic = false)" />
+    </FooterContent>
+</SgModal>
+
+<!-- Backdrop Blur -->
+<SgModal @bind-Visible="@_showBackdropBlur" Title="Blurred Backdrop"
+         BackdropBlur="8px" Size="SgModalSize.Sm" Animation="SgModalAnimation.SlideUp">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgIcon Icon="@SgHeroicons.Outline.Sparkles" Size="40px" Color="var(--sg-primary)" />
+            <SgTypography>The background is blurred with backdrop-filter.</SgTypography>
+        </SgStack>
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="Close" OnClick="@(() => _showBackdropBlur = false)" />
+    </FooterContent>
+</SgModal>
+
+<!-- Maximize Modal -->
+<SgModal @bind-Visible="@_showMaximize" Title="Maximize Demo" Size="SgModalSize.Md"
+         ShowMaximize="true" Animation="SgModalAnimation.Scale"
+         OnMaximizedChanged="@(v => AddEvent("maximized", v ? "Maximized" : "Restored"))">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgIcon Icon="@SgHeroicons.Outline.ArrowsPointingOut" Size="40px" Color="var(--sg-primary)" />
+            <SgTypography>Click the maximize button in the header to expand.</SgTypography>
+        </SgStack>
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="Close" OnClick="@(() => _showMaximize = false)" />
+    </FooterContent>
+</SgModal>
+
+<!-- Resizable Modal -->
+<SgModal @bind-Visible="@_showResizable" Title="Resizable Modal" Size="SgModalSize.Md"
+         Resizable="true" Animation="SgModalAnimation.Fade">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgIcon Icon="@SgHeroicons.Outline.AdjustmentsHorizontal" Size="40px" Color="var(--sg-primary)" />
+            <SgTypography>Drag the edges or corners to resize this modal.</SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Align="SgTypographyAlign.Center">
+                Minimum size: 300x200px
+            </SgTypography>
+        </SgStack>
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="Close" OnClick="@(() => _showResizable = false)" />
+    </FooterContent>
+</SgModal>
+
+<!-- Keyboard Shortcut Modal -->
+<SgModal @bind-Visible="@_showShortcut" Title="Keyboard Shortcut"
+         Size="SgModalSize.Sm" Animation="SgModalAnimation.SlideUp"
+         ShortcutSubmit="ctrl+enter" OnSubmit="@(() => { _showShortcut = false; AddEvent("submit", "Ctrl+Enter submitted"); })">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgIcon Icon="@SgHeroicons.Outline.Keyboard" Size="40px" Color="var(--sg-primary)" />
+            <SgTypography>Press <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Ctrl+Enter</SgTypography> to close.</SgTypography>
+        </SgStack>
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="Close" OnClick="@(() => _showShortcut = false)" />
+    </FooterContent>
+</SgModal>
+
+<!-- Stacked Modal 1 -->
+<SgModal @bind-Visible="@_showStacked1" Title="Stack Level 1"
+         Size="SgModalSize.Md" Animation="SgModalAnimation.Scale"
+         OnOpened="@(() => AddEvent("opened", "Stack Level 1 opened"))"
+         OnClose="@(() => AddEvent("closed", "Stack Level 1 closed"))">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgIcon Icon="@SgHeroicons.Outline.Layers" Size="40px" Color="var(--sg-primary)" />
+            <SgTypography>This is the first modal. Open another on top.</SgTypography>
+            <SgButton Text="Open Level 2" Variant="SgButtonVariant.Primary"
+                      OnClick="@(() => _showStacked2 = true)" />
+        </SgStack>
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="Close" OnClick="@(() => _showStacked1 = false)" />
+    </FooterContent>
+</SgModal>
+
+<!-- Stacked Modal 2 -->
+<SgModal @bind-Visible="@_showStacked2" Title="Stack Level 2"
+         Size="SgModalSize.Sm" Animation="SgModalAnimation.SlideUp"
+         OnOpened="@(() => AddEvent("opened", "Stack Level 2 opened"))"
+         OnClose="@(() => AddEvent("closed", "Stack Level 2 closed"))">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgIcon Icon="@SgHeroicons.Outline.Layers" Size="40px" Color="var(--sg-warning)" />
+            <SgTypography>Second modal stacked on top. Press ESC to close in reverse order.</SgTypography>
+        </SgStack>
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="Close" Variant="SgButtonVariant.Danger" OnClick="@(() => { _showStacked2 = false; })" />
+        <SgButton Text="Close All" OnClick="@(() => { _showStacked2 = false; _showStacked1 = false; })" />
+    </FooterContent>
+</SgModal>
+
+<!-- Responsive Modal -->
+<SgModal @bind-Visible="@_showResponsive" Title="Responsive Modal" Size="SgModalSize.Lg"
+         ResponsiveMode="true" Animation="SgModalAnimation.SlideUp">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgIcon Icon="@SgHeroicons.Outline.DevicePhoneMobile" Size="40px" Color="var(--sg-primary)" />
+            <SgTypography>Resize the browser window below 768px to see it go fullscreen.</SgTypography>
+        </SgStack>
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="Close" OnClick="@(() => _showResponsive = false)" />
+    </FooterContent>
+</SgModal>
 
 @* ── Modal Instances ─────────────────────────────────────────────────────── *@
 
