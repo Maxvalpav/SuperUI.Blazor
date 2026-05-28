@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 
 namespace SuperUI.Components;
 
@@ -16,6 +18,19 @@ public sealed class SgRagService : IAsyncDisposable
     private DotNetObjectReference<SgRagService>? _selfRef;
     private string? _instanceId;
     private bool _isDisposed;
+
+    // Per-stream routing for AskStreamAsync/ChatDirectStreamAsync.
+    // Replaces the legacy service-wide multicast (OnStreamToken/OnStreamComplete/OnError)
+    // which mixed tokens across concurrent streams.
+    private readonly ConcurrentDictionary<string, StreamRouter> _streamRouters = new();
+
+    private sealed class StreamRouter
+    {
+        public Channel<string> Tokens { get; } = Channel.CreateUnbounded<string>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+        public SgRagAnswer? Result { get; set; }
+        public Exception? Error { get; set; }
+    }
 
     // ── State ─────────────────────────────────────────────────────────────────
 
@@ -361,63 +376,20 @@ public sealed class SgRagService : IAsyncDisposable
     }
 
     /// <summary>Asks a question and streams the answer token by token.</summary>
-    public async IAsyncEnumerable<string> AskStreamAsync(
+    public IAsyncEnumerable<string> AskStreamAsync(
         string question,
         string collection = "default",
         int topK = 5,
         string? systemPrompt = null,
         SgRagAnswerMode mode = SgRagAnswerMode.Strict,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         EnsureReady();
-        var streamId = Guid.NewGuid().ToString("N");
-        var tokens   = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        var completed = false;
-        Exception? streamError = null;
-
-        void OnToken(string t)    { tokens.Enqueue(t); }
-        void OnComplete(SgRagAnswer _) { completed = true; }
-        void OnErr(string _, string msg) { streamError = new Exception(msg); completed = true; }
-
-        OnStreamToken    += OnToken;
-        OnStreamComplete += OnComplete;
-        OnError          += OnErr;
-
-        try
-        {
-            // Fire-and-forget the JS call; tokens arrive via callbacks
-            _ = _module!.InvokeVoidAsync("askStream", CancellationToken.None,
-                _instanceId, question, collection, topK, systemPrompt, mode.ToString(), streamId)
-                .AsTask()
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted) { streamError = t.Exception?.InnerException; completed = true; }
-                }, TaskScheduler.Default);
-
-            while (!completed || !tokens.IsEmpty)
-            {
-                if (ct.IsCancellationRequested)
-                {
-                    // Tell JS to abort
-                    try { await _module!.InvokeVoidAsync("cancelStream", CancellationToken.None, _instanceId); }
-                    catch { }
-                    ct.ThrowIfCancellationRequested();
-                }
-
-                if (tokens.TryDequeue(out var token))
-                    yield return token;
-                else
-                    await Task.Delay(16, CancellationToken.None);
-            }
-
-            if (streamError is not null) throw streamError;
-        }
-        finally
-        {
-            OnStreamToken    -= OnToken;
-            OnStreamComplete -= OnComplete;
-            OnError          -= OnErr;
-        }
+        return StreamCoreAsync(
+            streamId => _module!.InvokeVoidAsync(
+                "askStream", CancellationToken.None,
+                _instanceId, question, collection, topK, systemPrompt, mode.ToString(), streamId).AsTask(),
+            ct);
     }
 
     // ── Direct chat (no RAG) ──────────────────────────────────────────────────
@@ -426,58 +398,76 @@ public sealed class SgRagService : IAsyncDisposable
     /// Streams a direct LLM response without any document retrieval.
     /// Maintains conversation history for multi-turn context.
     /// </summary>
-    public async IAsyncEnumerable<string> ChatDirectStreamAsync(
+    public IAsyncEnumerable<string> ChatDirectStreamAsync(
         string message,
         string? systemPrompt = null,
         IEnumerable<object>? attachments = null,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         EnsureReady();
-        var streamId  = Guid.NewGuid().ToString("N");
-        var tokens    = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        var completed = false;
-        Exception? streamError = null;
+        var attachmentList = attachments?.ToList();
+        return StreamCoreAsync(
+            streamId => _module!.InvokeVoidAsync(
+                "chatDirectStream", CancellationToken.None,
+                _instanceId, message, systemPrompt, attachmentList, streamId).AsTask(),
+            ct);
+    }
 
-        void OnToken(string t)         { tokens.Enqueue(t); }
-        void OnComplete(SgRagAnswer _) { completed = true; }
-        void OnErr(string _, string msg) { streamError = new Exception(msg); completed = true; }
+    // Shared core for both streaming endpoints. JS pushes tokens into a per-stream
+    // Channel via OnStreamTokenForCallback(streamId, token) — no service-wide multicast,
+    // no busy-wait polling. Cancellation aborts only this stream's JS run.
+    private async IAsyncEnumerable<string> StreamCoreAsync(
+        Func<string, Task> startJsCall,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var streamId = Guid.NewGuid().ToString("N");
+        var router = new StreamRouter();
+        _streamRouters[streamId] = router;
 
-        OnStreamToken    += OnToken;
-        OnStreamComplete += OnComplete;
-        OnError          += OnErr;
-
+        Task? jsTask = null;
         try
         {
-            _ = _module!.InvokeVoidAsync("chatDirectStream", CancellationToken.None,
-                _instanceId, message, systemPrompt, attachments?.ToList(), streamId)
-                .AsTask()
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted) { streamError = t.Exception?.InnerException; completed = true; }
-                }, TaskScheduler.Default);
-
-            while (!completed || !tokens.IsEmpty)
+            jsTask = startJsCall(streamId).ContinueWith(t =>
             {
-                if (ct.IsCancellationRequested)
-                {
-                    try { await _module!.InvokeVoidAsync("cancelStream", CancellationToken.None, _instanceId); }
-                    catch { }
-                    ct.ThrowIfCancellationRequested();
-                }
-                if (tokens.TryDequeue(out var token))
-                    yield return token;
-                else
-                    await Task.Delay(16, CancellationToken.None);
+                if (t.IsFaulted)
+                    CompleteStream(streamId, error: t.Exception?.InnerException ?? t.Exception);
+                // Successful JS task end is signalled by OnStreamCompleteCallback.
+            }, TaskScheduler.Default);
+
+            using var ctReg = ct.Register(() =>
+            {
+                // Tell JS to abort this specific stream.
+                try { _ = _module?.InvokeVoidAsync("cancelStream", CancellationToken.None, _instanceId, streamId); }
+                catch { }
+                CompleteStream(streamId, cancelled: true);
+            });
+
+            await foreach (var token in router.Tokens.Reader.ReadAllAsync(CancellationToken.None))
+            {
+                yield return token;
             }
 
-            if (streamError is not null) throw streamError;
+            ct.ThrowIfCancellationRequested();
+            if (router.Error is not null) throw router.Error;
         }
         finally
         {
-            OnStreamToken    -= OnToken;
-            OnStreamComplete -= OnComplete;
-            OnError          -= OnErr;
+            _streamRouters.TryRemove(streamId, out _);
+            if (jsTask is not null)
+            {
+                try { await jsTask.ConfigureAwait(false); } catch { }
+            }
         }
+    }
+
+    private void CompleteStream(string streamId, SgRagAnswer? result = null, Exception? error = null, bool cancelled = false)
+    {
+        if (!_streamRouters.TryGetValue(streamId, out var router)) return;
+        if (result is not null) router.Result = result;
+        if (error is not null) router.Error = error;
+        if (cancelled && router.Error is null)
+            router.Error = new OperationCanceledException("Stream was cancelled.");
+        router.Tokens.Writer.TryComplete();
     }
 
     /// <summary>Clears the direct chat conversation history.</summary>
@@ -576,6 +566,29 @@ public sealed class SgRagService : IAsyncDisposable
     public void OnErrorCallback(string code, string message)
     {
         OnError?.Invoke(code, message);
+    }
+
+    // ── Per-stream callbacks (used by AskStreamAsync / ChatDirectStreamAsync) ────
+    // JS passes the streamId so tokens from concurrent streams never mix.
+
+    [JSInvokable]
+    public void OnStreamTokenForCallback(string streamId, string token)
+    {
+        if (_streamRouters.TryGetValue(streamId, out var router))
+            router.Tokens.Writer.TryWrite(token);
+    }
+
+    [JSInvokable]
+    public void OnStreamCompleteForCallback(string streamId, System.Text.Json.JsonElement answerJson)
+    {
+        var answer = ParseAnswer(answerJson);
+        CompleteStream(streamId, result: answer);
+    }
+
+    [JSInvokable]
+    public void OnStreamErrorForCallback(string streamId, string code, string message)
+    {
+        CompleteStream(streamId, error: new InvalidOperationException($"{code}: {message}"));
     }
 
     [JSInvokable]

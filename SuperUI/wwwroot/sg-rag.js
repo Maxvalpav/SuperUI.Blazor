@@ -1588,11 +1588,16 @@ export async function askStream(instanceId, question, collection, topK, systemPr
 
   let fullAnswer = '';
 
-  // Store active AbortController / WebLLM engine on instance for cancellation
-  inst._activeStreamId = streamId;
+  // Track active stream-id → AbortController / WebLLM engine for per-stream cancellation.
+  if (!inst._activeStreams) inst._activeStreams = new Map();
+  const streamCtx = { abortCtrl: null, webLlmEngine: null };
+  inst._activeStreams.set(streamId, streamCtx);
+  inst._activeStreamId = streamId; // legacy field, kept for callers that read it
 
   const _sendToken = (token) => {
     fullAnswer += token;
+    try { inst.dotnetRef.invokeMethodAsync('OnStreamTokenForCallback', streamId, token); } catch (_) {}
+    // Legacy multicast callback — kept for backward-compatible consumers of OnStreamToken event.
     try { inst.dotnetRef.invokeMethodAsync('OnStreamTokenCallback', token); } catch (_) {}
   };
 
@@ -1608,7 +1613,8 @@ export async function askStream(instanceId, question, collection, topK, systemPr
       completionTokens: Math.ceil(fullAnswer.length / 4),
       durationMs:       Date.now() - t0,
     };
-    // 8. OnStreamComplete
+    // 8. OnStreamComplete (new streamId-aware + legacy)
+    try { inst.dotnetRef.invokeMethodAsync('OnStreamCompleteForCallback', streamId, answer); } catch (_) {}
     try { inst.dotnetRef.invokeMethodAsync('OnStreamCompleteCallback', answer); } catch (_) {}
 
     // 9. Persist chat message to IndexedDB (optional)
@@ -1629,103 +1635,126 @@ export async function askStream(instanceId, question, collection, topK, systemPr
   };
 
   // 6. LLM streaming
-  if (inst.llmEngine.kind === 'openai') {
-    // OpenAI SSE with AbortController for cancellation
-    const abortCtrl = new AbortController();
-    inst._activeAbortCtrl = abortCtrl;
+  try {
+    if (inst.llmEngine.kind === 'openai') {
+      // OpenAI SSE with AbortController for cancellation
+      const abortCtrl = new AbortController();
+      streamCtx.abortCtrl = abortCtrl;
+      inst._activeAbortCtrl = abortCtrl; // legacy
 
-    let response;
-    try {
-      response = await fetch(`${inst.llmEngine.baseUrl}/chat/completions`, {
-        method:  'POST',
-        signal:  abortCtrl.signal,
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${inst.llmEngine.apiKey}`,
-          ...(inst.llmEngine.extraHeaders || {}),
-        },
-        body: JSON.stringify({ model: inst.llmEngine.model, messages, stream: true }),
-      });
-    } catch (err) {
-      if (err?.name === 'AbortError') { await _sendComplete(); return; }
-      throw err;
-    }
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => response.statusText);
-      throw new Error(`LLM API error ${response.status}: ${errText}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        // Check if cancelled between reads
-        if (abortCtrl.signal.aborted) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === '[DONE]') { buffer = ''; break; }
-          try {
-            const parsed = JSON.parse(payload);
-            const token = parsed.choices?.[0]?.delta?.content;
-            if (token) _sendToken(token);
-          } catch (_) {}
-        }
-      }
-    } catch (err) {
-      if (err?.name !== 'AbortError') throw err;
-    } finally {
-      try { reader.cancel(); } catch (_) {}
-      inst._activeAbortCtrl = null;
-    }
-
-    await _sendComplete();
-
-  } else {
-    // WebLLM async iterator with interruptGenerate() for cancellation
-    inst._activeWebLlmEngine = inst.llmEngine;
-    let stream;
-    try {
-      stream = await inst.llmEngine.chat.completions.create({ messages, stream: true });
-      for await (const chunk of stream) {
-        const token = chunk.choices?.[0]?.delta?.content;
-        if (token) _sendToken(token);
-      }
-    } catch (err) {
-      // InterruptError or similar from WebLLM on cancellation — not a real error
-      const msg = String(err?.message || '');
-      if (!msg.includes('interrupt') && !msg.includes('cancel') && err?.name !== 'AbortError') {
+      let response;
+      try {
+        response = await fetch(`${inst.llmEngine.baseUrl}/chat/completions`, {
+          method:  'POST',
+          signal:  abortCtrl.signal,
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${inst.llmEngine.apiKey}`,
+            ...(inst.llmEngine.extraHeaders || {}),
+          },
+          body: JSON.stringify({ model: inst.llmEngine.model, messages, stream: true }),
+        });
+      } catch (err) {
+        if (err?.name === 'AbortError') { await _sendComplete(); return; }
         throw err;
       }
-    } finally {
-      inst._activeWebLlmEngine = null;
-    }
 
-    await _sendComplete();
+      if (!response.ok) {
+        const errText = await response.text().catch(() => response.statusText);
+        throw new Error(`LLM API error ${response.status}: ${errText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (abortCtrl.signal.aborted) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') { buffer = ''; break; }
+            try {
+              const parsed = JSON.parse(payload);
+              const token = parsed.choices?.[0]?.delta?.content;
+              if (token) _sendToken(token);
+            } catch (_) {}
+          }
+        }
+      } catch (err) {
+        if (err?.name !== 'AbortError') throw err;
+      } finally {
+        try { reader.cancel(); } catch (_) {}
+        streamCtx.abortCtrl = null;
+        if (inst._activeAbortCtrl === abortCtrl) inst._activeAbortCtrl = null;
+      }
+
+      await _sendComplete();
+
+    } else {
+      // WebLLM async iterator with interruptGenerate() for cancellation
+      streamCtx.webLlmEngine = inst.llmEngine;
+      inst._activeWebLlmEngine = inst.llmEngine; // legacy
+      let stream;
+      try {
+        stream = await inst.llmEngine.chat.completions.create({ messages, stream: true });
+        for await (const chunk of stream) {
+          const token = chunk.choices?.[0]?.delta?.content;
+          if (token) _sendToken(token);
+        }
+      } catch (err) {
+        const msg = String(err?.message || '');
+        if (!msg.includes('interrupt') && !msg.includes('cancel') && err?.name !== 'AbortError') {
+          throw err;
+        }
+      } finally {
+        streamCtx.webLlmEngine = null;
+        if (inst._activeWebLlmEngine === inst.llmEngine) inst._activeWebLlmEngine = null;
+      }
+
+      await _sendComplete();
+    }
+  } finally {
+    inst._activeStreams.delete(streamId);
+    if (inst._activeStreamId === streamId) inst._activeStreamId = null;
   }
 }
 
 // ── Exported: cancelStream ────────────────────────────────────────────────────
-export async function cancelStream(instanceId) {
+// streamId is optional. When provided, only that specific stream is aborted;
+// otherwise (legacy behaviour) every active stream on the instance is aborted.
+export async function cancelStream(instanceId, streamId) {
   const inst = _instances.get(instanceId);
   if (!inst) return;
 
-  // Cancel OpenAI fetch stream
+  if (streamId && inst._activeStreams) {
+    const ctx = inst._activeStreams.get(streamId);
+    if (!ctx) return;
+    if (ctx.abortCtrl) { try { ctx.abortCtrl.abort(); } catch (_) {} }
+    if (ctx.webLlmEngine) { try { await ctx.webLlmEngine.interruptGenerate(); } catch (_) {} }
+    inst._activeStreams.delete(streamId);
+    return;
+  }
+
+  // Legacy fall-back: abort all streams on the instance.
+  if (inst._activeStreams) {
+    for (const [, ctx] of inst._activeStreams) {
+      if (ctx.abortCtrl) { try { ctx.abortCtrl.abort(); } catch (_) {} }
+      if (ctx.webLlmEngine) { try { await ctx.webLlmEngine.interruptGenerate(); } catch (_) {} }
+    }
+    inst._activeStreams.clear();
+  }
   if (inst._activeAbortCtrl) {
     try { inst._activeAbortCtrl.abort(); } catch (_) {}
     inst._activeAbortCtrl = null;
   }
-
-  // Interrupt WebLLM generation
   if (inst._activeWebLlmEngine) {
     try { await inst._activeWebLlmEngine.interruptGenerate(); } catch (_) {}
     inst._activeWebLlmEngine = null;
@@ -1818,10 +1847,14 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
   inst._directHistory.push({ role: 'user', content: historyText });
 
   let fullAnswer = '';
-  inst._activeStreamId = streamId;
+  if (!inst._activeStreams) inst._activeStreams = new Map();
+  const streamCtx = { abortCtrl: null, webLlmEngine: null };
+  inst._activeStreams.set(streamId, streamCtx);
+  inst._activeStreamId = streamId; // legacy
 
   const _sendToken = (token) => {
     fullAnswer += token;
+    try { inst.dotnetRef.invokeMethodAsync('OnStreamTokenForCallback', streamId, token); } catch (_) {}
     try { inst.dotnetRef.invokeMethodAsync('OnStreamTokenCallback', token); } catch (_) {}
   };
 
@@ -1842,85 +1875,95 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
       completionTokens: Math.ceil(fullAnswer.length / 4),
       durationMs:       0,
     };
+    try { inst.dotnetRef.invokeMethodAsync('OnStreamCompleteForCallback', streamId, answer); } catch (_) {}
     try { inst.dotnetRef.invokeMethodAsync('OnStreamCompleteCallback', answer); } catch (_) {}
   };
 
-  if (inst.llmEngine.kind === 'openai') {
-    const abortCtrl = new AbortController();
-    inst._activeAbortCtrl = abortCtrl;
+  try {
+    if (inst.llmEngine.kind === 'openai') {
+      const abortCtrl = new AbortController();
+      streamCtx.abortCtrl = abortCtrl;
+      inst._activeAbortCtrl = abortCtrl;
 
-    let response;
-    try {
-      response = await fetch(`${inst.llmEngine.baseUrl}/chat/completions`, {
-        method:  'POST',
-        signal:  abortCtrl.signal,
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${inst.llmEngine.apiKey}`,
-          ...(inst.llmEngine.extraHeaders || {}),
-        },
-        body: JSON.stringify({ model: inst.llmEngine.model, messages, stream: true }),
-      });
-    } catch (err) {
-      if (err?.name === 'AbortError') { _sendComplete(); return; }
-      throw err;
-    }
+      let response;
+      try {
+        response = await fetch(`${inst.llmEngine.baseUrl}/chat/completions`, {
+          method:  'POST',
+          signal:  abortCtrl.signal,
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${inst.llmEngine.apiKey}`,
+            ...(inst.llmEngine.extraHeaders || {}),
+          },
+          body: JSON.stringify({ model: inst.llmEngine.model, messages, stream: true }),
+        });
+      } catch (err) {
+        if (err?.name === 'AbortError') { _sendComplete(); return; }
+        throw err;
+      }
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => response.statusText);
-      throw new Error(`LLM API error ${response.status}: ${errText}`);
-    }
+      if (!response.ok) {
+        const errText = await response.text().catch(() => response.statusText);
+        throw new Error(`LLM API error ${response.status}: ${errText}`);
+      }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (abortCtrl.signal.aborted) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === '[DONE]') { buffer = ''; break; }
-          try {
-            const parsed = JSON.parse(payload);
-            const token = parsed.choices?.[0]?.delta?.content;
-            if (token) _sendToken(token);
-          } catch (_) {}
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (abortCtrl.signal.aborted) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') { buffer = ''; break; }
+            try {
+              const parsed = JSON.parse(payload);
+              const token = parsed.choices?.[0]?.delta?.content;
+              if (token) _sendToken(token);
+            } catch (_) {}
+          }
         }
+      } catch (err) {
+        if (err?.name !== 'AbortError') throw err;
+      } finally {
+        try { reader.cancel(); } catch (_) {}
+        streamCtx.abortCtrl = null;
+        if (inst._activeAbortCtrl === abortCtrl) inst._activeAbortCtrl = null;
       }
-    } catch (err) {
-      if (err?.name !== 'AbortError') throw err;
-    } finally {
-      try { reader.cancel(); } catch (_) {}
-      inst._activeAbortCtrl = null;
-    }
 
-    _sendComplete();
+      _sendComplete();
 
-  } else {
-    // WebLLM
-    inst._activeWebLlmEngine = inst.llmEngine;
-    try {
-      const stream = await inst.llmEngine.chat.completions.create({ messages, stream: true });
-      for await (const chunk of stream) {
-        const token = chunk.choices?.[0]?.delta?.content;
-        if (token) _sendToken(token);
+    } else {
+      // WebLLM
+      streamCtx.webLlmEngine = inst.llmEngine;
+      inst._activeWebLlmEngine = inst.llmEngine;
+      try {
+        const stream = await inst.llmEngine.chat.completions.create({ messages, stream: true });
+        for await (const chunk of stream) {
+          const token = chunk.choices?.[0]?.delta?.content;
+          if (token) _sendToken(token);
+        }
+      } catch (err) {
+        const msg = String(err?.message || '');
+        if (!msg.includes('interrupt') && !msg.includes('cancel') && err?.name !== 'AbortError') throw err;
+      } finally {
+        streamCtx.webLlmEngine = null;
+        if (inst._activeWebLlmEngine === inst.llmEngine) inst._activeWebLlmEngine = null;
       }
-    } catch (err) {
-      const msg = String(err?.message || '');
-      if (!msg.includes('interrupt') && !msg.includes('cancel') && err?.name !== 'AbortError') throw err;
-    } finally {
-      inst._activeWebLlmEngine = null;
-    }
 
-    _sendComplete();
+      _sendComplete();
+    }
+  } finally {
+    inst._activeStreams.delete(streamId);
+    if (inst._activeStreamId === streamId) inst._activeStreamId = null;
   }
 }
 
