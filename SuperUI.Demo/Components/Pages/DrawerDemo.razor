@@ -1,102 +1,558 @@
 ﻿@page "/drawer-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Боковая панель - SUI</PageTitle>
+<PageTitle>SgDrawer — Drawer Panel — SuperUI</PageTitle>
 
-<SgCard Title="SgDrawer - Боковая панель"
-        Subtitle="Компонент для отображения боковой панели. Поддерживает различные позиции, размеры и анимации.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>Примеры использования</h2>
-        <p>Интерактивные боковые панели с различными конфигурациями.</p>
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 1. Placement Examples                                              -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    SgDrawer — Placement Examples
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    A slide-in panel with focus trap, backdrop, and configurable placement.
+                    Click a button to open a drawer from that side.
+                </SgTypography>
+            </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Примеры использования">
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <SgButton Text="Открыть справа"   Variant="SgButtonVariant.Primary"   OnClick="@(() => Open(SgPlacement.Right))" />
-                    <SgButton Text="Открыть слева"                         OnClick="@(() => Open(SgPlacement.Left))" />
-                    <SgButton Text="Открыть сверху"                        OnClick="@(() => Open(SgPlacement.Top))" />
-                    <SgButton Text="Открыть снизу"                         OnClick="@(() => Open(SgPlacement.Bottom))" />
-                    <SgButton Text="Широкая панель"   Variant="SgButtonVariant.Outlined"   OnClick="OpenWide" />
-                </div>
-            </SgCard>
+            <div class="demo-two-col">
+                <SgCard Title="Placements" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgButton Text="Open Right (default)" Variant="SgButtonVariant.Primary"
+                                  PrefixIcon="@SgHeroicons.Outline.ArrowLeftOnRectangle"
+                                  OnClick="@(() => OpenDrawer(SgPlacement.Right))" Block="true" />
+                        <SgButton Text="Open Left" Variant="SgButtonVariant.Default"
+                                  PrefixIcon="@SgHeroicons.Outline.ArrowRightOnRectangle"
+                                  OnClick="@(() => OpenDrawer(SgPlacement.Left))" Block="true" />
+                        <SgButton Text="Open Top" Variant="SgButtonVariant.Outlined"
+                                  PrefixIcon="@SgHeroicons.Outline.ArrowUpOnSquare"
+                                  OnClick="@(() => OpenDrawer(SgPlacement.Top))" Block="true" />
+                        <SgButton Text="Open Bottom" Variant="SgButtonVariant.Outlined"
+                                  PrefixIcon="@SgHeroicons.Outline.ArrowDownOnSquare"
+                                  OnClick="@(() => OpenDrawer(SgPlacement.Bottom))" Block="true" />
+                        <SgButton Text="Wide (600px)" Variant="SgButtonVariant.Ghost"
+                                  PrefixIcon="@SgHeroicons.Outline.ArrowsPointingOut"
+                                  OnClick="OpenWide" Block="true" />
+                        <SgButton Text="Resizable" Variant="SgButtonVariant.Ghost"
+                                  PrefixIcon="@SgHeroicons.Outline.ArrowsRightLeft"
+                                  OnClick="OpenResizable" Block="true" />
+                    </SgStack>
+                </SgCard>
 
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_drawerProperties" />
+                <SgCard Title="SgDrawer Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_drawerProperties" />
+                </SgCard>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 2. Event Log                                                       -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Event Log
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Events fired by drawers. Open any drawer above to see events appear.
+                </SgTypography>
+            </div>
+            <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Sm">
+                    <div class="demo-event-log" id="demo-event-log">
+                        @if (_events.Count == 0)
+                        {
+                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Align="SgTypographyAlign.Center" Style="padding:12px 0;">
+                                No events yet. Open a drawer to see events.
+                            </SgTypography>
+                        }
+                        @foreach (var evt in _events)
+                        {
+                            <div class="demo-event-item">
+                                <SgBadge Text="@evt.Label" Variant="@evt.Variant" Size="SgSize.Sm" Standalone="true" />
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">@evt.Message</SgTypography>
+                            </div>
+                        }
+                    </div>
+                    @if (_events.Count > 0)
+                    {
+                        <SgButton Text="Clear Events" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="ClearEvents" />
+                    }
+                </SgStack>
             </SgCard>
         </div>
-    </div>
-    <div style="margin-top: 32px;">
-        <h2>Позиция и перечисление SgPlacement</h2>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="SgPlacement (для Drawer)">
-                <PropertyTable Items="_placementEnum" />
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 3. Live Constructor                                                -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Live SgDrawer Constructor
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Configure parameters and see the result in real time. Click <strong>Open Drawer</strong> to preview.
+                </SgTypography>
+            </div>
+
+            <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+                <SgRow Space="SgSize.Md">
+
+                    <!-- ── Control Panel ── -->
+                    <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                        <SgStack Vertical Space="SgSize.Lg">
+
+                            <!-- Placement -->
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Placement</SgTypography>
+                                <SgSegmented TValue="SgPlacement"
+                                             Value="@_cPlacement"
+                                             ValueChanged="v => { _cPlacement = v; UpdateConstructorCode(); }"
+                                             Block="true" Size="sm"
+                                             Options="_placementSegOptions" />
+                            </SgStack>
+
+                            <!-- Size -->
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                                <SgSegmented TValue="string"
+                                             Value="@_cSize"
+                                             ValueChanged="v => { _cSize = v; UpdateConstructorCode(); }"
+                                             Block="true" Size="sm"
+                                             Options="_sizeSegOptions" />
+                            </SgStack>
+
+                            <!-- Toggles -->
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">ShowClose</SgTypography>
+                                        <SgSegmented TValue="bool"
+                                                     Value="_cShowClose"
+                                                     ValueChanged="v => { _cShowClose = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_boolSegOpts" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">ShowHeader</SgTypography>
+                                        <SgSegmented TValue="bool"
+                                                     Value="_cShowHeader"
+                                                     ValueChanged="v => { _cShowHeader = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_boolSegOpts" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Resizable</SgTypography>
+                                        <SgSegmented TValue="bool"
+                                                     Value="_cResizable"
+                                                     ValueChanged="v => { _cResizable = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_boolSegOpts" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">NoPadding</SgTypography>
+                                        <SgSegmented TValue="bool"
+                                                     Value="_cNoPadding"
+                                                     ValueChanged="v => { _cNoPadding = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_boolSegOpts" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+
+                            <!-- Close behavior -->
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">CloseOnBackdrop</SgTypography>
+                                        <SgSegmented TValue="bool"
+                                                     Value="_cBackdropClose"
+                                                     ValueChanged="v => { _cBackdropClose = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_boolSegOpts" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">CloseOnEscape</SgTypography>
+                                        <SgSegmented TValue="bool"
+                                                     Value="_cEscClose"
+                                                     ValueChanged="v => { _cEscClose = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_boolSegOpts" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+
+                            <!-- Summary -->
+                            <div class="ctrl-summary">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Placement</SgTypography>
+                                        <SgBadge Variant="SgBadgeVariant.Info" Text="@_cPlacement.ToString()" Standalone="true" />
+                                    </SgStack>
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                        <SgBadge Variant="SgBadgeVariant.Success" Text="@_cSize" Standalone="true" />
+                                    </SgStack>
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Resizable</SgTypography>
+                                        <SgBadge Variant="@(_cResizable ? SgBadgeVariant.Warn : SgBadgeVariant.Default)" Text="@(_cResizable ? "Yes" : "No")" Standalone="true" />
+                                    </SgStack>
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">NoPadding</SgTypography>
+                                        <SgBadge Variant="@(_cNoPadding ? SgBadgeVariant.Warn : SgBadgeVariant.Default)" Text="@(_cNoPadding ? "Yes" : "No")" Standalone="true" />
+                                    </SgStack>
+                                </SgStack>
+                            </div>
+
+                            <!-- Open Button -->
+                            <SgButton Text="Open Drawer" Variant="SgButtonVariant.Primary"
+                                      OnClick="OpenConstructorDrawer"
+                                      PrefixIcon="@SgHeroicons.Outline.ArrowLeftOnRectangle"
+                                      Block="true" Size="SgSize.Lg" />
+
+                        </SgStack>
+                    </SgCol>
+
+                    <!-- ── Preview + Code ── -->
+                    <SgCol Xs="12" Md="7" Style="padding:24px;">
+                        <SgStack Vertical Space="SgSize.Lg">
+
+                            <!-- Preview -->
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <div style="display:flex;align-items:center;justify-content:space-between;">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                                </div>
+                                <div class="constructor-preview" id="constructor-preview">
+                                    <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center" Justify="SgJustifyContent.Center" Style="min-height:120px;">
+                                        <SgIcon Icon="@SgHeroicons.Outline.Squares2x2" Size="32px" Color="var(--sg-text-muted)" />
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Align="SgTypographyAlign.Center">
+                                            Configure the drawer above and click <strong>Open Drawer</strong> to preview.
+                                        </SgTypography>
+                                    </SgStack>
+                                </div>
+                            </SgStack>
+
+                            <!-- Code with Copy -->
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <div style="display:flex;align-items:center;justify-content:space-between;">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                    <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                        <span id="copy-icon">@_copyIcon</span>
+                                        <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                    </button>
+                                </div>
+                                <div class="code-block" id="code-block">
+                                    @foreach (var line in _generatedCodeLines)
+                                    {
+                                        <code>@line</code>
+                                    }
+                                </div>
+                            </SgStack>
+
+                        </SgStack>
+                    </SgCol>
+
+                </SgRow>
             </SgCard>
         </div>
-    </div>
 
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 4. SgPlacement Enum                                               -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    SgPlacement — Position Options
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    The <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Placement</SgTypography> parameter determines which side the drawer slides in from.
+                </SgTypography>
+            </div>
+
+            <SgRow Space="SgSize.Lg">
+                <SgCol Md="6">
+                    <SgCard Title="SgPlacement (for Drawer)" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                        <PropertyTable Items="_placementEnum" />
+                    </SgCard>
+                </SgCol>
+                <SgCol Md="6">
+                    <SgCard Title="Tips" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Right</SgTypography> is the default placement. Use <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Size</SgTypography> to control width (left/right) or height (top/bottom).
+                            </SgTypography>
+                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                Enable <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Resizable</SgTypography> to let users drag the edge to resize.
+                            </SgTypography>
+                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                Use <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">HeaderContent</SgTypography> for a custom header or <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ShowHeader=false</SgTypography> to hide it entirely.
+                            </SgTypography>
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+    </ChildContent>
 </SgCard>
 
-<!-- Боковая панель справа -->
-<SgDrawer @bind-Visible="@_showRight" Title="Панель справа" Placement="SgPlacement.Right" Size="360px">
+<!-- ── Drawers ────────────────────────────────────────────────────────────── -->
+
+<!-- Right -->
+<SgDrawer @bind-Visible="@_showRight" Title="Right Panel" Placement="SgPlacement.Right" Size="360px"
+           OnClose="@(() => AddEvent("closed", "Right drawer closed"))"
+           OnOpened="@(() => AddEvent("opened", "Right drawer opened"))">
     <ChildContent>
-        <p>Содержимое боковой панели справа.</p>
-        <div style="margin-top: 16px;">
-            <SgButton Text="Закрыть" OnClick="@(() => _showRight = false)" Block="true" />
-        </div>
+        <SgStack Vertical Space="SgSize.Md">
+            <SgTypography>This is the right drawer panel.</SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Content goes in the <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ChildContent</SgTypography>.
+            </SgTypography>
+            <SgAlert Text="You can put any content here." Variant="SgAlertVariant.Info" />
+            <SgButton Text="Close" OnClick="@(() => _showRight = false)" Block="true" />
+        </SgStack>
     </ChildContent>
 </SgDrawer>
 
-<!-- Боковая панель слева -->
-<SgDrawer @bind-Visible="@_showLeft" Title="Панель слева" Placement="SgPlacement.Left" Size="300px">
+<!-- Left -->
+<SgDrawer @bind-Visible="@_showLeft" Title="Left Panel" Placement="SgPlacement.Left" Size="320px"
+           OnClose="@(() => AddEvent("closed", "Left drawer closed"))"
+           OnOpened="@(() => AddEvent("opened", "Left drawer opened"))">
     <ChildContent>
-        <p>Содержимое боковой панели слева.</p>
-        <div style="margin-top: 16px;">
-            <SgButton Text="Закрыть" OnClick="@(() => _showLeft = false)" Block="true" />
-        </div>
+        <SgStack Vertical Space="SgSize.Md">
+            <SgTypography>This is the left drawer panel.</SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Slides in from the left side.
+            </SgTypography>
+            <SgButton Text="Close" OnClick="@(() => _showLeft = false)" Block="true" />
+        </SgStack>
     </ChildContent>
 </SgDrawer>
 
-<!-- Боковая панель сверху -->
-<SgDrawer @bind-Visible="@_showTop" Title="Панель сверху" Placement="SgPlacement.Top" Size="200px">
+<!-- Top -->
+<SgDrawer @bind-Visible="@_showTop" Title="Top Panel" Placement="SgPlacement.Top" Size="200px"
+           OnClose="@(() => AddEvent("closed", "Top drawer closed"))"
+           OnOpened="@(() => AddEvent("opened", "Top drawer opened"))">
     <ChildContent>
-        <p>Содержимое боковой панели сверху.</p>
-        <div style="margin-top: 16px;">
-            <SgButton Text="Закрыть" OnClick="@(() => _showTop = false)" />
-        </div>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgTypography>Top drawer — slides down from the top.</SgTypography>
+            <SgButton Text="Close" OnClick="@(() => _showTop = false)" />
+        </SgStack>
     </ChildContent>
 </SgDrawer>
 
-<!-- Боковая панель снизу -->
-<SgDrawer @bind-Visible="@_showBottom" Title="Панель снизу" Placement="SgPlacement.Bottom" Size="200px">
+<!-- Bottom -->
+<SgDrawer @bind-Visible="@_showBottom" Title="Bottom Panel" Placement="SgPlacement.Bottom" Size="200px"
+           OnClose="@(() => AddEvent("closed", "Bottom drawer closed"))"
+           OnOpened="@(() => AddEvent("opened", "Bottom drawer opened"))">
     <ChildContent>
-        <p>Содержимое боковой панели снизу.</p>
-        <div style="margin-top: 16px;">
-            <SgButton Text="Закрыть" OnClick="@(() => _showBottom = false)" />
-        </div>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+            <SgTypography>Bottom drawer — slides up from the bottom.</SgTypography>
+            <SgButton Text="Close" OnClick="@(() => _showBottom = false)" />
+        </SgStack>
     </ChildContent>
 </SgDrawer>
 
-<!-- Широкая панель -->
-<SgDrawer @bind-Visible="@_showWide" Title="Широкая панель" Placement="SgPlacement.Right" Size="600px">
+<!-- Wide -->
+<SgDrawer @bind-Visible="@_showWide" Title="Wide Panel (600px)" Placement="SgPlacement.Right" Size="600px"
+           OnClose="@(() => AddEvent("closed", "Wide drawer closed"))"
+           OnOpened="@(() => AddEvent("opened", "Wide drawer opened"))">
     <ChildContent>
-        <p>Широкая боковая панель для отображения большого объёма информации.</p>
-        <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 12px;">
-            <SgAlert Variant="SgAlertVariant.Info" Text="Это пример содержимого широкой панели." />
-            <SgButton Text="Закрыть" OnClick="@(() => _showWide = false)" Block="true" />
-        </div>
+        <SgStack Vertical Space="SgSize.Lg">
+            <SgAlert Text="This wide drawer can hold more content." Variant="SgAlertVariant.Info" />
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Use <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Size="600px"</SgTypography> for wider panels.
+            </SgTypography>
+            <SgStack Horizontal Space="SgSize.Sm">
+                <SgButton Text="Close" OnClick="@(() => _showWide = false)" Variant="SgButtonVariant.Primary" />
+                <SgButton Text="Action" Variant="SgButtonVariant.Outlined" />
+            </SgStack>
+        </SgStack>
     </ChildContent>
 </SgDrawer>
+
+<!-- Resizable -->
+<SgDrawer @bind-Visible="@_showResizable" Title="Resizable Drawer" Placement="SgPlacement.Right" Size="360px"
+           Resizable="true"
+           OnClose="@(() => AddEvent("closed", "Resizable drawer closed"))"
+           OnOpened="@(() => AddEvent("opened", "Resizable drawer opened"))">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md">
+            <SgTypography>Resizable drawer — drag the left edge to resize.</SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Align="SgTypographyAlign.Center">
+                Min: 200px · Default: 360px
+            </SgTypography>
+            <SgButton Text="Close" OnClick="@(() => _showResizable = false)" Block="true" />
+        </SgStack>
+    </ChildContent>
+</SgDrawer>
+
+<!-- Constructor Drawer -->
+<SgDrawer @bind-Visible="@_showConstructor" Title="@_cTitle" Placement="@_cPlacement"
+           Size="@_cSize" ShowClose="@_cShowClose" ShowHeader="@_cShowHeader"
+           Resizable="@_cResizable" NoPadding="@_cNoPadding"
+           CloseOnBackdrop="@_cBackdropClose" CloseOnEscape="@_cEscClose"
+           OnClose="@(() => AddEvent("closed", "Constructor drawer closed"))"
+           OnOpened="@(() => AddEvent("opened", "Constructor drawer opened"))">
+    <ChildContent>
+        <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center" Justify="SgJustifyContent.Center" Style="min-height:200px;">
+            <SgIcon Icon="@SgHeroicons.Outline.Beaker" Size="48px" Color="var(--sg-primary)" />
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold" Align="SgTypographyAlign.Center">
+                Constructor Drawer
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Align="SgTypographyAlign.Center">
+                This drawer was generated from the constructor settings.
+            </SgTypography>
+            <SgButton Text="Close" OnClick="@(() => _showConstructor = false)" Variant="SgButtonVariant.Primary" />
+        </SgStack>
+    </ChildContent>
+</SgDrawer>
+
+<style>
+    /* ── Section layout ─────────────────────────────────────────────────────── */
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
+
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 120px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+
+    /* ── Event Log ──────────────────────────────────────────────────────────── */
+    .demo-event-log {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        min-height: 48px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .demo-event-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--sg-border);
+    }
+    .demo-event-item:last-child {
+        border-bottom: none;
+    }
+</style>
 
 @code {
-    private bool _showRight;
-    private bool _showLeft;
-    private bool _showTop;
-    private bool _showBottom;
-    private bool _showWide;
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgDrawer</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Slide-in panel with focus trap, backdrop, resize, and full event lifecycle. 4 placements, resizable, configurable header/footer.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
 
-    private void Open(SgPlacement placement)
+    // ── Drawer visibility ────────────────────────────────────────────────
+    private bool _showRight, _showLeft, _showTop, _showBottom, _showWide, _showResizable, _showConstructor;
+
+    private void OpenDrawer(SgPlacement placement)
     {
         switch (placement)
         {
@@ -108,26 +564,154 @@
     }
 
     private void OpenWide() => _showWide = true;
+    private void OpenResizable() => _showResizable = true;
+    private void OpenConstructorDrawer() => _showConstructor = true;
 
-    private List<PropertyPanelItem> _drawerProperties = new()
+    // ── Events ───────────────────────────────────────────────────────────
+    private List<(string Label, string Message, SgBadgeVariant Variant)> _events = new();
+
+    private void AddEvent(string label, string message)
     {
-        new() { Label = "Visible",         Value = "bool",                    BadgeText = "Видимо",                BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Title",           Value = "string",                  BadgeText = "Заголовок",              BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Placement",       Value = "right|left|top|bottom",   BadgeText = "Позиция (SgPlacement)", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Size",            Value = "string",                  BadgeText = "Размер (ширина/высота)", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ShowClose",       Value = "bool",                    BadgeText = "Кнопка закрытия",       BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "CloseOnBackdrop", Value = "bool",                    BadgeText = "Закрыть по фону",       BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Resizable",       Value = "bool",                    BadgeText = "Изменяемый размер",     BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "VisibleChanged",  Value = "EventCallback<bool>",     BadgeText = "Событие",               BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnClose",         Value = "EventCallback",           BadgeText = "Закрытие",               BadgeVariant = SgBadgeVariant.Success }
+        var variant = label switch
+        {
+            "opened" => SgBadgeVariant.Success,
+            "closed" => SgBadgeVariant.Default,
+            _ => SgBadgeVariant.Info
+        };
+        _events.Add((label, message, variant));
+        StateHasChanged();
+    }
+
+    private void ClearEvents() { _events.Clear(); StateHasChanged(); }
+
+    // ── Constructor state ─────────────────────────────────────────────────
+    private SgPlacement _cPlacement = SgPlacement.Right;
+    private string _cSize = "360px";
+    private bool _cShowClose = true;
+    private bool _cShowHeader = true;
+    private bool _cResizable;
+    private bool _cNoPadding;
+    private bool _cBackdropClose = true;
+    private bool _cEscClose = true;
+    private string _cTitle => $"Constructor Drawer ({_cPlacement})";
+
+    // ── Code generation ───────────────────────────────────────────────────
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    private readonly List<SgSegmentedOption<SgPlacement>> _placementSegOptions = new()
+    {
+        new() { Value = SgPlacement.Right,  Label = "Right" },
+        new() { Value = SgPlacement.Left,   Label = "Left" },
+        new() { Value = SgPlacement.Top,    Label = "Top" },
+        new() { Value = SgPlacement.Bottom, Label = "Bottom" },
     };
 
-    // ── Enum tables ──────────────────────────────────────────────────────────
+    private readonly List<SgSegmentedOption<string>> _sizeSegOptions = new()
+    {
+        new() { Value = "300px", Label = "300" },
+        new() { Value = "360px", Label = "360" },
+        new() { Value = "480px", Label = "480" },
+        new() { Value = "600px", Label = "600" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegOpts = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true,  Label = "On" },
+    };
+
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add($"<SgDrawer @bind-Visible=\"_visible\"");
+        if (_cPlacement != SgPlacement.Right)
+            lines.Add($"         Placement=\"SgPlacement.{_cPlacement}\"");
+        if (_cSize != "360px")
+            lines.Add($"         Size=\"{_cSize}\"");
+        if (!_cShowClose)
+            lines.Add($"         ShowClose=\"false\"");
+        if (!_cShowHeader)
+            lines.Add($"         ShowHeader=\"false\"");
+        if (_cResizable)
+            lines.Add($"         Resizable=\"true\"");
+        if (_cNoPadding)
+            lines.Add($"         NoPadding=\"true\"");
+        if (!_cBackdropClose)
+            lines.Add($"         CloseOnBackdrop=\"false\"");
+        if (!_cEscClose)
+            lines.Add($"         CloseOnEscape=\"false\"");
+        lines.Add($"         Title=\"{_cTitle}\">");
+        lines.Add($"    <ChildContent>");
+        lines.Add($"        <p>Drawer content here</p>");
+        lines.Add($"    </ChildContent>");
+        lines.Add("</SgDrawer>");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property tables ───────────────────────────────────────────────────
+    private List<PropertyPanelItem> _drawerProperties = new()
+    {
+        new() { Label = "Visible",         Value = "bool",                    BadgeText = "Visibility",          BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Title",           Value = "string?",                 BadgeText = "Header title",        BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ChildContent",    Value = "RenderFragment?",         BadgeText = "Body content",        BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "FooterContent",   Value = "RenderFragment?",         BadgeText = "Footer",              BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "HeaderContent",   Value = "RenderFragment?",         BadgeText = "Custom header",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "TitleTemplate",   Value = "RenderFragment?",         BadgeText = "Custom title",        BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Placement",       Value = "SgPlacement",             BadgeText = "Right/Left/Top/Bottom",BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Size",            Value = "string",                  BadgeText = "Width or height",     BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowClose",       Value = "bool",                    BadgeText = "Close button",        BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowHeader",      Value = "bool",                    BadgeText = "Show header",         BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "NoPadding",       Value = "bool",                    BadgeText = "Edge-to-edge",        BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Resizable",       Value = "bool",                    BadgeText = "Drag to resize",      BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "CloseOnBackdrop", Value = "bool",                    BadgeText = "Backdrop click",      BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "CloseOnEscape",   Value = "bool",                    BadgeText = "ESC key",             BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "MinSize",         Value = "string?",                 BadgeText = "Min resize (px)",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MaxSize",         Value = "string?",                 BadgeText = "Max resize (px)",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CloseIcon",       Value = "string?",                 BadgeText = "Custom close SVG",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnClose",         Value = "EventCallback",           BadgeText = "After close",         BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnOpened",        Value = "EventCallback",           BadgeText = "After open",          BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnClosed",        Value = "EventCallback",           BadgeText = "Close anim done",     BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "SizeChanged",     Value = "EventCallback<string>",   BadgeText = "Resize event",        BadgeVariant = SgBadgeVariant.Success },
+    };
+
     private List<PropertyPanelItem> _placementEnum = new()
     {
-        new() { Label = "SgPlacement.Right",  Value = "\"right\"",  BadgeText = "Справа (по умолч.)", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SgPlacement.Left",   Value = "\"left\"",   BadgeText = "Слева",               BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgPlacement.Top",    Value = "\"top\"",    BadgeText = "Сверху",              BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgPlacement.Bottom", Value = "\"bottom\"", BadgeText = "Снизу",               BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgPlacement.Right",  Value = "right",  BadgeText = "Slides from right (default)", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgPlacement.Left",   Value = "left",   BadgeText = "Slides from left",            BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgPlacement.Top",    Value = "top",    BadgeText = "Slides from top",             BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgPlacement.Bottom", Value = "bottom", BadgeText = "Slides from bottom",          BadgeVariant = SgBadgeVariant.Info },
     };
 }
