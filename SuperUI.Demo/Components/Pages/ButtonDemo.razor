@@ -580,7 +580,70 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 7. Live Constructor                                                -->
+    <!-- 7. Button with Loading Progress                                     -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Button with Loading Progress
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Interactive demo showing <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Loading</SgTypography> state with simulated progress.
+            </SgTypography>
+        </div>
+        <div class="demo-two-col">
+            <SgCard Title="Progress Inside Button" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:center;">
+                        <SgButton Text="Start Download"
+                                  OnClick="RunLoadingDemo"
+                                  Loading="@_loadingDemoRunning"
+                                  Progress="@_loadingDemoProgress"
+                                  ProgressType="@_progressType"
+                                  ProgressSpinnerType="@_progressSpinnerType"
+                                  Variant="SgButtonVariant.Primary" Size="SgSize.Md" />
+                        <SgButton Text="Reset" OnClick="ResetLoadingDemo"
+                                  Disabled="@(_loadingDemoProgress < 0)"
+                                  Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                    </div>
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                        Status: @_loadingDemoStatus
+                    </SgTypography>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding-top:8px;border-top:1px solid var(--sg-border);">
+                        <SgStack Vertical Space="SgSize.Sm" Style="min-width:140px;">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Progress Type</SgTypography>
+                            <SgSegmented TValue="SgButtonProgressType"
+                                         Value="@_progressType"
+                                         ValueChanged="v => { _progressType = v; StateHasChanged(); }"
+                                         Block="true" Size="sm"
+                                         Options="@_progressTypeSegOptions" />
+                        </SgStack>
+                        <SgStack Vertical Space="SgSize.Sm" Style="min-width:140px;">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Spinner Type</SgTypography>
+                            <SgSegmented TValue="SgSpinnerType"
+                                         Value="@_progressSpinnerType"
+                                         ValueChanged="v => { _progressSpinnerType = v; StateHasChanged(); }"
+                                         Block="true" Size="sm"
+                                         Options="@_spinnerTypeSegOptions" />
+                        </SgStack>
+                    </div>
+                </SgStack>
+            </SgCard>
+            <SgCard Title="Code" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <div class="code-block">
+                    <code>&lt;SgButton Text="Start Download"</code><br />
+                    <code>          OnClick="@@RunLoadingDemo"</code><br />
+                    <code>          Loading="@@_loadingDemoRunning"</code><br />
+                    <code>          Progress="@@_loadingDemoProgress"</code><br />
+                    <code>          ProgressType="@_progressType"</code><br />
+                    <code>          ProgressSpinnerType="@_progressSpinnerType" /&gt;</code>
+                </div>
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 8. Live Constructor                                                -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <div class="demo-section">
         <div class="demo-section-header">
@@ -923,6 +986,46 @@
     private bool _ctorBlock;
     private bool _ctorActive;
 
+    // ── Loading Progress Demo ────────────────────────────────────────────
+    private bool _loadingDemoRunning;
+    private int _loadingDemoProgress = -1;
+    private string _loadingDemoStatus = "Idle";
+    private SgButtonProgressType _progressType = SgButtonProgressType.Ring;
+    private SgSpinnerType _progressSpinnerType = SgSpinnerType.Border;
+
+    private async Task RunLoadingDemo()
+    {
+        _loadingDemoRunning = true;
+        _loadingDemoProgress = 0;
+        StateHasChanged();
+        await Task.Delay(100);
+        for (int i = 2; i <= 100; i += 2)
+        {
+            _loadingDemoProgress = i;
+            _loadingDemoStatus = i switch
+            {
+                < 20 => "Starting...",
+                < 40 => "Connecting...",
+                < 60 => "Downloading...",
+                < 80 => "Processing...",
+                < 100 => "Verifying...",
+                100 => "Complete!"
+            };
+            StateHasChanged();
+            await Task.Delay(50);
+        }
+        _loadingDemoRunning = false;
+        StateHasChanged();
+    }
+
+    private void ResetLoadingDemo()
+    {
+        _loadingDemoProgress = -1;
+        _loadingDemoStatus = "Idle";
+        _loadingDemoRunning = false;
+        StateHasChanged();
+    }
+
     // ── Code generation ───────────────────────────────────────────────────
     private string[] _generatedCodeLines = Array.Empty<string>();
     private string _copyIcon = "📋";
@@ -940,6 +1043,20 @@
     {
         new() { Value = false, Label = "Off" },
         new() { Value = true,  Label = "On" },
+    };
+
+    private readonly List<SgSegmentedOption<SgButtonProgressType>> _progressTypeSegOptions = new()
+    {
+        new() { Value = SgButtonProgressType.Bar,  Label = "Bar" },
+        new() { Value = SgButtonProgressType.Ring, Label = "Ring" },
+    };
+
+    private readonly List<SgSegmentedOption<SgSpinnerType>> _spinnerTypeSegOptions = new()
+    {
+        new() { Value = SgSpinnerType.Border, Label = "Border" },
+        new() { Value = SgSpinnerType.Pulse,  Label = "Pulse" },
+        new() { Value = SgSpinnerType.Dots,   Label = "Dots" },
+        new() { Value = SgSpinnerType.Bars,   Label = "Bars" },
     };
 
     private readonly List<SgButtonVariant> _variantItems = Enum.GetValues<SgButtonVariant>().ToList();

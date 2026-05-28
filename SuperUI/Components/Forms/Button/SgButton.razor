@@ -15,6 +15,7 @@
                   .AddClass("sgc-pulse", Pulse)
                   .AddClass("sgc-debouncing", _isDebouncing)
                   .AddClass("sgc-glass", Glass)
+                  .AddClass("sgc-has-progress", HasProgress)
                   .Build())"
        title="@Title"
        @onclick="OnClickAsync"
@@ -24,6 +25,7 @@
        aria-label="@(string.IsNullOrEmpty(Text) ? Title : Text)"
        @attributes="AttributesWithoutClassAndStyle">
         <span class="sgc-ripple"></span>
+        @if (HasProgress && ProgressType == SgButtonProgressType.Bar) { <span class="sgc-btn-progress-fill" style="width:@(Progress)%"></span> }
         @RenderContent
     </a>
 }
@@ -38,6 +40,7 @@ else
                        .AddClass("sgc-pulse", Pulse)
                        .AddClass("sgc-debouncing", _isDebouncing)
                        .AddClass("sgc-glass", Glass)
+                       .AddClass("sgc-has-progress", HasProgress)
                        .Build())"
             disabled="@(Disabled || Loading || _isDebouncing || _countdownActive || _dangerConfirmActive)"
             title="@(_dangerConfirmActive ? _confirmText : Title)"
@@ -48,6 +51,7 @@ else
             aria-label="@(string.IsNullOrEmpty(Text) ? Title : Text)"
             @attributes="AttributesWithoutClassAndStyle">
         <span class="sgc-ripple"></span>
+        @if (HasProgress && ProgressType == SgButtonProgressType.Bar) { <span class="sgc-btn-progress-fill" style="width:@(Progress)%"></span> }
         @RenderContent
     </button>
 }
@@ -197,6 +201,27 @@ else
     /// </summary>
     [Parameter] public int Countdown { get; set; }
 
+    /// <summary>
+    /// Gets or sets the progress value (0–100). Set to a value &gt;= 0 to show a progress fill inside the button.
+    /// When used with <see cref="Loading"/>, shows a spinner + percentage. Set to 100 to show completion state.
+    /// </summary>
+    [Parameter] public int Progress { get; set; } = -1;
+
+    /// <summary>
+    /// Gets or sets the progress visual type. <see cref="SgButtonProgressType.Bar"/> shows a horizontal fill bar;
+    /// <see cref="SgButtonProgressType.Ring"/> shows a small circular SVG ring. Default is <see cref="SgButtonProgressType.Bar"/>.
+    /// </summary>
+    [Parameter] public SgButtonProgressType ProgressType { get; set; } = SgButtonProgressType.Bar;
+
+    /// <summary>
+    /// Gets or sets the spinner animation type shown inside the button during loading progress.
+    /// Supported values: <see cref="SgSpinnerType.Border"/> (default), <see cref="SgSpinnerType.Pulse"/>.
+    /// When <c>null</c>, falls back to <see cref="SgSpinnerType.Border"/>.
+    /// </summary>
+    [Parameter] public SgSpinnerType? ProgressSpinnerType { get; set; }
+
+    private bool HasProgress => Progress >= 0;
+
     private SgButtonVariant ActualVariant => Variant ?? ButtonGroup?.Variant ?? SgButtonVariant.Default;
     private SgSize ActualSize => Size ?? ButtonGroup?.Size ?? SgSize.Md;
 
@@ -220,50 +245,6 @@ else
     private bool ShowSpinnerLeft => Loading && LoadingPosition == "left";
     private bool ShowSpinnerRight => Loading && LoadingPosition == "right";
     private bool ShowSpinnerCenter => Loading && LoadingPosition == "center";
-
-    private RenderFragment RenderContent => __builder =>
-    {
-        if (ShowSpinnerCenter)
-        {
-            <span class="sgc-spinner" style="width:12px;height:12px;border-width:2px;"></span>
-            return;
-        }
-
-        if (ShowSpinnerLeft)
-        {
-            <span class="sgc-spinner" style="width:12px;height:12px;border-width:2px;"></span>
-        }
-        else if (!ShowSpinnerRight && Icon is not null)
-        {
-            <span class="sgc-btn-icon">@Icon</span>
-        }
-
-        if (_dangerConfirmActive)
-        {
-            <span>@ConfirmText</span>
-        }
-        else if (_countdownActive)
-        {
-            <span>@_countdownValue</span>
-        }
-        else if (ChildContent is not null)
-        {
-            @ChildContent
-        }
-        else if (!string.IsNullOrEmpty(Text))
-        {
-            <span>@Text</span>
-        }
-
-        if (ShowSpinnerRight)
-        {
-            <span class="sgc-spinner" style="width:12px;height:12px;border-width:2px;"></span>
-        }
-        else if (IconRight is not null && !_dangerConfirmActive && !_countdownActive)
-        {
-            <span class="sgc-btn-icon-right">@IconRight</span>
-        }
-    };
 
     private async Task OnClickAsync(MouseEventArgs e)
     {
