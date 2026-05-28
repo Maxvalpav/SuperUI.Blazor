@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: "Тип версии"
+        description: "Bump type"
         required: true
         default: patch
         type: choice
@@ -13,11 +13,18 @@ on:
           - minor   # 1.0.0 -> 1.1.0
           - major   # 1.0.0 -> 2.0.0
 
+env:
+  DOTNET_VERSION: '10.0.x'
+  PROJECT_PATH: 'SuperUI/SuperUI.csproj'
+  CONFIGURATION: 'Release'
+
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    environment: nuget
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,7 +34,7 @@ jobs:
       - name: Get latest tag
         id: latest
         run: |
-          TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          TAG=$(git tag --list 'v*' --sort=-v:refname | sed -n '1p')
           if [ -z "$TAG" ]; then
             echo "version=1.0.0" >> $GITHUB_OUTPUT
           else
@@ -36,29 +43,56 @@ jobs:
 
       - name: Bump version
         id: bump
-        shell: pwsh
         run: |
-          $parts = "${{ steps.latest.outputs.version }}".Split('.')
-          $major = [int]$parts[0]
-          $minor = [int]$parts[1]
-          $patch = [int]$parts[2]
-          switch ("${{ inputs.bump }}") {
-            "major" { $major++; $minor=0; $patch=0 }
-            "minor" { $minor++; $patch=0 }
-            default { $patch++ }
-          }
-          $new = "v$major.$minor.$patch"
-          echo "tag=$new" >> $env:GITHUB_OUTPUT
+          IFS='.' read -ra PARTS <<< "${{ steps.latest.outputs.version }}"
+          MAJOR=${PARTS[0]}
+          MINOR=${PARTS[1]}
+          PATCH=${PARTS[2]}
+          case "${{ inputs.bump }}" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            *)     PATCH=$((PATCH+1)) ;;
+          esac
+          NEW="v$MAJOR.$MINOR.$PATCH"
+          echo "tag=$NEW" >> $GITHUB_OUTPUT
+          echo "version=$MAJOR.$MINOR.$PATCH" >> $GITHUB_OUTPUT
 
-      - name: Create and push tag
+      - name: Create tag
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git tag ${{ steps.bump.outputs.tag }}
-          git push origin ${{ steps.bump.outputs.tag }}
 
-      - name: Wait for publish workflow
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          dotnet-quality: 'preview'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore
+
+      - name: Pack
+        run: dotnet pack ${{ env.PROJECT_PATH }} --configuration ${{ env.CONFIGURATION }} --no-build --output ./artifacts
+
+      - name: Push tag
+        run: git push origin ${{ steps.bump.outputs.tag }}
+
+      - name: Push to NuGet.org
         run: |
-          echo "Тег ${{ steps.bump.outputs.tag }} создан и запушен."
-          echo "build-and-publish.yml запустится автоматически по триггеру push tags."
-          echo "Следить: https://github.com/${{ github.repository }}/actions/workflows/build-and-publish.yml"
+          dotnet nuget push "./artifacts/*.nupkg" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            ./artifacts/*.nupkg
+            ./artifacts/*.snupkg
