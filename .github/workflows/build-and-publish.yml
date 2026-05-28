@@ -38,6 +38,26 @@ jobs:
       # - name: Test
       #   run: dotnet test --configuration ${{ env.CONFIGURATION }} --no-build --verbosity normal
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Minify CSS and JS (excl. Blazor framework)
+        shell: bash
+        run: |
+          npm install -g csso-cli terser 2>/dev/null
+
+          while IFS= read -r file; do
+            echo "CSS  $file"
+            csso -i "$file" -o "$file" --comments none
+          done < <(find . -path '*/wwwroot/*.css' -not -path '*/_framework/*')
+
+          while IFS= read -r file; do
+            echo "JS   $file"
+            terser "$file" -o "$file" -c passes=2 -m toplevel
+          done < <(find . -path '*/wwwroot/*.js' -not -path '*/_framework/*')
+
       - name: Pack
         if: startsWith(github.ref, 'refs/tags/v')
         run: dotnet pack ${{ env.PROJECT_PATH }} --configuration ${{ env.CONFIGURATION }} --no-build --output ./artifacts
