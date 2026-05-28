@@ -102,6 +102,9 @@ public partial class SgModal : SgOverlayComponentBase
 
     // ── Advanced ────────────────────────────────────────────────────────
 
+    /// <summary>Whether to show the minimize button in the header.</summary>
+    [Parameter] public bool ShowMinimize { get; set; }
+
     /// <summary>Whether to show the maximize/restore button in the header.</summary>
     [Parameter] public bool ShowMaximize { get; set; }
 
@@ -154,6 +157,9 @@ public partial class SgModal : SgOverlayComponentBase
 
     /// <summary>Fired when the maximized state changes. Receives the new maximized value.</summary>
     [Parameter] public EventCallback<bool> OnMaximizedChanged { get; set; }
+
+    /// <summary>Fired when the minimize button is clicked.</summary>
+    [Parameter] public EventCallback OnMinimized { get; set; }
 
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
@@ -250,6 +256,14 @@ public partial class SgModal : SgOverlayComponentBase
             await OnMaximizedChanged.InvokeAsync(_isMaximized);
     }
 
+    /// <summary>Minimizes (closes) the modal. Fires <see cref="OnMinimized"/> first.</summary>
+    public async Task MinimizeAsync()
+    {
+        if (OnMinimized.HasDelegate)
+            await OnMinimized.InvokeAsync();
+        await CloseAsync();
+    }
+
     // ── CSS class builders ──────────────────────────────────────────────
 
     private string GetBackdropClasses()
@@ -291,7 +305,7 @@ public partial class SgModal : SgOverlayComponentBase
         var sb = new List<string> { "sgc-modal-header" };
         if (Draggable && !FullScreen && !_responsiveFull) sb.Add("sgc-modal-header-draggable");
         if (!string.IsNullOrEmpty(HeaderClass)) sb.Add(HeaderClass);
-        if (ShowMaximize) sb.Add("sgc-modal-header-has-maximize");
+        if (ShowMaximize || ShowMinimize) sb.Add("sgc-modal-header-has-maximize");
         return string.Join(" ", sb);
     }
 

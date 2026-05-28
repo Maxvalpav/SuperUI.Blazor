@@ -39,6 +39,7 @@ public partial class ModalDemo : ComponentBase
     private bool _showShortcut;
     private bool _showStacked1, _showStacked2;
     private bool _showResponsive;
+    private bool _showMinimizeDemo;
 
     private string _lastEvent = "";
 
@@ -68,7 +69,7 @@ public partial class ModalDemo : ComponentBase
     private SgModalSize _cSize = SgModalSize.Md;
     private SgModalAnimation _cAnim = SgModalAnimation.Scale;
     private SgModalPosition _cPos = SgModalPosition.Center;
-    private bool _cDrag, _cFull, _cShowClose = true, _cEsc = true;
+    private bool _cDrag, _cFull, _cShowClose = true, _cEsc = true, _cShowMinimize, _cShowMaximize;
     private string[] _generatedCode = Array.Empty<string>();
     private string _copyLabel = "Copy";
 
@@ -201,6 +202,8 @@ public partial class ModalDemo : ComponentBase
         };
         if (_cDrag) lines.Add("         Draggable=\"true\"");
         if (_cFull) lines.Add("         FullScreen=\"true\"");
+        if (_cShowMinimize) lines.Add("         ShowMinimize=\"true\"");
+        if (_cShowMaximize) lines.Add("         ShowMaximize=\"true\"");
         if (!_cShowClose) lines.Add("         ShowClose=\"false\"");
         if (!_cEsc) lines.Add("         CloseOnEscape=\"false\"");
         lines.Add("         Title=\"Modal Title\">");
@@ -247,6 +250,7 @@ public partial class ModalDemo : ComponentBase
         new() { Label = "Glass", Value = "bool", BadgeText = "Glassmorphism", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "NoPadding", Value = "bool", BadgeText = "Edge-to-edge", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "Resizable", Value = "bool", BadgeText = "Drag edges", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowMinimize", Value = "bool", BadgeText = "Minimize btn", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "Icon", Value = "string", BadgeText = "Heroicons SVG", BadgeVariant = SgBadgeVariant.Info },
     };
 
@@ -278,6 +282,7 @@ public partial class ModalDemo : ComponentBase
         new() { Label = "ResponsiveMode", Value = "bool", BadgeText = "Auto fullscreen", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "BackdropBlur", Value = "string?", BadgeText = "CSS blur", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "BackdropDismiss", Value = "bool", BadgeText = "Allow dismiss", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowMinimize", Value = "bool", BadgeText = "Minimize btn", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "ShowMaximize", Value = "bool", BadgeText = "Maximize btn", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "ShortcutSubmit", Value = "string?", BadgeText = "Hotkey", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "Body/Header/FooterClass", Value = "string?", BadgeText = "CSS class", BadgeVariant = SgBadgeVariant.Default },
@@ -287,6 +292,7 @@ public partial class ModalDemo : ComponentBase
         new() { Label = "OnOpened", Value = "EventCallback", BadgeText = "After open", BadgeVariant = SgBadgeVariant.Success },
         new() { Label = "OnSubmit", Value = "EventCallback", BadgeText = "Shortcut submit", BadgeVariant = SgBadgeVariant.Success },
         new() { Label = "OnMaximizedChanged", Value = "EventCallback<bool>", BadgeText = "Maximize toggle", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnMinimized", Value = "EventCallback", BadgeText = "Minimize click", BadgeVariant = SgBadgeVariant.Success },
     };
 
     private List<PropertyPanelItem> _animEnum = new()

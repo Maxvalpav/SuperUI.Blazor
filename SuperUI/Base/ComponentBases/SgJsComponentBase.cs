@@ -138,16 +138,15 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
     {
         if (_isDisposed) return;
 
-        await OnAfterRenderSafeAsync(firstRender);
-
-        // Инициализация JS только в интерактивном режиме.
-        // Если при первом рендере (SSR/Prerender) интерактивности не было, 
-        // инициализируем при первом же интерактивном рендере.
+        // Инициализация JS ДО OnAfterRenderSafeAsync, чтобы
+        // OnOpeningAsync (через SgOverlayComponentBase) заставал Module уже загруженным.
         if (IsInteractive && !_initialized)
         {
             _initialized = true;
             await InitializeJsAsync();
         }
+
+        await OnAfterRenderSafeAsync(firstRender);
     }
 
     // ── Safe invoke ───────────────────────────────────────────────────────────

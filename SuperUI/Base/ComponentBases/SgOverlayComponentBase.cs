@@ -170,6 +170,7 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
         {
             _previousVisible = true;
             _zIndexValue = ZIndex.Allocate(this, ZIndexBase);
+            StateHasChanged();
             await OnOpeningAsync();
             await OnOpenedAsync();
         }
