@@ -1,109 +1,430 @@
 ﻿@page "/notification-panel-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
 @implements IDisposable
+@inject IJSRuntime JS
 @inject SgToastService Toasts
 @inject SgNotificationService Notifications
 
-<PageTitle>Панель уведомлений - SUI</PageTitle>
+<PageTitle>SgNotificationPanel — Notifications — SuperUI</PageTitle>
 
-<SgCard Title="SgNotificationPanel - Панель уведомлений"
-        Subtitle="Список уведомлений с фильтром, отметкой прочитано/непрочитано, удалением и группировкой. Через SgNotificationService можно слать уведомления и в колокольчик в шапке.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 24px;">
-        <h2>Отправить уведомление</h2>
-        <p>Кнопки ниже добавляют запись в общий <code>SgNotificationService</code>. Запись появится здесь и в колокольчике в шапке.</p>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;">
-            <SgButton Text="Info" Variant="SgButtonVariant.Default" OnClick="@(() => Push(SgBadgeVariant.Default))" />
-            <SgButton Text="Success" Variant="SgButtonVariant.Success" OnClick="@(() => Push(SgBadgeVariant.Success))" />
-            <SgButton Text="Warning" Variant="SgButtonVariant.Default" OnClick="@(() => Push(SgBadgeVariant.Warn))" />
-            <SgButton Text="Danger" Variant="SgButtonVariant.Danger" OnClick="@(() => Push(SgBadgeVariant.Danger))" />
-            <SgButton Text="Очистить" Variant="SgButtonVariant.Default" OnClick="@(() => Notifications.Clear())" />
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Basic Notification Panel                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Basic Notification Panel
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Full-featured panel with filter tabs, bulk actions, and item-level read/dismiss controls. Uses the shared <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgNotificationService</SgTypography> so notifications also appear in the header bell icon.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Send & Manage Notifications" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                        Click a button below to push a notification. Items appear here and in the header bell at the top-right.
+                    </SgTypography>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        <SgButton Text="Info" Variant="SgButtonVariant.Default" OnClick="@(() => Push(SgBadgeVariant.Info))" />
+                        <SgButton Text="Success" Variant="SgButtonVariant.Success" OnClick="@(() => Push(SgBadgeVariant.Success))" />
+                        <SgButton Text="Warning" Variant="SgButtonVariant.Default" OnClick="@(() => Push(SgBadgeVariant.Warn))" />
+                        <SgButton Text="Danger" Variant="SgButtonVariant.Danger" OnClick="@(() => Push(SgBadgeVariant.Danger))" />
+                        <SgButton Text="Urgent" Variant="SgButtonVariant.Danger" OnClick="@(() => PushUrgent())" />
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        <SgButton Text="Send Pinned" Variant="SgButtonVariant.Outlined" OnClick="@(() => PushPinned())" />
+                        <SgButton Text="Send with Avatar" Variant="SgButtonVariant.Outlined" OnClick="@(() => PushWithAvatar())" />
+                        <SgButton Text="Clear All" Variant="SgButtonVariant.Ghost" OnClick="@(() => Notifications.Clear())" />
+                    </div>
+                    <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Total:</SgTypography>
+                        <SgBadge Text="@Notifications.Items.Count.ToString()" Variant="SgBadgeVariant.Default" />
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Unread:</SgTypography>
+                        <SgBadge Text="@Notifications.UnreadCount.ToString()" Variant="SgBadgeVariant.Danger" />
+                    </SgStack>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="SgNotificationPanel Parameters" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_panelProperties" />
+            </SgCard>
+        </div>
+
+        <div style="margin-top:16px;max-width:420px;">
+            <SgNotificationPanel Items="Notifications.Items"
+                                 OnItemClick="HandleItemClick"
+                                 OnReadToggle="HandleReadToggle"
+                                 OnDismiss="HandleDismiss"
+                                 OnMarkAllRead="HandleMarkAllRead"
+                                 OnClearAll="HandleClearAll"
+                                 ShowPinnedSeparately="true">
+                <FooterContent>
+                    <a href="#" @onclick:preventDefault="true" @onclick="HandleViewAll" style="color:var(--sg-color-primary);text-decoration:none;font-size:12px;font-weight:500;">
+                        View all notifications →
+                    </a>
+                </FooterContent>
+            </SgNotificationPanel>
         </div>
     </div>
 
-    <div style="margin-top: 24px; display: grid; grid-template-columns: minmax(360px, 420px) 1fr; gap: 24px; align-items: flex-start;">
-        <SgNotificationPanel Items="Notifications.Items"
-                             OnItemClick="HandleItemClick"
-                             OnReadToggle="HandleReadToggle"
-                             OnDismiss="HandleDismiss"
-                             OnMarkAllRead="HandleMarkAllRead"
-                             OnClearAll="HandleClearAll">
-            <FooterContent>
-                <a href="#" @onclick:preventDefault="true" @onclick="HandleViewAll">Все уведомления →</a>
-            </FooterContent>
-        </SgNotificationPanel>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Priority & Tags                                                  -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Priority Levels & Tags
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Items are automatically sorted by priority (Urgent → High → Normal → Low), then by timestamp. High and Urgent items show a pulsing indicator.
+            </SgTypography>
+        </div>
 
-        <SgCard Title="Свойства компонента">
-            <PropertyTable Items="_properties" />
+        <div class="demo-two-col">
+            <div style="max-width:420px;">
+                <SgNotificationPanel Items="_priorityItems"
+                                     ShowFilter="false"
+                                     ShowDefaultActions="false"
+                                     ShowHeader="true"
+                                     MaxHeight="340px"
+                                     AllowDismiss="false"
+                                     Title="Priority Inbox" />
+            </div>
+
+            <SgCard Title="SgNotificationPriority" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_priorityProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Avatars & Action Buttons                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Avatars, Tags & Action Buttons
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Items can display user avatars (image or initials), status tags, and inline action buttons.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <div style="max-width:420px;">
+                <SgNotificationPanel Items="_avatarItems"
+                                     ShowFilter="false"
+                                     ShowDefaultActions="false"
+                                     MaxHeight="340px"
+                                     Title="Activity Feed" />
+            </div>
+
+            <SgCard Title="NotificationItem Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_itemProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Grouped by Category                                              -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Grouped by Category
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Use the <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">GroupBy</SgTypography> parameter to organize items by category or any custom key.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <div style="max-width:420px;">
+                <SgNotificationPanel Items="_groupedItems"
+                                     GroupBy="@(n => n.Category ?? "Other")"
+                                     ShowFilter="false"
+                                     ShowDefaultActions="false"
+                                     Title="Categorized"
+                                     MaxHeight="320px" />
+            </div>
+
+            <SgCard Title="GroupBy Parameter" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Pass a <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Func&lt;NotificationItem, string&gt;</SgTypography> to the <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">GroupBy</SgTypography> parameter. Items sharing the same key are rendered under that group heading.
+                </SgTypography>
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Empty State                                                      -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Empty State
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                When no items exist and no filter matches, the panel shows an empty state with an icon and customizable text.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <div style="max-width:420px;">
+                <SgNotificationPanel Items="@_emptyItems"
+                                     EmptyText="You're all caught up!"
+                                     ShowDefaultActions="false"
+                                     Title="Inbox" />
+            </div>
+
+            <SgCard Title="Empty State Parameters" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_emptyProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Live Constructor                                                 -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Tweak parameters below and see the panel update in real time. The generated code can be copied to your own project.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgStack Vertical Space="SgSize.Lg">
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Show Header:</SgTypography>
+                    <SgSwitch @bind-Value="_showHeader" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Show Filter:</SgTypography>
+                    <SgSwitch @bind-Value="_showFilter" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Allow Dismiss:</SgTypography>
+                    <SgSwitch @bind-Value="_allowDismiss" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Show Default Actions:</SgTypography>
+                    <SgSwitch @bind-Value="_showDefaultActions" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Pinned Separately:</SgTypography>
+                    <SgSwitch @bind-Value="_showPinnedSeparately" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Style="margin-bottom:8px;display:block;">Preview</SgTypography>
+                        <SgNotificationPanel Items="_constructorItems"
+                                             ShowHeader="@_showHeader"
+                                             ShowFilter="@_showFilter"
+                                             AllowDismiss="@_allowDismiss"
+                                             ShowDefaultActions="@_showDefaultActions"
+                                             ShowPinnedSeparately="@_showPinnedSeparately"
+                                             MaxHeight="300px"
+                                             Title="Constructor Demo" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Style="margin-bottom:8px;display:block;">Generated Code</SgTypography>
+                        <div style="position:relative;background:var(--sg-bg-subtle, #f5f5f5);border:1px solid var(--sg-border, #d0d0d0);border-radius:8px;padding:12px;font-size:12px;font-family:var(--sg-font-mono, monospace);">
+                            <button type="button" @onclick="CopyCodeToClipboard" title="Copy code"
+                                    style="position:absolute;top:8px;right:8px;padding:4px 10px;font-size:11px;background:var(--sg-bg, #fff);border:1px solid var(--sg-border, #d0d0d0);border-radius:4px;cursor:pointer;color:var(--sg-fg, #333);">
+                                @_copyLabel
+                            </button>
+                            <pre style="margin:0;white-space:pre-wrap;word-break:break-word;"><code style="background:transparent;padding:0;font-size:12px;">@string.Join("\n", _generatedCodeLines)</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </SgStack>
         </SgCard>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>С группировкой по категории</h2>
-        <p>Используйте параметр <code>GroupBy</code>, чтобы сгруппировать уведомления.</p>
-
-        <div style="max-width: 420px;">
-            <SgNotificationPanel Items="_grouped"
-                                 GroupBy="@(n => n.Category ?? "Прочее")"
-                                 ShowFilter="false"
-                                 ShowDefaultActions="false" />
-        </div>
-    </div>
-
-    <div style="margin-top: 32px;">
-        <h2>Пустое состояние</h2>
-        <div style="max-width: 420px;">
-            <SgNotificationPanel Items="_empty" EmptyText="Пока нет уведомлений" />
-        </div>
-    </div>
-
-    <!-- Code example -->
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
-    </div>
-
+    </ChildContent>
 </SgCard>
 
 @code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                @((MarkupString)SgHeroicons.Outline.Bell)
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Notification Panel</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    SgNotificationPanel — Filterable notification list with unread tracking, grouping, priority levels, pinning, avatars, action buttons, and code constructor.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── Demo data: priority items ─────────────────────────────────────────
+    private List<NotificationItem> _priorityItems = new()
+    {
+        new() { Title = "Server down", Message = "Primary DB node is unreachable", Time = "2 min ago", Priority = SgNotificationPriority.Urgent, Variant = SgBadgeVariant.Danger },
+        new() { Title = "SSL certificate expiring", Message = "TLS cert expires in 3 days", Time = "1 hour ago", Priority = SgNotificationPriority.High, Variant = SgBadgeVariant.Warn },
+        new() { Title = "Deploy completed", Message = "v2.4.1 deployed to production", Time = "3 hours ago", Priority = SgNotificationPriority.Normal, Variant = SgBadgeVariant.Success },
+        new() { Title = "Weekly report ready", Message = "Q3 analytics report generated", Time = "Yesterday", Priority = SgNotificationPriority.Low, Variant = SgBadgeVariant.Info }
+    };
+
+    // ── Demo data: avatar & action items ──────────────────────────────────
+    private List<NotificationItem> _avatarItems = new();
+
+    // ── Demo data: grouped items ──────────────────────────────────────────
+    private List<NotificationItem> _groupedItems = new()
+    {
+        new() { Title = "Backup complete", Message = "DB backup finished", Time = "10:00", Variant = SgBadgeVariant.Success, Category = "System" },
+        new() { Title = "Certificate expiring", Message = "TLS cert expires in 7 days", Time = "Yesterday", Variant = SgBadgeVariant.Warn, Category = "System" },
+        new() { Title = "New client onboarded", Message = "LLC \"Example\" signed the contract", Time = "Today", Variant = SgBadgeVariant.Info, Category = "Sales" },
+        new() { Title = "Invoice paid", Message = "Invoice #INV-00481 paid", Time = "Today", Variant = SgBadgeVariant.Success, Category = "Billing" }
+    };
+
+    // ── Demo data: empty ─────────────────────────────────────────────────
+    private List<NotificationItem> _emptyItems = new();
+
+    // ── Constructor state ─────────────────────────────────────────────────
+    private bool _showHeader = true;
+    private bool _showFilter = true;
+    private bool _allowDismiss = true;
+    private bool _showDefaultActions = true;
+    private bool _showPinnedSeparately = true;
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyLabel = "📋 Copy";
+
+    // ── Constructor items ─────────────────────────────────────────────────
+    private List<NotificationItem> _constructorItems = new()
+    {
+        new() { Title = "Pinned urgent notice", Message = "This is a pinned high-priority notification.", Time = "Now", Variant = SgBadgeVariant.Danger, Priority = SgNotificationPriority.Urgent, IsPinned = true },
+        new() { Title = "System update available", Message = "Version 3.0 is ready to install.", Time = "5 min ago", Variant = SgBadgeVariant.Info },
+        new() { Title = "Deploy succeeded", Message = "Production build #421 deployed.", Time = "1 hour ago", Variant = SgBadgeVariant.Success }
+    };
+
+    // ── Property tables ───────────────────────────────────────────────────
+    private List<PropertyPanelItem> _panelProperties = new()
+    {
+        new() { Label = "Items", Value = "IEnumerable<NotificationItem>", BadgeText = "Source", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Title", Value = "string", BadgeText = "Header", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowFilter", Value = "bool", BadgeText = "Filters", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowHeader", Value = "bool", BadgeText = "Header", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowDefaultActions", Value = "bool", BadgeText = "Actions", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "AllowDismiss", Value = "bool", BadgeText = "Dismiss", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "AllowClear", Value = "bool", BadgeText = "Clear", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxHeight", Value = "string?", BadgeText = "Scroll", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "GroupBy", Value = "Func<NotificationItem,string>?", BadgeText = "Grouping", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowPinnedSeparately", Value = "bool", BadgeText = "Pinned", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "EmptyText", Value = "string", BadgeText = "Empty", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnItemClick", Value = "EventCallback<NotificationItem>", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnReadToggle", Value = "EventCallback<NotificationItem>", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnDismiss", Value = "EventCallback<NotificationItem>", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnMarkAllRead", Value = "EventCallback", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnClearAll", Value = "EventCallback", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ActionsContent", Value = "RenderFragment?", BadgeText = "Custom", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FooterContent", Value = "RenderFragment?", BadgeText = "Custom", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _priorityProperties = new()
+    {
+        new() { Label = "Default", Value = "0", BadgeText = "No priority", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Low", Value = "1", BadgeText = "Informational", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Normal", Value = "2", BadgeText = "Standard", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "High", Value = "3", BadgeText = "Important", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Urgent", Value = "4", BadgeText = "Critical", BadgeVariant = SgBadgeVariant.Danger },
+    };
+
+    private List<PropertyPanelItem> _itemProperties = new()
+    {
+        new() { Label = "Id", Value = "string", BadgeText = "Unique", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Title", Value = "string?", BadgeText = "Heading", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Message", Value = "string?", BadgeText = "Body", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Time", Value = "string?", BadgeText = "Timestamp", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Timestamp", Value = "DateTimeOffset?", BadgeText = "Sorting", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Variant", Value = "SgBadgeVariant", BadgeText = "Style", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Priority", Value = "SgNotificationPriority", BadgeText = "Sorting", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "IsPinned", Value = "bool", BadgeText = "Top", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AvatarUrl", Value = "string?", BadgeText = "Image", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "AvatarName", Value = "string?", BadgeText = "Initials", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Tag", Value = "string?", BadgeText = "Label", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Actions", Value = "List<SgNotificationAction>?", BadgeText = "Buttons", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "IconContent", Value = "RenderFragment?", BadgeText = "Custom icon", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ExtraContent", Value = "RenderFragment?", BadgeText = "Extra", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _emptyProperties = new()
+    {
+        new() { Label = "EmptyText", Value = "string", BadgeText = "Custom text", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Title", Value = "string", BadgeText = "Panel title", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowFilter", Value = "bool", BadgeText = "Hide filters", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    // ── Notification push helpers ─────────────────────────────────────────
     private int _counter;
-
-    private List<NotificationItem> _grouped = new()
-    {
-        new() { Title = "Резервное копирование", Message = "Бэкап БД выполнен", Time = "10:00", Variant = SgBadgeVariant.Success, Category = "Система" },
-        new() { Title = "Сертификат истекает", Message = "TLS-сертификат истечёт через 7 дней", Time = "Вчера", Variant = SgBadgeVariant.Warn, Category = "Система" },
-        new() { Title = "Новый клиент", Message = "ООО \"Ромашка\" подписал договор", Time = "Сегодня", Variant = SgBadgeVariant.Info, Category = "Продажи" },
-        new() { Title = "Счёт оплачен", Message = "Счёт #INV-00481 оплачен", Time = "Сегодня", Variant = SgBadgeVariant.Success, Category = "Биллинг" }
-    };
-
-    private List<NotificationItem> _empty = new();
-
-    private List<PropertyPanelItem> _properties = new()
-    {
-        new() { Label = "Items",              Value = "IEnumerable<NotificationItem>",  BadgeText = "Список",              BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Title",              Value = "string",                         BadgeText = "Заголовок панели",    BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ShowFilter",         Value = "bool",                           BadgeText = "Вкладки фильтра",     BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ShowDefaultActions", Value = "bool",                           BadgeText = "Кнопки в заголовке", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "AllowDismiss",       Value = "bool",                           BadgeText = "Удаление",            BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "AllowClear",         Value = "bool",                           BadgeText = "Очистить все",        BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "GroupBy",            Value = "Func<NotificationItem,string>?", BadgeText = "Группировка",         BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "MaxHeight",          Value = "string?",                        BadgeText = "Высота скролла",      BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "EmptyText",          Value = "string",                         BadgeText = "Пустое состояние",    BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "OnItemClick",        Value = "EventCallback<NotificationItem>",BadgeText = "Событие",             BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnReadToggle",       Value = "EventCallback<NotificationItem>",BadgeText = "Событие",             BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnDismiss",          Value = "EventCallback<NotificationItem>",BadgeText = "Событие",             BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnMarkAllRead",      Value = "EventCallback",                  BadgeText = "Событие",             BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnClearAll",         Value = "EventCallback",                  BadgeText = "Событие",             BadgeVariant = SgBadgeVariant.Success }
-    };
 
     protected override void OnInitialized()
     {
         Notifications.Changed += OnChanged;
         if (Notifications.Items.Count == 0)
         {
-            Notifications.Push("Новый комментарий", "Иван Петров ответил на ваш комментарий в задаче #142.", SgBadgeVariant.Info, "Сообщения", "5 мин назад");
-            Notifications.Push("Деплой завершён", "Сборка v1.2.0 успешно задеплоена на production.", SgBadgeVariant.Success, "Система", "30 мин назад");
-            Notifications.Push("Высокая нагрузка на API", "Превышен порог 80% по CPU на сервере api-2.", SgBadgeVariant.Warn, "Система", "1 ч назад");
+            Notifications.Push("New comment", "Anna replied to your comment in task #142.", SgBadgeVariant.Info, "Messages", "5 min ago");
+            Notifications.Push("Deploy completed", "Build v1.2.0 deployed to production.", SgBadgeVariant.Success, "System", "30 min ago");
+            Notifications.Push("High API load", "CPU threshold exceeded on server api-2.", SgBadgeVariant.Warn, "System", "1 hour ago");
         }
+
+        _avatarItems = new()
+        {
+            new()
+            {
+                Title = "Anna Petrova",
+                Message = "Commented on task #142: \"Please review the PR when you have a moment.\"",
+                Time = "5 min ago",
+                Variant = SgBadgeVariant.Info,
+                AvatarName = "AP",
+                Tag = "New",
+                Actions = new()
+                {
+                    new() { Text = "Reply", Icon = SgHeroicons.Outline.ArrowUturnLeft, OnClick = () => { Toasts.Info("Reply clicked"); return Task.CompletedTask; } },
+                    new() { Text = "Resolve", OnClick = () => { Toasts.Success("Resolved"); return Task.CompletedTask; } }
+                }
+            },
+            new()
+            {
+                Title = "Ivan Smirnov",
+                Message = "Uploaded 3 new design files to the shared drive.",
+                Time = "15 min ago",
+                Variant = SgBadgeVariant.Success,
+                AvatarName = "IS",
+                Tag = "Design"
+            },
+            new()
+            {
+                Title = "System",
+                Message = "Automated backup completed successfully for all databases.",
+                Time = "1 hour ago",
+                Variant = SgBadgeVariant.Success
+            }
+        };
+
+        UpdateConstructorCode();
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
@@ -113,49 +434,141 @@
         _counter++;
         var (title, message) = variant switch
         {
-            SgBadgeVariant.Success => ("Операция выполнена", $"Успешное событие №{_counter}"),
-            SgBadgeVariant.Warn    => ("Внимание", $"Предупреждение №{_counter}"),
-            SgBadgeVariant.Danger  => ("Ошибка", $"Сбой при обработке №{_counter}"),
-            _                      => ("Информация", $"Информационное событие №{_counter}")
+            SgBadgeVariant.Success => ("Operation succeeded", $"Successful event #{_counter}"),
+            SgBadgeVariant.Warn => ("Attention", $"Warning #{_counter}"),
+            SgBadgeVariant.Danger => ("Error", $"Processing failure #{_counter}"),
+            _ => ("Information", $"Information event #{_counter}")
         };
-        Notifications.Push(title, message, variant, "Демо", "только что");
+        Notifications.Push(title, message, variant, "Demo", "just now");
         var toastVariant = variant switch
         {
             SgBadgeVariant.Success => SgToastVariant.Success,
-            SgBadgeVariant.Warn    => SgToastVariant.Warn,
-            SgBadgeVariant.Danger  => SgToastVariant.Danger,
-            _                      => SgToastVariant.Default
+            SgBadgeVariant.Warn => SgToastVariant.Warn,
+            SgBadgeVariant.Danger => SgToastVariant.Danger,
+            _ => SgToastVariant.Default
         };
-        Toasts.Show($"Уведомление отправлено в шапку (#{_counter})", "Готово", toastVariant);
+        Toasts.Show($"Notification sent (#{_counter})", "Done", toastVariant);
+    }
+
+    private void PushUrgent()
+    {
+        _counter++;
+        Notifications.Push(new NotificationItem
+        {
+            Title = "CRITICAL: Service outage",
+            Message = $"Payment gateway timeout — urgent investigation needed #{_counter}",
+            Time = "just now",
+            Variant = SgBadgeVariant.Danger,
+            Priority = SgNotificationPriority.Urgent,
+            Category = "Demo"
+        });
+        Toasts.Error($"Urgent notification sent (#{_counter})");
+    }
+
+    private void PushPinned()
+    {
+        _counter++;
+        Notifications.Push(new NotificationItem
+        {
+            Title = "Pinned announcement",
+            Message = $"This important notice stays at the top #{_counter}",
+            Time = "just now",
+            Variant = SgBadgeVariant.Warn,
+            Priority = SgNotificationPriority.High,
+            IsPinned = true,
+            Category = "Demo"
+        });
+        Toasts.Show($"Pinned notification sent (#{_counter})", "Pinned", SgToastVariant.Warn);
+    }
+
+    private void PushWithAvatar()
+    {
+        _counter++;
+        var names = new[] { "JD", "MR", "AK", "LP" };
+        Notifications.Push(new NotificationItem
+        {
+            Title = $"{names[_counter % names.Length]} mentioned you",
+            Message = $"You were mentioned in a comment #{_counter}",
+            Time = "just now",
+            Variant = SgBadgeVariant.Info,
+            AvatarName = names[_counter % names.Length],
+            Tag = "Mention",
+            Category = "Demo"
+        });
+        Toasts.Info($"Avatar notification sent (#{_counter})");
     }
 
     private void HandleItemClick(NotificationItem item)
     {
         Notifications.MarkAsRead(item.Id);
-        Toasts.Info($"Открыто: {item.Title}", "Уведомление");
+        Toasts.Info($"Opened: {item.Title}", "Notification");
     }
 
-    private void HandleReadToggle(NotificationItem item) => Notifications.MarkAsRead(item.Id);
+    private void HandleReadToggle(NotificationItem item) => Notifications.ToggleRead(item.Id);
 
     private void HandleDismiss(NotificationItem item)
     {
         Notifications.Remove(item.Id);
-        Toasts.Show($"Удалено: {item.Title}", "Уведомление", SgToastVariant.Default);
+        Toasts.Show($"Dismissed: {item.Title}", "Notification", SgToastVariant.Default);
     }
 
     private void HandleMarkAllRead()
     {
         Notifications.MarkAllAsRead();
-        Toasts.Success("Все уведомления отмечены как прочитанные");
+        Toasts.Success("All notifications marked as read");
     }
 
     private void HandleClearAll()
     {
         Notifications.Clear();
-        Toasts.Show("Список уведомлений очищен", "Уведомление", SgToastVariant.Default);
+        Toasts.Show("Notification list cleared", "Cleared", SgToastVariant.Default);
     }
 
-    private void HandleViewAll() => Toasts.Info("Переход на страницу всех уведомлений", "Навигация");
+    private void HandleViewAll() => Toasts.Info("Navigating to all notifications", "Navigation");
+
+    // ── Code constructor ──────────────────────────────────────────────────
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add("<SgNotificationPanel");
+        lines.Add($"    Items=\"...\"");
+        lines.Add($"    Title=\"Constructor Demo\"");
+        if (!_showHeader) lines.Add($"    ShowHeader=\"false\"");
+        if (_showFilter) lines.Add($"    ShowFilter=\"true\"");
+        else lines.Add($"    ShowFilter=\"false\"");
+        if (!_allowDismiss) lines.Add($"    AllowDismiss=\"false\"");
+        if (!_showDefaultActions) lines.Add($"    ShowDefaultActions=\"false\"");
+        if (!_showPinnedSeparately) lines.Add($"    ShowPinnedSeparately=\"false\"");
+        lines.Add($"    MaxHeight=\"300px\"");
+        lines.Add($"    OnItemClick=\"...\"");
+        lines.Add($"    OnReadToggle=\"...\"");
+        lines.Add($"    OnDismiss=\"...\">");
+        lines.Add($"    <FooterContent>...view all link...</FooterContent>");
+        lines.Add("</SgNotificationPanel>");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyLabel = "✓ Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyLabel = "📋 Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyLabel = "✗ Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyLabel = "📋 Copy";
+            StateHasChanged();
+        }
+    }
 
     public void Dispose() => Notifications.Changed -= OnChanged;
 }

@@ -1,37 +1,39 @@
 @namespace SuperUI.Components
-@inject ISuperUILocalizer Localizer
 
 <div class="sgc-notification-panel @CssClass" style="@Style">
-    <div class="sgc-notification-panel-header">
-        <div class="sgc-notification-panel-title-group">
-            <span class="sgc-notification-panel-title">@Title</span>
-            @if (_unreadCount > 0)
-            {
-                <SgBadge Text="@_unreadCount.ToString()" Variant="SgBadgeVariant.Danger" />
-            }
-        </div>
-        @if (ActionsContent is not null)
-        {
-            <div class="sgc-notification-panel-actions">@ActionsContent</div>
-        }
-        else if (ShowDefaultActions)
-        {
-            <div class="sgc-notification-panel-actions">
+    @if (ShowHeader)
+    {
+        <div class="sgc-notification-panel-header">
+            <div class="sgc-notification-panel-title-group">
+                <span class="sgc-notification-panel-title">@Title</span>
                 @if (_unreadCount > 0)
                 {
-                    <button type="button" class="sgc-notification-panel-link" @onclick="MarkAllAsReadInternalAsync">
-                        @MarkAllReadText
-                    </button>
-                }
-                @if (AllowClear && _filteredItems.Count > 0)
-                {
-                    <button type="button" class="sgc-notification-panel-link sgc-notification-panel-link-muted" @onclick="ClearAllInternalAsync">
-                        @ClearAllText
-                    </button>
+                    <SgBadge Text="@_unreadCount.ToString()" Variant="SgBadgeVariant.Danger" />
                 }
             </div>
-        }
-    </div>
+            @if (ActionsContent is not null)
+            {
+                <div class="sgc-notification-panel-actions">@ActionsContent</div>
+            }
+            else if (ShowDefaultActions)
+            {
+                <div class="sgc-notification-panel-actions">
+                    @if (_unreadCount > 0)
+                    {
+                        <button type="button" class="sgc-notification-panel-link" @onclick="MarkAllAsReadInternalAsync">
+                            @MarkAllReadText
+                        </button>
+                    }
+                    @if (AllowClear && _filteredItems.Count > 0)
+                    {
+                        <button type="button" class="sgc-notification-panel-link sgc-notification-panel-link-muted" @onclick="ClearAllInternalAsync">
+                            @ClearAllText
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
 
     @if (ShowFilter)
     {
@@ -58,7 +60,13 @@
     <div class="sgc-notification-panel-list" style="@(string.IsNullOrEmpty(MaxHeight) ? null : $"max-height:{MaxHeight};overflow:auto;")">
         @if (_filteredItems.Count == 0)
         {
-            <div class="sgc-notification-panel-empty">@EmptyText</div>
+            <div class="sgc-notification-panel-empty">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;margin-bottom:8px;">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+                @EmptyText
+            </div>
         }
         else if (GroupBy is not null)
         {
@@ -67,6 +75,36 @@
                 <div class="sgc-notification-panel-group">
                     <div class="sgc-notification-panel-group-title">@group.Key</div>
                     @foreach (var item in group)
+                    {
+                        @RenderItem(item)
+                    }
+                </div>
+            }
+        }
+        else if (ShowPinnedSeparately && _filteredItems.Any(x => x.IsPinned))
+        {
+            var pinned = _filteredItems.Where(x => x.IsPinned);
+            var other = _filteredItems.Where(x => !x.IsPinned);
+            if (pinned.Any())
+            {
+                <div class="sgc-notification-panel-group">
+                    <div class="sgc-notification-panel-group-title">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
+                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"></path>
+                        </svg>
+                        @PinnedText
+                    </div>
+                    @foreach (var item in pinned)
+                    {
+                        @RenderItem(item)
+                    }
+                </div>
+            }
+            if (other.Any())
+            {
+                <div class="sgc-notification-panel-group">
+                    <div class="sgc-notification-panel-group-title">@OtherText</div>
+                    @foreach (var item in other)
                     {
                         @RenderItem(item)
                     }
@@ -90,11 +128,23 @@
 
 @code {
     private RenderFragment RenderItem(NotificationItem item) =>
-        @<div class="sgc-notification-panel-item @VariantClass(item.Variant) @(item.IsRead ? "" : "sgc-unread")"
+        @<div class="sgc-notification-panel-item @VariantClass(item.Variant) @(item.IsRead ? "" : "sgc-unread") @PriorityClass(item.Priority) @(item.IsPinned ? "sgc-pinned" : "")"
               @key="item.Id"
               @onclick="@(() => HandleItemClickAsync(item))">
             <div class="sgc-notification-panel-item-marker">
-                @if (item.IconContent is not null)
+                @if (item.AvatarUrl is not null)
+                {
+                    <div class="sgc-notification-panel-item-avatar">
+                        <img src="@item.AvatarUrl" alt="@(item.AvatarName ?? "")" />
+                    </div>
+                }
+                else if (item.AvatarName is not null)
+                {
+                    <div class="sgc-notification-panel-item-avatar sgc-notification-panel-item-avatar-initials">
+                        <span>@item.AvatarName</span>
+                    </div>
+                }
+                else if (item.IconContent is not null)
                 {
                     <div class="sgc-notification-panel-item-icon">@item.IconContent</div>
                 }
@@ -108,7 +158,17 @@
                     <div class="sgc-notification-panel-item-main">
                         @if (!string.IsNullOrWhiteSpace(item.Title))
                         {
-                            <div class="sgc-notification-panel-item-title">@item.Title</div>
+                            <div class="sgc-notification-panel-item-title">
+                                @item.Title
+                                @if (item.Priority >= SgNotificationPriority.High)
+                                {
+                                    <span class="sgc-notification-panel-item-priority-indicator" aria-label="High priority"></span>
+                                }
+                            </div>
+                        }
+                        @if (item.Tag is not null)
+                        {
+                            <span class="sgc-notification-panel-item-tag">@item.Tag</span>
                         }
                         @if (!string.IsNullOrWhiteSpace(item.Message))
                         {
@@ -124,12 +184,29 @@
                 {
                     <div class="sgc-notification-panel-item-extra" @onclick:stopPropagation="true">@item.ExtraContent</div>
                 }
+                @if (item.Actions is { Count: > 0 })
+                {
+                    <div class="sgc-notification-panel-item-actions" @onclick:stopPropagation="true">
+                        @foreach (var action in item.Actions)
+                        {
+                            <button type="button"
+                                    class="sgc-notification-panel-item-action-btn"
+                                    @onclick="() => HandleActionClickAsync(action)">
+                                @if (action.Icon is not null)
+                                {
+                                    <SgIcon Icon="@action.Icon" Size="14px" />
+                                }
+                                @action.Text
+                            </button>
+                        }
+                    </div>
+                }
             </div>
             <div class="sgc-notification-panel-item-tools" @onclick:stopPropagation="true">
                 <button type="button"
                         class="sgc-notification-panel-icon-btn"
-                        title="@(item.IsRead ? Localizer["NotificationPanel_MarkUnread"] : Localizer["NotificationPanel_MarkRead"])"
-                        aria-label="@(item.IsRead ? Localizer["NotificationPanel_MarkUnread"] : Localizer["NotificationPanel_MarkRead"])"
+                        title="@(item.IsRead ? MarkUnreadText : MarkReadText)"
+                        aria-label="@(item.IsRead ? MarkUnreadText : MarkReadText)"
                         @onclick="@(() => HandleReadToggleAsync(item))">
                     @if (item.IsRead)
                     {
@@ -144,187 +221,13 @@
                 {
                     <button type="button"
                             class="sgc-notification-panel-icon-btn"
-                            title="@Localizer["NotificationPanel_Dismiss"]"
-                            aria-label="@Localizer["NotificationPanel_DismissAriaLabel"]"
+                            title="@DismissText"
+                            aria-label="@DismissText"
                             @onclick="@(() => HandleDismissAsync(item))">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                 }
             </div>
         </div>;
-
-    /// <summary>
-    /// Gets or sets the panel header title.
-    /// </summary>
-    [Parameter] public string Title { get; set; } = "Уведомления";
-
-    /// <summary>
-    /// Gets or sets the collection of notifications to render.
-    /// </summary>
-    [Parameter] public IEnumerable<NotificationItem> Items { get; set; } = Array.Empty<NotificationItem>();
-
-    /// <summary>
-    /// Gets or sets the empty state text displayed when there are no notifications.
-    /// </summary>
-    [Parameter] public string EmptyText { get; set; } = "Нет уведомлений";
-
-    /// <summary>
-    /// Gets or sets the label for the "All" filter tab.
-    /// </summary>
-    [Parameter] public string AllText { get; set; } = "Все";
-
-    /// <summary>
-    /// Gets or sets the label for the "Unread" filter tab.
-    /// </summary>
-    [Parameter] public string UnreadText { get; set; } = "Непрочитанные";
-
-    /// <summary>
-    /// Gets or sets the label for the "mark all as read" default action.
-    /// </summary>
-    [Parameter] public string MarkAllReadText { get; set; } = "Прочитать все";
-
-    /// <summary>
-    /// Gets or sets the label for the "clear all" default action.
-    /// </summary>
-    [Parameter] public string ClearAllText { get; set; } = "Очистить";
-
-    /// <summary>
-    /// Gets or sets whether the all/unread filter tabs are shown.
-    /// </summary>
-    [Parameter] public bool ShowFilter { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether the built-in "mark all read" / "clear all" actions are shown
-    /// when <see cref="ActionsContent"/> is not provided.
-    /// </summary>
-    [Parameter] public bool ShowDefaultActions { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether the per-item dismiss button is shown.
-    /// </summary>
-    [Parameter] public bool AllowDismiss { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether the "clear all" action is allowed.
-    /// </summary>
-    [Parameter] public bool AllowClear { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets the optional max-height of the scrollable list area (e.g. "420px").
-    /// </summary>
-    [Parameter] public string? MaxHeight { get; set; } = "420px";
-
-    /// <summary>
-    /// Gets or sets a grouping selector. When set, items are grouped under the returned key.
-    /// </summary>
-    [Parameter] public Func<NotificationItem, string>? GroupBy { get; set; }
-
-    /// <summary>
-    /// Gets or sets custom header action content. Replaces the built-in actions when supplied.
-    /// </summary>
-    [Parameter] public RenderFragment? ActionsContent { get; set; }
-
-    /// <summary>
-    /// Gets or sets custom footer content (e.g. "View all" link).
-    /// </summary>
-    [Parameter] public RenderFragment? FooterContent { get; set; }
-
-    /// <summary>
-    /// Raised when an item is clicked.
-    /// </summary>
-    [Parameter] public EventCallback<NotificationItem> OnItemClick { get; set; }
-
-    /// <summary>
-    /// Raised when the user toggles an item's read state.
-    /// </summary>
-    [Parameter] public EventCallback<NotificationItem> OnReadToggle { get; set; }
-
-    /// <summary>
-    /// Raised when the user dismisses an individual item.
-    /// </summary>
-    [Parameter] public EventCallback<NotificationItem> OnDismiss { get; set; }
-
-    /// <summary>
-    /// Raised when the user requests "mark all as read".
-    /// </summary>
-    [Parameter] public EventCallback OnMarkAllRead { get; set; }
-
-    /// <summary>
-    /// Raised when the user requests "clear all".
-    /// </summary>
-    [Parameter] public EventCallback OnClearAll { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>
-    /// Gets or sets inline styles to apply to the component.
-    /// </summary>
-    [Parameter] public string? Style { get; set; }
-
-    private string _filter = "all";
-    private List<NotificationItem> _filteredItems = new();
-    private int _unreadCount;
-    private int _allCount;
-
-    protected override void OnParametersSet()
-    {
-        _unreadCount = Items.Count(x => !x.IsRead);
-        _allCount    = Items.Count();
-        _filteredItems = (_filter == "unread" ? Items.Where(x => !x.IsRead) : Items)
-            .OrderByDescending(x => x.Timestamp ?? DateTimeOffset.MinValue)
-            .ToList();
-    }
-
-    private void SetFilter(string filter)
-    {
-        _filter = filter;
-        _filteredItems = (_filter == "unread" ? Items.Where(x => !x.IsRead) : Items)
-            .OrderByDescending(x => x.Timestamp ?? DateTimeOffset.MinValue)
-            .ToList();
-    }
-
-    private async Task HandleItemClickAsync(NotificationItem item)
-    {
-        if (OnItemClick.HasDelegate)
-            await OnItemClick.InvokeAsync(item);
-    }
-
-    private async Task HandleReadToggleAsync(NotificationItem item)
-    {
-        item.IsRead = !item.IsRead;
-        if (OnReadToggle.HasDelegate)
-            await OnReadToggle.InvokeAsync(item);
-    }
-
-    private async Task HandleDismissAsync(NotificationItem item)
-    {
-        if (OnDismiss.HasDelegate)
-            await OnDismiss.InvokeAsync(item);
-    }
-
-    private async Task MarkAllAsReadInternalAsync()
-    {
-        foreach (var item in Items)
-            item.IsRead = true;
-        if (OnMarkAllRead.HasDelegate)
-            await OnMarkAllRead.InvokeAsync();
-    }
-
-    private async Task ClearAllInternalAsync()
-    {
-        if (OnClearAll.HasDelegate)
-            await OnClearAll.InvokeAsync();
-    }
-
-    private static string VariantClass(SgBadgeVariant variant) => variant switch
-    {
-        SgBadgeVariant.Info    => "sgc-info",
-        SgBadgeVariant.Success => "sgc-success",
-        SgBadgeVariant.Warn    => "sgc-warn",
-        SgBadgeVariant.Danger  => "sgc-danger",
-        _                      => ""
-    };
 }
+

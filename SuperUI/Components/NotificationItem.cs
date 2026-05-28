@@ -24,7 +24,7 @@ public sealed class NotificationItem
     public string? Message { get; set; }
 
     /// <summary>
-    /// Gets or sets a short relative or absolute time label (e.g. "5 мин назад").
+    /// Gets or sets a short relative or absolute time label (e.g. "5 min ago").
     /// </summary>
     public string? Time { get; set; }
 
@@ -39,7 +39,7 @@ public sealed class NotificationItem
     public SgBadgeVariant Variant { get; set; } = SgBadgeVariant.Default;
 
     /// <summary>
-    /// Gets or sets a category/group name (e.g. "Система", "Сообщения").
+    /// Gets or sets a category/group name (e.g. "System", "Messages").
     /// </summary>
     public string? Category { get; set; }
 
@@ -57,4 +57,40 @@ public sealed class NotificationItem
     /// Gets or sets optional extra content rendered below the message (e.g. action buttons).
     /// </summary>
     public RenderFragment? ExtraContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the notification priority level. Higher priority items are visually emphasized.
+    /// </summary>
+    public SgNotificationPriority Priority { get; set; } = SgNotificationPriority.Default;
+
+    /// <summary>
+    /// Gets or sets whether the notification is pinned (persistent).
+    /// Pinned items appear at the top of the list.
+    /// </summary>
+    public bool IsPinned { get; set; }
+
+    /// <summary>
+    /// Gets or sets avatar image URL. When set, the leading dot/icon is replaced with the avatar.
+    /// </summary>
+    public string? AvatarUrl { get; set; }
+
+    /// <summary>
+    /// Gets or sets avatar initials displayed when <see cref="AvatarUrl"/> is null.
+    /// </summary>
+    public string? AvatarName { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional action buttons displayed in the notification item.
+    /// </summary>
+    public List<SgNotificationAction>? Actions { get; set; }
+
+    /// <summary>
+    /// Gets or sets a navigation URL. When set, clicking the item navigates to this URL.
+    /// </summary>
+    public string? ActionUrl { get; set; }
+
+    /// <summary>
+    /// Gets or sets a small tag label (e.g. "NEW", "BETA").
+    /// </summary>
+    public string? Tag { get; set; }
 }

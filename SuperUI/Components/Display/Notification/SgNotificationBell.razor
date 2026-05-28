@@ -2,9 +2,9 @@
 @implements IDisposable
 @inject SgNotificationService Notifications
 
-<SgPopover Placement="SgPlacement.BottomEnd" Trigger="SgTrigger.Click" CssClass="sgc-notification-bell">
+<SgPopover Placement="@Placement" Trigger="SgTrigger.Click" CssClass="sgc-notification-bell">
     <TriggerContent>
-        <button type="button" class="sgc-notification-bell-btn" aria-label="@AriaLabel">
+        <button type="button" class="sgc-notification-bell-btn @(Notifications.UnreadCount > 0 ? "sgc-bell-has-unread" : "")" aria-label="@AriaLabel">
             @if (IconContent is not null)
             {
                 @IconContent
@@ -18,7 +18,7 @@
             }
             @if (Notifications.UnreadCount > 0)
             {
-                <span class="sgc-notification-bell-badge" aria-label="@($"{Notifications.UnreadCount} непрочитанных")">
+                <span class="sgc-notification-bell-badge" aria-label="@($"{Notifications.UnreadCount} unread")">
                     @(Notifications.UnreadCount > 99 ? "99+" : Notifications.UnreadCount.ToString())
                 </span>
             }
@@ -29,6 +29,12 @@
             <SgNotificationPanel Items="Notifications.Items"
                                  Title="@Title"
                                  MaxHeight="@MaxHeight"
+                                 ShowFilter="@ShowFilter"
+                                 ShowDefaultActions="@ShowDefaultActions"
+                                 ShowHeader="@ShowHeader"
+                                 AllowDismiss="@AllowDismiss"
+                                 AllowClear="@AllowClear"
+                                 ShowPinnedSeparately="@ShowPinnedSeparately"
                                  OnItemClick="HandleItemClick"
                                  OnReadToggle="HandleReadToggle"
                                  OnDismiss="HandleDismiss"
@@ -40,39 +46,43 @@
 </SgPopover>
 
 @code {
-    /// <summary>
-    /// Gets or sets the panel header title.
-    /// </summary>
-    [Parameter] public string Title { get; set; } = "Уведомления";
+    /// <summary>Panel header title.</summary>
+    [Parameter] public string Title { get; set; } = "Notifications";
 
-    /// <summary>
-    /// Gets or sets the popover placement. Default is <see cref="SgPlacement.BottomEnd"/>.
-    /// </summary>
+    /// <summary>Popover placement. Default is <see cref="SgPlacement.BottomEnd"/>.</summary>
     [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.BottomEnd;
 
-    /// <summary>
-    /// Gets or sets the max height of the scrollable list area.
-    /// </summary>
+    /// <summary>Max height of the scrollable list area.</summary>
     [Parameter] public string? MaxHeight { get; set; } = "420px";
 
-    /// <summary>
-    /// Gets or sets the accessibility label for the trigger button.
-    /// </summary>
-    [Parameter] public string AriaLabel { get; set; } = "Уведомления";
+    /// <summary>Accessibility label for the trigger button.</summary>
+    [Parameter] public string AriaLabel { get; set; } = "Notifications";
 
-    /// <summary>
-    /// Gets or sets a custom icon for the trigger button. Defaults to a bell glyph.
-    /// </summary>
+    /// <summary>Custom icon for the trigger button. Defaults to bell glyph.</summary>
     [Parameter] public RenderFragment? IconContent { get; set; }
 
-    /// <summary>
-    /// Gets or sets the footer content for the panel.
-    /// </summary>
+    /// <summary>Footer content for the panel.</summary>
     [Parameter] public RenderFragment? FooterContent { get; set; }
 
-    /// <summary>
-    /// Raised when the user clicks on an item.
-    /// </summary>
+    /// <summary>Whether filter tabs are shown.</summary>
+    [Parameter] public bool ShowFilter { get; set; } = true;
+
+    /// <summary>Whether default header actions are shown.</summary>
+    [Parameter] public bool ShowDefaultActions { get; set; } = true;
+
+    /// <summary>Whether the panel header is visible.</summary>
+    [Parameter] public bool ShowHeader { get; set; } = true;
+
+    /// <summary>Whether per-item dismiss is allowed.</summary>
+    [Parameter] public bool AllowDismiss { get; set; } = true;
+
+    /// <summary>Whether clear-all is allowed.</summary>
+    [Parameter] public bool AllowClear { get; set; } = true;
+
+    /// <summary>Whether pinned items appear in a separate group.</summary>
+    [Parameter] public bool ShowPinnedSeparately { get; set; } = true;
+
+    /// <summary>Raised when an item is clicked.</summary>
     [Parameter] public EventCallback<NotificationItem> OnItemClick { get; set; }
 
     protected override void OnInitialized()
@@ -88,11 +98,7 @@
         if (OnItemClick.HasDelegate) await OnItemClick.InvokeAsync(item);
     }
 
-    private void HandleReadToggle(NotificationItem item)
-    {
-        // SgNotificationPanel already toggled IsRead; just notify subscribers.
-        Notifications.MarkAsRead(item.Id);
-    }
+    private void HandleReadToggle(NotificationItem item) => Notifications.ToggleRead(item.Id);
 
     private void HandleDismiss(NotificationItem item) => Notifications.Remove(item.Id);
 
