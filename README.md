@@ -72,10 +72,9 @@ Targets `net10.0` — works with Blazor WebAssembly, Server, Web App, Hybrid.
 ```
 
 ```razor
-@* Toast notifications from code *@
 @inject SgToastService Toast
 
-<button @onclick="() => Toast.Success(&quot;Done!&quot;)">Notify me</button>
+<button @onclick="() => Toast.Success('Done!')">Notify me</button>
 ```
 
 ```razor
