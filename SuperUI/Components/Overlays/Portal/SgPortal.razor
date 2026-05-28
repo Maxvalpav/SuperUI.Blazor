@@ -1,35 +1,94 @@
 @namespace SuperUI.Components
 @inherits SgJsComponentBase
+@using SuperUI.Enums
 
-<div @ref="RootRef" style="display: contents;" class="@Class" id="@Id">
+@{
+    var tag = WrapperTag ?? "div";
+}
+<@tag @ref="RootRef" style="display: contents;@(string.IsNullOrEmpty(Style) ? "" : " " + Style)" class="@Class" id="@Id">
     @ChildContent
-</div>
+</@tag>
 
 @code {
-    /// <summary>Content to render inside the portal. Teleported to document.body.</summary>
+    /// <summary>Content to render inside the portal.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>Optional CSS class applied to the portal wrapper.</summary>
+    /// <summary>Optional CSS class for the portal wrapper.</summary>
     [Parameter] public string? Class { get; set; }
 
-    /// <summary>Optional inline style applied to the portal wrapper.</summary>
+    /// <summary>Optional inline style for the portal wrapper.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>Optional HTML id for the portal wrapper element.</summary>
+    /// <summary>Optional HTML id for the portal wrapper.</summary>
     [Parameter] public string? Id { get; set; }
 
-    /// <summary>Optional z-index override. Applied via JS after teleport.</summary>
+    /// <summary>Z-index override. Default: auto-incremented from 9000.</summary>
     [Parameter] public int? ZIndex { get; set; }
+
+    /// <summary>When true, portal content is rendered and teleported. Two-way bindable.</summary>
+    [Parameter] public bool Visible { get; set; }
+
+    /// <summary>Fires when the portal visibility changes.</summary>
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    /// <summary>When true, prevents body scroll while portal is open.</summary>
+    [Parameter] public bool PreventScroll { get; set; }
+
+    /// <summary>When true, auto-focuses first focusable element inside the portal.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>CSS selector for alternative target. Default: <c>document.body</c>.</summary>
+    [Parameter] public string? RenderAt { get; set; }
+
+    /// <summary>HTML tag for the portal wrapper. Default: <c>div</c>.</summary>
+    [Parameter] public string? WrapperTag { get; set; }
+
+    /// <summary>Fires after teleport completes.</summary>
+    [Parameter] public EventCallback OnTeleported { get; set; }
+
+    /// <summary>Animation duration in ms. 0 = instant. Default: 250.</summary>
+    [Parameter] public int TransitionDuration { get; set; } = 250;
+
+    private bool _prevVisible;
 
     protected override string ModulePath => "./_content/SuperUI/superui-portal.js";
 
     protected override async Task OnAfterRenderSafeAsync(bool firstRender)
     {
-        await SafeInvokeVoidAsync("teleport", RootRef, ZIndex);
+        if (Visible && !_prevVisible)
+        {
+            await SafeInvokeVoidAsync("open", RootRef, new
+            {
+                zIndex = ZIndex,
+                preventScroll = PreventScroll,
+                autoFocus = AutoFocus,
+                renderAt = RenderAt,
+                transitionDuration = TransitionDuration > 0 ? TransitionDuration : (int?)null,
+            });
+            await OnTeleported.InvokeAsync();
+        }
+        else if (!Visible && _prevVisible)
+        {
+            await SafeInvokeVoidAsync("close", RootRef);
+        }
+        else if (Visible && _prevVisible)
+        {
+            await SafeInvokeVoidAsync("update", RootRef, new
+            {
+                zIndex = ZIndex,
+                preventScroll = PreventScroll,
+            });
+        }
+
+        _prevVisible = Visible;
     }
 
     protected override async ValueTask OnDisposingAsync()
     {
-        await SafeInvokeVoidAsync("remove", RootRef);
+        if (_prevVisible)
+        {
+            await SafeInvokeVoidAsync("close", RootRef);
+        }
+        _prevVisible = false;
     }
 }
