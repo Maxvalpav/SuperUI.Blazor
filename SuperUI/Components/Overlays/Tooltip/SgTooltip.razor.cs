@@ -10,7 +10,7 @@ namespace SuperUI.Components;
 
 /// <summary>
 /// A tooltip component that displays contextual information when hovering, focusing, or clicking a trigger element.
-/// Supports rich content, arrows, color variants, delay configuration, and all <see cref="SgPlacement"/> values.
+/// Supports rich content, arrows, color variants, 12 placements, delay configuration, interactive content, and cursor following.
 /// </summary>
 public partial class SgTooltip : SgOverlayComponentBase
 {
@@ -18,6 +18,22 @@ public partial class SgTooltip : SgOverlayComponentBase
     private bool _attached;
     private readonly SgDebouncer _showDebouncer = new();
     private readonly SgDebouncer _hideDebouncer = new();
+
+    private static readonly Dictionary<SgPlacement, (string Css, string Js)> PlacementMap = new()
+    {
+        [SgPlacement.Top] = ("sgc-tt-top", "top"),
+        [SgPlacement.TopStart] = ("sgc-tt-top-start", "top-start"),
+        [SgPlacement.TopEnd] = ("sgc-tt-top-end", "top-end"),
+        [SgPlacement.Bottom] = ("sgc-tt-bottom", "bottom"),
+        [SgPlacement.BottomStart] = ("sgc-tt-bottom-start", "bottom-start"),
+        [SgPlacement.BottomEnd] = ("sgc-tt-bottom-end", "bottom-end"),
+        [SgPlacement.Left] = ("sgc-tt-left", "left"),
+        [SgPlacement.LeftStart] = ("sgc-tt-left-start", "left-start"),
+        [SgPlacement.LeftEnd] = ("sgc-tt-left-end", "left-end"),
+        [SgPlacement.Right] = ("sgc-tt-right", "right"),
+        [SgPlacement.RightStart] = ("sgc-tt-right-start", "right-start"),
+        [SgPlacement.RightEnd] = ("sgc-tt-right-end", "right-end"),
+    };
 
     /// <summary>
     /// Gets or sets the tooltip text to display. Required when <see cref="RichContent"/> is not set.
@@ -33,7 +49,6 @@ public partial class SgTooltip : SgOverlayComponentBase
 
     /// <summary>
     /// Gets or sets the preferred placement. Default is <see cref="SgPlacement.Top"/>.
-    /// Supports all extended placements: TopStart, TopEnd, BottomStart, BottomEnd, etc.
     /// </summary>
     [Parameter]
     public SgPlacement Placement { get; set; } = SgPlacement.Top;
@@ -63,8 +78,7 @@ public partial class SgTooltip : SgOverlayComponentBase
     public bool Disabled { get; set; }
 
     /// <summary>
-    /// Gets or sets rich content displayed inside the tooltip.
-    /// When set, overrides <see cref="Text"/> with a richer layout.
+    /// Gets or sets rich content displayed inside the tooltip. When set, overrides <see cref="Text"/>.
     /// </summary>
     [Parameter]
     public RenderFragment? RichContent { get; set; }
@@ -78,21 +92,49 @@ public partial class SgTooltip : SgOverlayComponentBase
     /// <summary>
     /// Gets or sets a custom CSS color value for the tooltip background.
     /// Example: "var(--sg-color-info)", "#3b82f6", etc.
-    /// When null, the default tooltip colors are used.
     /// </summary>
     [Parameter]
     public string? Color { get; set; }
 
     /// <summary>
     /// Gets or sets the maximum width of the tooltip. Example: "280px", "50vw".
-    /// When null, the tooltip width adapts to content with a natural max.
     /// </summary>
     [Parameter]
     public string? MaxWidth { get; set; }
 
+    /// <summary>
+    /// Gets or sets the tooltip size. When null, uses the default size.
+    /// </summary>
+    [Parameter]
+    public SgSize? Size { get; set; }
+
+    /// <summary>
+    /// Gets or sets the offset distance in pixels between the tooltip and the trigger element. Default is 8.
+    /// </summary>
+    [Parameter]
+    public int Offset { get; set; } = 8;
+
+    /// <summary>
+    /// Gets or sets whether the tooltip follows the mouse cursor. Default is false.
+    /// When enabled, the tooltip repositions on mouse move within the trigger element.
+    /// </summary>
+    [Parameter]
+    public bool FollowCursor { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the tooltip content is interactive.
+    /// When true, the tooltip does not hide when the mouse moves over the tooltip itself,
+    /// allowing interaction with rich content.
+    /// </summary>
+    [Parameter]
+    public bool Interactive { get; set; }
+
     protected override string ModulePath => "./_content/SuperUI/superui-tooltip.js";
     protected override int ZIndexBase => SgZIndexService.TooltipBase;
     protected override int ClosingAnimationMs => 0;
+
+    private string PlacementCssClass => PlacementMap.TryGetValue(Placement, out var p) ? p.Css : "sgc-tt-top";
+    private string PlacementString => PlacementMap.TryGetValue(Placement, out var p) ? p.Js : "top";
 
     private string TooltipCssClass
     {
@@ -101,6 +143,15 @@ public partial class SgTooltip : SgOverlayComponentBase
             var css = CssBuilder.Default("sgc-tt")
                 .AddClass(PlacementCssClass)
                 .AddClass("sgc-tt-arrow", ShowArrow)
+                .AddClass(Size switch
+                {
+                    SgSize.Sm => "sgc-tt-sm",
+                    SgSize.Md => "sgc-tt-md",
+                    SgSize.Lg => "sgc-tt-lg",
+                    SgSize.Xl => "sgc-tt-xl",
+                    _ => null
+                })
+                .AddClass("sgc-tt-interactive", Interactive)
                 .Build();
             return css;
         }
@@ -122,45 +173,13 @@ public partial class SgTooltip : SgOverlayComponentBase
                 parts.Add($"max-width:{MaxWidth}");
             if (!string.IsNullOrEmpty(Color))
             {
-            parts.Add($"--sg-tt-bg:{Color}");
-            parts.Add($"background:{Color}");
-            parts.Add("color:#fff");
+                parts.Add($"--sg-tt-bg:{Color}");
+                parts.Add($"background:{Color}");
+                parts.Add("color:#fff");
             }
             return string.Join(";", parts) + ";";
         }
     }
-
-    private string PlacementCssClass => Placement switch
-    {
-        SgPlacement.Bottom => "sgc-tt-bottom",
-        SgPlacement.BottomStart => "sgc-tt-bottom-start",
-        SgPlacement.BottomEnd => "sgc-tt-bottom-end",
-        SgPlacement.Left => "sgc-tt-left",
-        SgPlacement.LeftStart => "sgc-tt-left-start",
-        SgPlacement.LeftEnd => "sgc-tt-left-end",
-        SgPlacement.Right => "sgc-tt-right",
-        SgPlacement.RightStart => "sgc-tt-right-start",
-        SgPlacement.RightEnd => "sgc-tt-right-end",
-        SgPlacement.TopStart => "sgc-tt-top-start",
-        SgPlacement.TopEnd => "sgc-tt-top-end",
-        _ => "sgc-tt-top"
-    };
-
-    private string PlacementString => Placement switch
-    {
-        SgPlacement.Bottom => "bottom",
-        SgPlacement.BottomStart => "bottom-start",
-        SgPlacement.BottomEnd => "bottom-end",
-        SgPlacement.Left => "left",
-        SgPlacement.LeftStart => "left-start",
-        SgPlacement.LeftEnd => "left-end",
-        SgPlacement.Right => "right",
-        SgPlacement.RightStart => "right-start",
-        SgPlacement.RightEnd => "right-end",
-        SgPlacement.TopStart => "top-start",
-        SgPlacement.TopEnd => "top-end",
-        _ => "top"
-    };
 
     private Task OnMouseEnterAsync() => HandleTriggerAsync(SgTrigger.Hover, true);
     private Task OnMouseLeaveAsync() => HandleTriggerAsync(SgTrigger.Hover, false);
@@ -214,14 +233,14 @@ public partial class SgTooltip : SgOverlayComponentBase
         StateHasChanged();
     }
 
-    private Task SetVisibleFalseAsync() =>
-        CloseAsync();
+    private Task SetVisibleFalseAsync() => CloseAsync();
 
     protected override async ValueTask OnOpeningAsync()
     {
-        await SafeInvokeVoidAsync("attach", RootRef, _tooltipRef, PlacementString, SelfRef);
+        await SafeInvokeVoidAsync("attach", RootRef, _tooltipRef, PlacementString, SelfRef,
+            Offset, FollowCursor, Interactive);
         _attached = true;
-        await SafeInvokeVoidAsync("show", RootRef, _tooltipRef, PlacementString, ZIndexValue);
+        await SafeInvokeVoidAsync("show", RootRef, _tooltipRef, PlacementString, ZIndexValue, Offset);
     }
 
     protected override async ValueTask OnClosingAsync()
