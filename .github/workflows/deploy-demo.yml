@@ -53,6 +53,26 @@ jobs:
         run: |
           find publish/wwwroot -type f \( -name '*.br' -o -name '*.gz' \) -delete
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Minify CSS and JS (excl. Blazor framework)
+        shell: bash
+        run: |
+          npm install -g csso-cli terser 2>/dev/null
+
+          while IFS= read -r file; do
+            echo "CSS  $file"
+            csso -i "$file" -o "$file" --comments none
+          done < <(find publish/wwwroot -name '*.css' -not -path '*/_framework/*')
+
+          while IFS= read -r file; do
+            echo "JS   $file"
+            terser "$file" -o "$file" -c passes=2 -m toplevel
+          done < <(find publish/wwwroot -name '*.js' -not -path '*/_framework/*')
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

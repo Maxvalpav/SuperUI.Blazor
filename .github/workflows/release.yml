@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Тип версии"
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch   # 1.0.0 -> 1.0.1
+          - minor   # 1.0.0 -> 1.1.0
+          - major   # 1.0.0 -> 2.0.0
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Get latest tag
+        id: latest
+        run: |
+          TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          if [ -z "$TAG" ]; then
+            echo "version=1.0.0" >> $GITHUB_OUTPUT
+          else
+            echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version
+        id: bump
+        shell: pwsh
+        run: |
+          $parts = "${{ steps.latest.outputs.version }}".Split('.')
+          $major = [int]$parts[0]
+          $minor = [int]$parts[1]
+          $patch = [int]$parts[2]
+          switch ("${{ inputs.bump }}") {
+            "major" { $major++; $minor=0; $patch=0 }
+            "minor" { $minor++; $patch=0 }
+            default { $patch++ }
+          }
+          $new = "v$major.$minor.$patch"
+          echo "tag=$new" >> $env:GITHUB_OUTPUT
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git tag ${{ steps.bump.outputs.tag }}
+          git push origin ${{ steps.bump.outputs.tag }}
+
+      - name: Trigger publish
+        run: |
+          gh workflow run build-and-publish.yml --ref ${{ steps.bump.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
