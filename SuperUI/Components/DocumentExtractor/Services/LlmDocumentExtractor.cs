@@ -37,6 +37,7 @@ public sealed class LlmDocumentExtractor : IDocumentExtractor
 
     public bool CanHandle(SgDocumentSource source) => source.Kind != SgDocumentKind.Unknown;
 
+    /// <summary>Extracts document fields by sending the document content to a configured LLM.</summary>
     public async Task<SgDocumentExtractionResult> ExtractAsync(SgDocumentSource source, CancellationToken ct = default)
     {
         string? plainText = null;

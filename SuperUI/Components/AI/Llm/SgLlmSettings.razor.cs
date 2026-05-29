@@ -5,12 +5,15 @@ using SuperUI.Services.Llm;
 
 namespace SuperUI.Components;
 
+/// <summary>Settings panel for LLM configuration.</summary>
 public partial class SgLlmSettings : ComponentBase, IDisposable
 {
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
     [Parameter] public SgLlmConfig Config { get; set; } = new();
+    /// <summary>Callback invoked when the configuration changes.</summary>
     [Parameter] public EventCallback<SgLlmConfig> ConfigChanged { get; set; }
+    /// <summary>Custom inline styles applied to the settings panel.</summary>
     [Parameter] public string? Style { get; set; }
 
     /// <summary>

@@ -10,20 +10,32 @@ using System.Threading.Tasks;
 
 namespace SuperUI.Components.SgGanttCanvas;
 
+/// <summary>Interactive Gantt chart canvas component with dependency mapping, critical path, zoom, undo/redo, and JS-based rendering.</summary>
 public partial class SgGanttCanvas : SgJsComponentBase
 {
+    /// <summary>Collection of tasks displayed in the Gantt chart.</summary>
     [Parameter] public List<GanttTask> Tasks { get; set; } = new();
+    /// <summary>Fired when tasks are modified (moved, resized, progress changed).</summary>
     [Parameter] public EventCallback<List<GanttTask>> TasksChanged { get; set; }
 
+    /// <summary>Dependencies (links) between tasks.</summary>
     [Parameter] public List<GanttDependency> Dependencies { get; set; } = new();
+    /// <summary>Fired when dependencies are added or removed.</summary>
     [Parameter] public EventCallback<List<GanttDependency>> DependenciesChanged { get; set; }
+    /// <summary>Fired when a new dependency link is created by the user.</summary>
     [Parameter] public EventCallback<GanttDependency> OnDependencyCreated { get; set; }
+    /// <summary>Resource assignments shown on tasks.</summary>
     [Parameter] public List<GanttResource> Resources { get; set; } = new();
+    /// <summary>Milestone markers displayed on the timeline.</summary>
     [Parameter] public List<GanttMilestone> Milestones { get; set; } = new();
+    /// <summary>Column definitions for the left-side task grid.</summary>
     [Parameter] public List<GanttColumn> Columns { get; set; } = new();
 
+    /// <summary>Time scale configuration (zoom level, units, working hours).</summary>
     [Parameter] public GanttTimeScale TimeScale { get; set; } = new();
+    /// <summary>View options controlling visibility of dependencies, baselines, grid, etc.</summary>
     [Parameter] public GanttViewOptions ViewOptions { get; set; } = new();
+    /// <summary>Theme colors for the Gantt chart rendering.</summary>
     [Parameter] public GanttTheme Theme { get; set; } = new();
     
     protected override async Task OnParametersSetAsync()
@@ -41,26 +53,45 @@ public partial class SgGanttCanvas : SgJsComponentBase
         }
     }
 
+    /// <summary>Display mode (Gantt, Resource, etc.).</summary>
     [Parameter] public string ViewMode { get; set; } = "Gantt";
+    /// <summary>Optional project start date used to calculate the timeline origin.</summary>
     [Parameter] public DateTime? ProjectStart { get; set; }
+    /// <summary>Optional project end date.</summary>
     [Parameter] public DateTime? ProjectEnd { get; set; }
+    /// <summary>Height of the component container.</summary>
     [Parameter] public string Height { get; set; } = "100%";
+    /// <summary>Width of the component container.</summary>
     [Parameter] public string Width { get; set; } = "100%";
+    /// <summary>Disables user interaction (drag, resize, dependency creation).</summary>
     [Parameter] public bool ReadOnly { get; set; }
+    /// <summary>Shows the top toolbar with zoom and action buttons.</summary>
     [Parameter] public bool ShowToolbar { get; set; } = true;
+    /// <summary>Shows the status bar at the bottom.</summary>
     [Parameter] public bool ShowStatusBar { get; set; } = true;
 
+    /// <summary>Custom toolbar content replacing the default toolbar.</summary>
     [Parameter] public RenderFragment? ToolbarTemplate { get; set; }
+    /// <summary>Template for task tooltips on hover.</summary>
     [Parameter] public RenderFragment<GanttTask>? TooltipTemplate { get; set; }
 
+    /// <summary>Fired when a task bar is clicked.</summary>
     [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+    /// <summary>Fired when a task bar is double-clicked.</summary>
     [Parameter] public EventCallback<GanttTask> OnTaskDoubleClick { get; set; }
+    /// <summary>Fired when the selection changes.</summary>
     [Parameter] public EventCallback<List<GanttTask>> OnSelectionChanged { get; set; }
+    /// <summary>Fired when the zoom level changes.</summary>
     [Parameter] public EventCallback<double> OnZoomChanged { get; set; }
+    /// <summary>Fired when the undo command is triggered.</summary>
     [Parameter] public EventCallback OnUndo { get; set; }
+    /// <summary>Fired when the redo command is triggered.</summary>
     [Parameter] public EventCallback OnRedo { get; set; }
+    /// <summary>Fired when selected tasks should be deleted.</summary>
     [Parameter] public EventCallback<List<string>> OnDeleteSelected { get; set; }
+    /// <summary>Fired when demo data generation is requested.</summary>
     [Parameter] public EventCallback<int> OnGenerateData { get; set; }
+    /// <summary>Fired when the theme is changed.</summary>
     [Parameter] public EventCallback<string> OnThemeChanged { get; set; }
 
     private ElementReference _canvasWrapperRef;
@@ -410,6 +441,7 @@ public partial class SgGanttCanvas : SgJsComponentBase
     }
 
     // Public API
+    /// <summary>Increases the zoom level of the timeline.</summary>
     public async Task ZoomIn()
     {
         if (TimeScale.ZoomLevel < 7)
@@ -420,6 +452,7 @@ public partial class SgGanttCanvas : SgJsComponentBase
         }
     }
 
+    /// <summary>Decreases the zoom level of the timeline.</summary>
     public async Task ZoomOut()
     {
         if (TimeScale.ZoomLevel > 1)
@@ -429,6 +462,7 @@ public partial class SgGanttCanvas : SgJsComponentBase
             await RefreshDataAsync();
         }
     }
+    /// <summary>Scrolls the timeline to center on today's date.</summary>
     public async Task ScrollToToday()
     {
         if (_jsInstance == null) return;
@@ -442,6 +476,7 @@ public partial class SgGanttCanvas : SgJsComponentBase
         await SafeInvokeVoidAsync("scrollTo", _jsInstance, Math.Max(0, x - viewportWidth / 2), null);
     }
 
+    /// <summary>Adjusts the zoom level so all tasks fit within the viewport width.</summary>
     public async Task FitToScreen()
     {
         if (_jsInstance == null || !Tasks.Any()) return;
@@ -472,15 +507,19 @@ public partial class SgGanttCanvas : SgJsComponentBase
         await SafeInvokeVoidAsync("scrollTo", _jsInstance, 0, 0);
     }
 
+    /// <summary>Restores the previous task state from the undo stack.</summary>
     public async Task Undo() => await OnUndoInternal();
+    /// <summary>Reapplies the last undone task state from the redo stack.</summary>
     public async Task Redo() => await OnRedoInternal();
 
+    /// <summary>Toggles the collapsed state of a summary task.</summary>
     public async Task ToggleCollapse(GanttTask task)
     {
         task.IsCollapsed = !task.IsCollapsed;
         await RefreshDataAsync();
     }
 
+    /// <summary>Expands all collapsed summary tasks.</summary>
     public async Task ExpandAll()
     {
         foreach (var task in Tasks.Where(t => t.IsSummary))
@@ -490,6 +529,7 @@ public partial class SgGanttCanvas : SgJsComponentBase
         await RefreshDataAsync();
     }
 
+    /// <summary>Collapses all summary tasks.</summary>
     public async Task CollapseAll()
     {
         foreach (var task in Tasks.Where(t => t.IsSummary))

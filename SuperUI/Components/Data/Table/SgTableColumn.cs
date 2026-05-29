@@ -4,23 +4,40 @@ using System.Reflection;
 
 namespace SuperUI.Components;
 
+/// <summary>Defines a column in the <see cref="SgTable{TItem}"/>.</summary>
+/// <typeparam name="TItem">The type of data items displayed in the table.</typeparam>
 public sealed class SgTableColumn<TItem> : ComponentBase, IDisposable
 {
+    /// <summary>Gets or sets the owning table instance, provided via cascading parameter.</summary>
     [CascadingParameter] public SgTable<TItem>? Owner { get; set; }
 
+    /// <summary>An optional unique key for this column. If not set, a GUID is generated automatically.</summary>
     [Parameter] public string? ColumnKey { get; set; }
+    /// <summary>The display title shown in the column header.</summary>
     [Parameter, EditorRequired] public string Title { get; set; } = default!;
+    /// <summary>Optional function returning the cell value for this column from a data item.</summary>
     [Parameter] public Func<TItem, object?>? Value { get; set; }
+    /// <summary>Optional custom render fragment for cell content. When set, replaces the default value display.</summary>
     [Parameter] public RenderFragment<TItem>? Template { get; set; }
+    /// <summary>Whether the column is sortable by clicking the header.</summary>
     [Parameter] public bool Sortable { get; set; } = true;
+    /// <summary>The column width. Accepts any CSS width value (e.g. "150px", "20%").</summary>
     [Parameter] public string? Width { get; set; }
+    /// <summary>Optional format string for displaying cell values.</summary>
     [Parameter] public string? Format { get; set; }
+    /// <summary>The underlying value type of the column, used for formatting and numeric detection.</summary>
     [Parameter] public Type? ValueType { get; set; }
+    /// <summary>Horizontal alignment for cell content.</summary>
     [Parameter] public SgHAlign HAlign { get; set; } = SgHAlign.Default;
+    /// <summary>Horizontal alignment for the column header text.</summary>
     [Parameter] public SgHAlign HeaderAlign { get; set; } = SgHAlign.Default;
+    /// <summary>Vertical alignment for cell content.</summary>
     [Parameter] public SgVAlign VAlign { get; set; } = SgVAlign.Default;
+    /// <summary>When true, forces numeric-style rendering. When false, forces text-style. When null, auto-detects from data.</summary>
     [Parameter] public bool? NumericStyle { get; set; }
+    /// <summary>Optional function returning additional CSS class(es) for a cell based on the row item.</summary>
     [Parameter] public Func<TItem, string?>? CellClass { get; set; }
+    /// <summary>Optional function returning inline CSS styles for a cell based on the row item.</summary>
     [Parameter] public Func<TItem, string?>? CellStyle { get; set; }
 
     private bool? _isNumericDetected;
@@ -135,6 +152,7 @@ public sealed class SgTableColumn<TItem> : ComponentBase, IDisposable
         return v.ToString() ?? string.Empty;
     }
 
+    /// <summary>Unregisters this column from the owning table.</summary>
     public void Dispose()
     {
         if (!IsSynthetic)

@@ -1,5 +1,6 @@
 namespace SuperUI.Components;
 
+/// <summary>Manages conversation memory for RAG.</summary>
 public class SgRagConversationMemory
 {
     private readonly List<SgRagChatMessage> _messages = new();
@@ -11,6 +12,8 @@ public class SgRagConversationMemory
         _summaryInterval = summaryInterval;
     }
 
+    /// <summary>Adds a message to the conversation history.</summary>
+    /// <param name="message">The message to add.</param>
     public void AddMessage(SgRagChatMessage message)
     {
         _messages.Add(message);
@@ -20,6 +23,9 @@ public class SgRagConversationMemory
 
     public string? GetSummary() => _summary;
 
+    /// <summary>Generates a summary of the conversation.</summary>
+    /// <param name="llmSummarize">A function that takes a prompt and returns a summary.</param>
+    /// <returns>The generated summary.</returns>
     public async Task<string> GenerateSummaryAsync(Func<string, Task<string>> llmSummarize)
     {
         if (_messages.Count < _summaryInterval)
@@ -33,6 +39,7 @@ public class SgRagConversationMemory
         return _summary;
     }
 
+    /// <summary>Clears the conversation memory.</summary>
     public void Clear()
     {
         _messages.Clear();

@@ -112,8 +112,11 @@ public class SgWarehouseLayout
 /// <summary>A single bar in a 3-D bar chart.</summary>
 public class SgThreeBarItem
 {
+    /// <summary>Bar label displayed on the chart axis.</summary>
     public string Label { get; set; } = string.Empty;
+    /// <summary>Numeric value determining bar height.</summary>
     public double Value { get; set; }
+    /// <summary>Optional group/category for color-coding.</summary>
     public string? Group { get; set; }
 }
 

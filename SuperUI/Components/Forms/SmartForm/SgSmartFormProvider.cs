@@ -9,6 +9,7 @@ using SuperUI.Services.Llm;
 
 namespace SuperUI.Components;
 
+/// <summary>Provides smart form metadata generation from C# models or AI prompts.</summary>
 public class SgSmartFormProvider
 {
     private readonly ILlmService? _llm;

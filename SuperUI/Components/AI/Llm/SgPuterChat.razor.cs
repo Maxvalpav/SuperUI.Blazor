@@ -7,13 +7,16 @@ using System.Text;
 
 namespace SuperUI.Components.Llm;
 
+/// <summary>Chat component for Puter.js LLM integration.</summary>
 public partial class SgPuterChat : ComponentBase, IAsyncDisposable
 {
     [Inject] private SgPuterService PuterService { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
+    /// <summary>Custom CSS class applied to the chat container.</summary>
     [Parameter] public string? CssClass { get; set; }
+    /// <summary>Additional HTML attributes applied to the chat container.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private List<SgLlmMessage> _messages = new();

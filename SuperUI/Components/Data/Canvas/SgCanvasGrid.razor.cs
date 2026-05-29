@@ -14,6 +14,10 @@ namespace SuperUI.Components
     using Microsoft.AspNetCore.Components.Web;
     using SuperUI.Enums;
 
+    /// <summary>
+    /// Canvas-based virtual data grid component supporting filtering, sorting, grouping, pagination, selection, and export.
+    /// Renders data on an HTML5 canvas for high-performance display of large datasets.
+    /// </summary>
     public partial class SgCanvasGrid<TItem> : ComponentBase, IAsyncDisposable
     {
         // ── Property accessor cache (per TItem type, shared across all instances) ──
@@ -55,34 +59,58 @@ namespace SuperUI.Components
 
         private static PropertyInfo? GetProp(string name) => GetAccessor(name)?.Info;
 
+        /// <summary>The data source items to display in the canvas grid.</summary>
         [Parameter] public IEnumerable<TItem>? Items { get; set; }
+        /// <summary>The column definitions for the canvas grid.</summary>
         [Parameter] public List<CanvasGridColumn<TItem>>? Columns { get; set; }
+        /// <summary>The height of the canvas grid container.</summary>
         [Parameter] public string Height { get; set; } = "400px";
+        /// <summary>The width of the canvas grid container.</summary>
         [Parameter] public string Width { get; set; } = "100%";
+        /// <summary>The height of each data row in pixels.</summary>
         [Parameter] public int RowHeight { get; set; } = 35;
+        /// <summary>The height of the header row in pixels.</summary>
         [Parameter] public int HeaderHeight { get; set; } = 40;
+        /// <summary>Whether to automatically generate columns from public properties of <typeparamref name="TItem"/>.</summary>
         [Parameter] public bool AutoGenerateColumns { get; set; } = false;
+        /// <summary>Whether to show the status bar with item count and aggregate information.</summary>
         [Parameter] public bool ShowStatus { get; set; } = true;
+        /// <summary>Whether to show a selection checkbox column.</summary>
         [Parameter] public bool ShowSelectionColumn { get; set; } = true;
+        /// <summary>Whether to show the toolbar with filtering, column chooser, and export buttons.</summary>
         [Parameter] public bool ShowToolbar { get; set; } = true;
+        /// <summary>Whether to show the column chooser button in the toolbar.</summary>
         [Parameter] public bool ShowColumnChooser { get; set; } = true;
+        /// <summary>Whether to show the export button in the toolbar.</summary>
         [Parameter] public bool ShowExport { get; set; } = true;
 
+        /// <summary>Whether row selection is enabled.</summary>
         [Parameter] public bool AllowSelection { get; set; } = true;
+        /// <summary>Whether multiple rows can be selected at once.</summary>
         [Parameter] public bool MultiSelect { get; set; } = true;
+        /// <summary>Fired when a data row is clicked.</summary>
         [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
+        /// <summary>Fired when the selected items collection changes.</summary>
         [Parameter] public EventCallback<List<TItem>> SelectedItemsChanged { get; set; }
 
+        /// <summary>Fired when the current page changes.</summary>
         [Parameter] public EventCallback<int> CurrentPageChanged { get; set; }
+        /// <summary>The JS runtime used for interop with the canvas rendering module.</summary>
         [Inject] public IJSRuntime JSRuntime { get; set; } = default!;
+        /// <summary>The localizer for UI text.</summary>
         [Inject] public ISuperUILocalizer Localizer { get; set; } = default!;
+        /// <summary>Whether the grid is in a loading state, showing a spinner.</summary>
         [Parameter] public bool Loading { get; set; }
         
         // Pagination parameters
+        /// <summary>Whether paging is enabled.</summary>
         [Parameter] public bool EnablePaging { get; set; } = false;
+        /// <summary>The number of items per page when paging is enabled.</summary>
         [Parameter] public int PageSize { get; set; } = 100;
         private int _currentPage = 1;
 
+        /// <summary>Exports the current grid data to a CSV file and triggers a browser download.</summary>
+        /// <param name="fileName">Optional file name for the download. If null, a timestamped name is generated.</param>
         public async Task ExportToCsvAsync(string? fileName = null)
         {
             if (_module is null || _isDisposed) return;
@@ -107,6 +135,8 @@ namespace SuperUI.Components
             catch (TaskCanceledException) { }
         }
 
+        /// <summary>Exports the current grid data to an Excel (HTML table) file and triggers a browser download.</summary>
+        /// <param name="fileName">Optional file name for the download. If null, a timestamped name is generated.</param>
         public async Task ExportExcelAsync(string? fileName = null)
         {
             if (_module is null || _isDisposed) return;
@@ -890,6 +920,7 @@ namespace SuperUI.Components
                 o is int or long or decimal or double or float or short or byte or sbyte or uint or ulong or ushort;
         }
 
+        /// <summary>Clears the current sort state and refreshes the grid.</summary>
         public async Task ClearSort()
         {
             _sortProperty = null;
@@ -898,6 +929,8 @@ namespace SuperUI.Components
             await UpdateData();
         }
 
+        /// <summary>Handles a header cell click to toggle sorting on the clicked column.</summary>
+        /// <param name="property">The property name of the clicked column.</param>
         [JSInvokable]
         public async Task OnHeaderClick(string property)
         {
@@ -919,6 +952,7 @@ namespace SuperUI.Components
             await UpdateData();
         }
 
+        /// <summary>Toggles selection of all visible rows.</summary>
         [JSInvokable]
         public async Task OnToggleSelectAll()
         {
@@ -972,6 +1006,12 @@ namespace SuperUI.Components
             await UpdateData(); // fallback для группировки
         }
 
+        /// <summary>Shows the filter popup for the specified column at the given coordinates.</summary>
+        /// <param name="property">The column property to filter.</param>
+        /// <param name="x">The X coordinate for the popup position.</param>
+        /// <param name="y">The Y coordinate for the popup position.</param>
+        /// <param name="containerWidth">Optional width of the container for positioning.</param>
+        /// <param name="containerHeight">Optional height of the container for positioning.</param>
         [JSInvokable]
         public async Task OnShowFilter(string property, double x, double y, double containerWidth = 0, double containerHeight = 0)
         {
@@ -1041,6 +1081,8 @@ namespace SuperUI.Components
             await InvokeAsync(StateHasChanged);
         }
 
+        /// <summary>Handles column resize events from the JS canvas module.</summary>
+        /// <param name="columnInfos">A list of column resize information with updated widths.</param>
         [JSInvokable]
         public async Task OnColumnResized(List<ColumnResizeInfo> columnInfos)
         {
@@ -1064,9 +1106,12 @@ namespace SuperUI.Components
             await InvokeAsync(StateHasChanged);
         }
 
+        /// <summary>Contains information about a column resize operation.</summary>
         public class ColumnResizeInfo
         { 
+            /// <summary>The property name of the resized column.</summary>
             public string Property { get; set; } = "";
+            /// <summary>The new width of the column after resize.</summary>
             public double Width { get; set; }
         }
 
@@ -1284,6 +1329,8 @@ namespace SuperUI.Components
             await UpdateData();
         }
 
+        /// <summary>Toggles grouping by the specified column property.</summary>
+        /// <param name="property">The column property to group by.</param>
         [JSInvokable]
         public async Task ToggleGroupBy(string property)
         {
@@ -1293,6 +1340,8 @@ namespace SuperUI.Components
             await UpdateData();
         }
 
+        /// <summary>Toggles collapse state of a group with the given path.</summary>
+        /// <param name="path">The group path to collapse or expand.</param>
         [JSInvokable]
         public async Task ToggleGroupCollapsed(string path)
         {
@@ -1504,6 +1553,13 @@ var prefix = col.Aggregate switch
             }
         }
 
+        /// <summary>Handles a row double-click from JS to begin inline editing of a cell.</summary>
+        /// <param name="index">The row index that was double-clicked.</param>
+        /// <param name="property">The column property of the clicked cell.</param>
+        /// <param name="x">The X coordinate of the click.</param>
+        /// <param name="y">The Y coordinate of the click.</param>
+        /// <param name="width">The width of the cell.</param>
+        /// <param name="height">The height of the cell.</param>
         [JSInvokable]
         public Task OnRowDoubleClickInternal(int index, string property, double x, double y, int width, int height)
         {
@@ -1571,6 +1627,10 @@ var prefix = col.Aggregate switch
             }
         }
 
+        /// <summary>Handles a row click from JS, managing selection state multi-select with shift/ctrl modifiers.</summary>
+        /// <param name="index">The row index that was clicked.</param>
+        /// <param name="shift">Whether the shift key was held.</param>
+        /// <param name="ctrl">Whether the ctrl key was held.</param>
         [JSInvokable]
         public async Task OnRowClickInternal(int index, bool shift, bool ctrl)
         {
@@ -1695,6 +1755,7 @@ var prefix = col.Aggregate switch
             catch (OperationCanceledException) { }
         }
 
+        /// <summary>Releases JS module references and cancels pending operations.</summary>
         public async ValueTask DisposeAsync()
         {
             if (_isDisposed) return;
@@ -1718,22 +1779,38 @@ var prefix = col.Aggregate switch
         }
     }
 
+    /// <summary>Defines a column in the <see cref="SgCanvasGrid{TItem}"/>.</summary>
+    /// <typeparam name="TItemCol">The type of the data item.</typeparam>
     public class CanvasGridColumn<TItemCol>
     {
+        /// <summary>The display title of the column header.</summary>
         public string Title { get; set; } = string.Empty;
+        /// <summary>The property name on the data item bound to this column.</summary>
         public string Property { get; set; } = string.Empty;
+        /// <summary>The column width in pixels.</summary>
         public int Width { get; set; } = 150;
+        /// <summary>Optional format string for displaying cell values (e.g. "N2", "{0:N2} ₽").</summary>
         public string? Format { get; set; }
+        /// <summary>Whether this column is a system column (selection checkbox, etc.) and should be treated specially.</summary>
         public bool IsSystem { get; set; } = false;
-        public string Align { get; set; } = "left"; // "left", "center", "right"
+        /// <summary>Text alignment for cell content: "left", "center", or "right".</summary>
+        public string Align { get; set; } = "left";
+        /// <summary>Whether the column is sortable by clicking the header.</summary>
         public bool Sortable { get; set; } = true;
+        /// <summary>Whether the column supports filtering.</summary>
         public bool Filterable { get; set; } = true;
+        /// <summary>Whether the column is pinned (frozen) to the left side.</summary>
         public bool Pinned { get; set; } = false;
+        /// <summary>Whether the column is hidden from view.</summary>
         public bool Hidden { get; set; } = false;
+        /// <summary>Whether cells in this column can be edited inline.</summary>
         public bool Editable { get; set; } = false;
+        /// <summary>Callback invoked when a cell value is changed through inline editing.</summary>
         [JsonIgnore]
         public Action<TItemCol, object?>? OnValueChanged { get; set; }
+        /// <summary>The aggregate function to compute for this column in the status bar.</summary>
         public Aggregate Aggregate { get; set; } = Aggregate.None;
+        /// <summary>The underlying value type of the column, used for formatting and numeric operations.</summary>
         [JsonIgnore]
         public Type? ValueType { get; set; }
     }

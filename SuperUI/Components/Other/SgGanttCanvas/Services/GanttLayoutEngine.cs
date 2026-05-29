@@ -5,8 +5,10 @@ using SuperUI.Components.SgGanttCanvas.Models;
 
 namespace SuperUI.Components.SgGanttCanvas.Services;
 
+/// <summary>Calculates pixel positions and dimensions for Gantt chart elements based on zoom level and time scale.</summary>
 public class GanttLayoutEngine
 {
+    /// <summary>Returns the time unit and column width for a given zoom level.</summary>
     public (TimeUnit BottomUnit, int ColumnWidth) GetZoomSettings(int level)
     {
         return level switch
@@ -22,6 +24,7 @@ public class GanttLayoutEngine
         };
     }
 
+    /// <summary>Converts a DateTime to a pixel X coordinate relative to the project start.</summary>
     public double GetX(DateTime date, DateTime projectStart, int level)
     {
         var settings = GetZoomSettings(level);
@@ -40,6 +43,7 @@ public class GanttLayoutEngine
         };
     }
 
+    /// <summary>Converts a TimeSpan duration to a pixel width at the given zoom level.</summary>
     public double GetWidth(TimeSpan duration, int level)
     {
         var settings = GetZoomSettings(level);

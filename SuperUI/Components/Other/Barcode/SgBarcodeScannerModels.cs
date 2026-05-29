@@ -6,6 +6,7 @@ namespace SuperUI.Components;
 // SgBarcodeFormat — moved to SuperUI.Enums.SgBarcodeFormat
 
 // ── Event arguments ───────────────────────────────────────────────────────────
+/// <summary>Event arguments for a successful barcode scan.</summary>
 public class SgBarcodeReceivedEventArgs : EventArgs
 {
     /// <summary>Scanned barcode/QR code text.</summary>

@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 
 namespace SuperUI.Components;
 
-// ── KV-пара ──────────────────────────────────────────────────
+/// <summary>A key-value pair with enable toggle and optional comment. Used for headers, query params, form fields, and environment variables.</summary>
 public class KvPair
 {
     public bool Enabled { get; set; } = true;
@@ -19,7 +19,7 @@ public class KvPair
     }
 }
 
-// ── Одна вкладка запроса ─────────────────────────────────────
+/// <summary>Represents a single API request tab with URL, method, headers, body, auth, and test scripts.</summary>
 public class RequestTab
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -46,7 +46,7 @@ public class RequestTab
     public ResponseSnapshot? LastResponse { get; set; }
 }
 
-// ── Снапшот ответа ───────────────────────────────────────────
+/// <summary>Captures a snapshot of an HTTP response including status, headers, body, timing, test results, and parsed grid data.</summary>
 public class ResponseSnapshot
 {
     public int Status { get; set; }
@@ -67,7 +67,7 @@ public class ResponseSnapshot
     public List<RedirectStep> Redirects { get; set; } = new();
 }
 
-// ── Результат теста ──────────────────────────────────────────
+/// <summary>Result of a single test assertion run against a response.</summary>
 public class TestResult
 {
     public string Name { get; set; } = "";
@@ -76,14 +76,14 @@ public class TestResult
     public long DurationMs { get; set; }
 }
 
-// ── Шаг redirect ─────────────────────────────────────────────
+/// <summary>A single redirect hop captured during request execution.</summary>
 public class RedirectStep
 {
     public int Status { get; set; }
     public string Location { get; set; } = "";
 }
 
-// ── Сохранённый запрос в коллекции ───────────────────────────
+/// <summary>A saved API request stored within a collection.</summary>
 public class SavedRequest
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -94,7 +94,7 @@ public class SavedRequest
     public RequestTab Tab { get; set; } = new();
 }
 
-// ── Коллекция ─────────────────────────────────────────────────
+/// <summary>A named collection of saved API requests.</summary>
 public class Collection
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -104,7 +104,7 @@ public class Collection
     public List<SavedRequest> Requests { get; set; } = new();
 }
 
-// ── Запись в истории ─────────────────────────────────────────
+/// <summary>A single history entry recording a previous API request and its response metadata.</summary>
 public class HistoryEntry
 {
     public string Method { get; set; } = "";
@@ -116,7 +116,7 @@ public class HistoryEntry
     public string RequestId { get; set; } = Guid.NewGuid().ToString("N")[..8];
 }
 
-// ── Окружение ────────────────────────────────────────────────
+/// <summary>A named environment containing variables used for request parameter substitution.</summary>
 public class ApiEnvironment
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -124,7 +124,7 @@ public class ApiEnvironment
     public List<KvPair> Variables { get; set; } = new();
 }
 
-// ── Mock-endpoint ────────────────────────────────────────────
+/// <summary>A mock endpoint that intercepts matching requests and returns a predefined response.</summary>
 public class MockEndpoint
 {
     public bool Enabled { get; set; } = true;
@@ -137,7 +137,7 @@ public class MockEndpoint
     public int HitCount { get; set; } = 0;
 }
 
-// ── WebSocket-сообщение ──────────────────────────────────────
+/// <summary>A single WebSocket message (sent or received).</summary>
 public class WsMessage
 {
     public string Direction { get; set; } = "recv";
@@ -146,7 +146,7 @@ public class WsMessage
     public bool IsJson { get; set; }
 }
 
-// ── Статистика ───────────────────────────────────────────────
+/// <summary>Statistics for a single API request (label, duration, status, size, success).</summary>
 public class RequestStat
 {
     public string Label { get; set; } = "";
@@ -156,7 +156,7 @@ public class RequestStat
     public bool Success { get; set; }
 }
 
-// ── Результат Runner ─────────────────────────────────────────
+/// <summary>Result of a single iteration during a collection runner execution.</summary>
 public class RunnerResult
 {
     public int Iteration { get; set; }

@@ -55,25 +55,37 @@ public partial class SgCol : ComponentBase
     /// <summary>If <c>true</c>, shows pointer cursor on hover.</summary>
     [Parameter] public bool Clickable { get; set; }
 
-    // Responsive spans
+    /// <summary>Column span on xs breakpoint (≤575px).</summary>
     [Parameter] public int Xs { get; set; }
+    /// <summary>Column span on sm breakpoint (≥576px).</summary>
     [Parameter] public int Sm { get; set; }
+    /// <summary>Column span on md breakpoint (≥768px).</summary>
     [Parameter] public int Md { get; set; }
+    /// <summary>Column span on lg breakpoint (≥992px).</summary>
     [Parameter] public int Lg { get; set; }
+    /// <summary>Column span on xl breakpoint (≥1200px).</summary>
     [Parameter] public int Xl { get; set; }
 
-    // Responsive offsets
+    /// <summary>Responsive offset on xs breakpoint.</summary>
     [Parameter] public int OffsetXs { get; set; }
+    /// <summary>Responsive offset on sm breakpoint (≥576px).</summary>
     [Parameter] public int OffsetSm { get; set; }
+    /// <summary>Responsive offset on md breakpoint (≥768px).</summary>
     [Parameter] public int OffsetMd { get; set; }
+    /// <summary>Responsive offset on lg breakpoint (≥992px).</summary>
     [Parameter] public int OffsetLg { get; set; }
+    /// <summary>Responsive offset on xl breakpoint (≥1200px).</summary>
     [Parameter] public int OffsetXl { get; set; }
 
-    // Responsive hidden — hides the column at specific breakpoints
+    /// <summary>Hides the column on xs breakpoint.</summary>
     [Parameter] public bool HideXs { get; set; }
+    /// <summary>Hides the column on sm breakpoint.</summary>
     [Parameter] public bool HideSm { get; set; }
+    /// <summary>Hides the column on md breakpoint.</summary>
     [Parameter] public bool HideMd { get; set; }
+    /// <summary>Hides the column on lg breakpoint.</summary>
     [Parameter] public bool HideLg { get; set; }
+    /// <summary>Hides the column on xl breakpoint.</summary>
     [Parameter] public bool HideXl { get; set; }
 
     /// <summary>Additional CSS classes.</summary>

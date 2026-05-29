@@ -1,5 +1,6 @@
 namespace SuperUI.Components;
 
+/// <summary>Frequency weighting curve for audio level measurement (A, C, or Z).</summary>
 public enum SgWeightingCurve { A, C, Z }
 
 public sealed class SgOctaveBand

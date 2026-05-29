@@ -32,6 +32,7 @@ public sealed class OpenAiCompatibleLlmExtractionClient : ILlmExtractionClient
 
     public OpenAiCompatibleLlmExtractionClient(HttpClient http) => _http = http;
 
+    /// <summary>Sends the document to the LLM and parses the JSON fields response.</summary>
     public async Task<List<SgDocumentField>> ExtractFieldsAsync(
         SgLlmEndpointConfig config,
         SgDocumentSource source,
@@ -78,6 +79,7 @@ public sealed class OpenAiCompatibleLlmExtractionClient : ILlmExtractionClient
         return ParseFields(content);
     }
 
+    /// <summary>Fetches the list of available models from the provider's REST API.</summary>
     public async Task<List<SgLlmModelDescriptor>> ListModelsAsync(SgLlmEndpointConfig config, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(config);

@@ -24,6 +24,7 @@ public class ScriptRuntime
         _env = env;
     }
 
+    /// <summary>Registers and executes a test assertion. Results are added to <see cref="Results"/>.</summary>
     public void Test(string name, Func<bool> predicate)
     {
         var sw = Stopwatch.StartNew();
@@ -37,6 +38,7 @@ public class ScriptRuntime
 
     public Expectation Expect(object? value) => new(value, _results);
 
+    /// <summary>Sets an environment variable value.</summary>
     public void EnvSet(string key, string value)
     {
         if (_env is null) return;
@@ -48,6 +50,7 @@ public class ScriptRuntime
     public string EnvGet(string key) =>
         _env?.Variables.FirstOrDefault(v => v.Key == key)?.Value ?? "";
 
+    /// <summary>Sets a request header. Adds the header if it does not already exist.</summary>
     public void SetHeader(string key, string value)
     {
         var h = _request.Headers.FirstOrDefault(h => h.Key == key);
@@ -69,6 +72,7 @@ public class ScriptRuntime
 
     public void Log(string msg) => _logs.Add($"[{DateTime.Now:HH:mm:ss.fff}] {msg}");
 
+    /// <summary>Fluent assertion helper returned by <see cref="Expect"/> for chaining test expectations.</summary>
     public class Expectation
     {
         private readonly object? _actual;
@@ -81,6 +85,7 @@ public class ScriptRuntime
             _results = results;
         }
 
+        /// <summary>Sets a custom name for the next assertion.</summary>
         public Expectation Named(string name) { _name = name; return this; }
 
         public void ToBe(object? expected) =>

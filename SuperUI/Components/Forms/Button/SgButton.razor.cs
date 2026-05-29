@@ -4,6 +4,7 @@ using SuperUI.Enums;
 
 namespace SuperUI.Components;
 
+/// <summary>Represents a versatile button component with support for loading, progress, icons, and danger confirmation.</summary>
 public partial class SgButton
 {
     private RenderFragment RenderContent => __builder =>

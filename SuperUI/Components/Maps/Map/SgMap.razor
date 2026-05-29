@@ -48,15 +48,25 @@
     protected override string ModulePath => "./_content/SuperUI/sg-map.js";
     protected override string IdPrefix   => "sg-map";
 
+    /// <summary>Map configuration options (center, zoom, controls, tile layer).</summary>
     [Parameter] public SgMapOptions? Options { get; set; }
+    /// <summary>Collection of markers to display on the map.</summary>
     [Parameter] public IEnumerable<SgMapMarker>? Markers { get; set; }
+    /// <summary>Collection of polylines to draw on the map.</summary>
     [Parameter] public IEnumerable<SgMapPolyline>? Polylines { get; set; }
+    /// <summary>Collection of polygons to draw on the map.</summary>
     [Parameter] public IEnumerable<SgMapPolygon>? Polygons { get; set; }
+    /// <summary>Height of the map container.</summary>
     [Parameter] public string Height { get; set; } = "400px";
+    /// <summary>Width of the map container.</summary>
     [Parameter] public string Width { get; set; } = "100%";
+    /// <summary>Sources configuration (tile URLs, API keys).</summary>
     [Parameter] public SgMapSources? Sources { get; set; }
+    /// <summary>Callback invoked when a marker is clicked.</summary>
     [Parameter] public EventCallback<SgMapMarkerClickEventArgs> OnMarkerClick { get; set; }
+    /// <summary>Callback invoked when the map background is clicked.</summary>
     [Parameter] public EventCallback<SgMapClickEventArgs> OnMapClick { get; set; }
+    /// <summary>Callback invoked when the map view (center/zoom) changes.</summary>
     [Parameter] public EventCallback<SgMapViewChangedEventArgs> OnViewChanged { get; set; }
 
     protected override void OnParametersSet()
@@ -154,6 +164,9 @@
         };
     }
 
+    /// <summary>
+    /// Refreshes markers on the map with the current <see cref="Markers"/> collection.
+    /// </summary>
     public async Task RefreshMarkersAsync()
     {
         if (!IsInteractive || !_ready) { _refreshPending = true; return; }
@@ -161,12 +174,21 @@
         CaptureSnapshot();
     }
 
+    /// <summary>
+    /// Sets the map center to the specified coordinates.
+    /// </summary>
     public async Task SetCenterAsync(double lon, double lat, int? zoom = null) =>
         await SafeInvokeVoidAsync("setCenter", ResolvedId, lon, lat, zoom);
 
+    /// <summary>
+    /// Fits the map view to encompass all markers.
+    /// </summary>
     public async Task FitToMarkersAsync() =>
         await SafeInvokeVoidAsync("fitToMarkers", ResolvedId);
 
+    /// <summary>
+    /// Gets the current map center and zoom level.
+    /// </summary>
     public async Task<SgMapViewChangedEventArgs?> GetCenterAsync()
     {
         return await SafeInvokeAsync<SgMapViewChangedEventArgs>("getCenter", ResolvedId);
@@ -175,6 +197,9 @@
     public async Task ExportPngAsync() =>
         await SafeInvokeVoidAsync("exportPng", ResolvedId);
 
+    /// <summary>
+    /// Draws a route polyline on the map.
+    /// </summary>
     public async Task DrawRouteAsync(string routeId, IEnumerable<SgMapCoord> coordinates,
         string color = "#3b82f6", double width = 4, bool dashed = false,
         bool noMarkers = false, bool noFit = false, int? routeIndex = null) =>
@@ -186,9 +211,15 @@
     public async Task FitToBboxAsync(double minLon, double minLat, double maxLon, double maxLat) =>
         await SafeInvokeVoidAsync("fitToBbox", ResolvedId, minLon, minLat, maxLon, maxLat);
 
+    /// <summary>
+    /// Removes a route polyline from the map.
+    /// </summary>
     public async Task ClearRouteAsync(string routeId) =>
         await SafeInvokeVoidAsync("clearRoute", ResolvedId, routeId);
 
+    /// <summary>
+    /// Clears the error state and re-initializes the map.
+    /// </summary>
     public async Task RetryAsync()
     {
         _error = null; _ready = false;

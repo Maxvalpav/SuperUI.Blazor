@@ -10,6 +10,8 @@ using SuperUI.Base.ComponentBases;
 
 namespace SuperUI.Components;
 
+/// <summary>A lightweight table component with sorting, pagination, selection, column resize/reorder, and export support.</summary>
+/// <typeparam name="TItem">The type of data items displayed in the table.</typeparam>
 public partial class SgTable<TItem> : SgComponentBase
 {
     private readonly List<SgTableColumn<TItem>> _columns = new();
@@ -37,37 +39,69 @@ public partial class SgTable<TItem> : SgComponentBase
 
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
+    /// <summary>Whether to show a loading indicator.</summary>
     [Parameter] public bool Loading { get; set; }
+    /// <summary>The data source items to display.</summary>
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
+    /// <summary>The content containing <see cref="SgTableColumn{TItem}"/> definitions.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>The title displayed in the table toolbar.</summary>
     [Parameter] public string? Title { get; set; }
+    /// <summary>Whether to show the search input in the toolbar.</summary>
     [Parameter] public bool ShowSearch { get; set; } = true;
+    /// <summary>Placeholder text for the search input.</summary>
     [Parameter] public string? SearchPlaceholder { get; set; }
+    /// <summary>The height of the table container.</summary>
     [Parameter] public string? Height { get; set; }
+    /// <summary>The maximum height of the table container before scrolling.</summary>
     [Parameter] public string MaxHeight { get; set; } = "70vh";
+    /// <summary>Whether the table should take the full width of its container.</summary>
     [Parameter] public bool FullWidth { get; set; }
+    /// <summary>Text displayed when the table has no data.</summary>
     [Parameter] public string? EmptyText { get; set; }
+    /// <summary>Whether to automatically generate columns from public properties of <typeparamref name="TItem"/>.</summary>
     [Parameter] public bool AutoGenerateColumns { get; set; }
+    /// <summary>Optional function returning additional CSS class(es) for a row.</summary>
     [Parameter] public Func<TItem, string?>? RowClass { get; set; }
+    /// <summary>Optional function returning inline CSS styles for a row.</summary>
     [Parameter] public Func<TItem, string?>? RowStyle { get; set; }
+    /// <summary>Whether to show a row-number column.</summary>
     [Parameter] public bool ShowRowNumbers { get; set; }
+    /// <summary>Whether to enable pagination.</summary>
     [Parameter] public bool EnablePaging { get; set; }
+    /// <summary>The number of rows per page.</summary>
     [Parameter] public int PageSize { get; set; } = 20;
+    /// <summary>Fired when the page size changes.</summary>
     [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+    /// <summary>The current page number (1-based).</summary>
     [Parameter] public int PageNumber { get; set; } = 1;
+    /// <summary>Fired when the page number changes.</summary>
     [Parameter] public EventCallback<int> PageNumberChanged { get; set; }
+    /// <summary>Whether row selection is enabled.</summary>
     [Parameter] public bool AllowSelection { get; set; }
+    /// <summary>Whether multiple rows can be selected at once.</summary>
     [Parameter] public bool AllowMultiSelect { get; set; }
+    /// <summary>The currently selected items.</summary>
     [Parameter] public List<TItem> SelectedItems { get; set; } = new();
+    /// <summary>Fired when the selected items change.</summary>
     [Parameter] public EventCallback<List<TItem>> SelectedItemsChanged { get; set; }
+    /// <summary>Fired when a row is clicked.</summary>
     [Parameter] public EventCallback<TItem> RowClicked { get; set; }
+    /// <summary>Fired when a row is double-clicked.</summary>
     [Parameter] public EventCallback<TItem> RowDoubleClicked { get; set; }
+    /// <summary>Whether to show the export button in the toolbar.</summary>
     [Parameter] public bool ShowExport { get; set; }
+    /// <summary>Whether to show the CSV export option.</summary>
     [Parameter] public bool ShowExportCsv { get; set; }
+    /// <summary>Whether to show the Excel export option.</summary>
     [Parameter] public bool ShowExportExcel { get; set; }
+    /// <summary>Whether to allow the user to change the page size.</summary>
     [Parameter] public bool AllowPageSizeChange { get; set; }
+    /// <summary>Available page size options for the page size selector.</summary>
     [Parameter] public int[] PageSizeOptions { get; set; } = new[] { 10, 20, 50, 100 };
+    /// <summary>Whether column widths can be resized by dragging the column borders.</summary>
     [Parameter] public bool AllowColumnResize { get; set; } = true;
+    /// <summary>Whether columns can be reordered by drag-and-drop.</summary>
     [Parameter] public bool AllowColumnReorder { get; set; } = true;
 
     internal List<SgTableHeaderGroup<TItem>> HeaderGroups => _headerGroups;

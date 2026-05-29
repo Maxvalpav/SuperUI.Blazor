@@ -24,6 +24,7 @@ public sealed class PassthroughDocumentSaver : IDocumentSaver
     public bool CanHandle(SgDocumentExtractionResult result) =>
         result.Source is { } s && (s.Kind == SgDocumentKind.Pdf || s.Kind == SgDocumentKind.Image);
 
+    /// <summary>Returns the original document unchanged (passthrough — no native library available for true round-trip).</summary>
     public Task<SgDocumentSource> SaveAsync(
         SgDocumentExtractionResult result,
         IReadOnlyList<SgDocumentField> editedFields,

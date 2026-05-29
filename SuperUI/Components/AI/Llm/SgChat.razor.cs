@@ -8,6 +8,7 @@ using System.Text;
 
 namespace SuperUI.Components.Llm;
 
+/// <summary>Represents a chat component for LLM interaction.</summary>
 public partial class SgChat : ComponentBase, IAsyncDisposable
 {
     [Inject] private ILlmService LlmService { get; set; } = default!;
@@ -16,7 +17,9 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
     [Parameter] public string? Title { get; set; } = "AI Assistant";
+    /// <summary>Custom CSS class applied to the chat container.</summary>
     [Parameter] public string? CssClass { get; set; }
+    /// <summary>Additional HTML attributes applied to the chat container.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private List<SgChatSession> _sessions = new();

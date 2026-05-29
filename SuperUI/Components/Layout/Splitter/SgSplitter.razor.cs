@@ -7,6 +7,10 @@ using SuperUI.Enums;
 
 namespace SuperUI.Components;
 
+/// <summary>
+/// Splitter component that divides space between two or more panes with a draggable resize bar.
+/// Supports horizontal and vertical orientation, collapsible panes, keyboard resizing, and snap-to-grid.
+/// </summary>
 public partial class SgSplitter
 {
     protected override string ModulePath => "./_content/SuperUI/superui-splitter.js";
@@ -22,23 +26,41 @@ public partial class SgSplitter
     private bool _needsAttach = true;
     private bool _interactiveReady;
 
+    /// <summary>Content for the first (primary) pane.</summary>
     [Parameter] public RenderFragment? First { get; set; }
+    /// <summary>Content for the second (secondary) pane.</summary>
     [Parameter] public RenderFragment? Second { get; set; }
+    /// <summary>Orientation of the splitter (Horizontal or Vertical).</summary>
     [Parameter] public SgOrientation Orientation { get; set; } = SgOrientation.Horizontal;
+    /// <summary>If true, sets the splitter to vertical orientation (overrides Orientation).</summary>
     [Parameter] public bool Vertical { get; set; }
+    /// <summary>Initial size of the first pane in pixels.</summary>
     [Parameter] public double Size { get; set; } = 240;
+    /// <summary>Callback invoked when the splitter size changes.</summary>
     [Parameter] public EventCallback<double> SizeChanged { get; set; }
+    /// <summary>Minimum size of the first pane in pixels.</summary>
     [Parameter] public double Min { get; set; } = 80;
+    /// <summary>Maximum size of the first pane in pixels.</summary>
     [Parameter] public double Max { get; set; } = 1200;
+    /// <summary>Whether to show the visible drag handle on the resize bar.</summary>
     [Parameter] public bool ShowHandle { get; set; } = true;
+    /// <summary>Disables the splitter, preventing resizing.</summary>
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>Allows collapsing and expanding the primary pane via buttons on the resize bar.</summary>
     [Parameter] public bool Collapsible { get; set; }
+    /// <summary>Content for multi-pane mode. Overrides First/Second when used with SgSplitterPane children.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Enables keyboard-based resizing with arrow keys.</summary>
     [Parameter] public bool KeyboardResize { get; set; } = true;
+    /// <summary>Step size in pixels for keyboard and programmatic resizing.</summary>
     [Parameter] public double Step { get; set; } = 10;
+    /// <summary>If set, snaps the pane size to the nearest multiple of this value.</summary>
     [Parameter] public double? SnapToGrid { get; set; }
+    /// <summary>Callback invoked when resize starts.</summary>
     [Parameter] public EventCallback OnResizeStart { get; set; }
+    /// <summary>Callback invoked when resize ends, providing the final pane sizes.</summary>
     [Parameter] public EventCallback<double[]> OnResizeEnd { get; set; }
+    /// <summary>Tooltip text shown when hovering the drag handle.</summary>
     [Parameter] public string? HandleTooltip { get; set; }
 
     private bool IsVertical => Orientation == SgOrientation.Vertical || Vertical;

@@ -5,8 +5,10 @@ using SuperUI.Components.SgGanttCanvas.Models;
 
 namespace SuperUI.Components.SgGanttCanvas.Services;
 
+/// <summary>Computes the critical path through a set of tasks and dependencies using forward/backward pass.</summary>
 public class GanttCriticalPathEngine
 {
+    /// <summary>Calculates the set of task IDs that lie on the critical path.</summary>
     public List<string> CalculateCriticalPath(List<GanttTask> tasks, List<GanttDependency> dependencies)
     {
         if (tasks == null || !tasks.Any()) return new List<string>();

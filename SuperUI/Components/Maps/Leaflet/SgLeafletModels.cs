@@ -222,8 +222,11 @@ public class SgLeafletRouteResult
     public double? DurationMin      => Best?.DurationMin;
 }
 
+/// <summary>An individual turn-by-turn step in a Leaflet route.</summary>
 public class SgLeafletRouteStep
 {
+    /// <summary>Text instruction for this step.</summary>
     public string Instruction { get; set; } = string.Empty;
+    /// <summary>Distance description for this step.</summary>
     public string Distance    { get; set; } = string.Empty;
 }

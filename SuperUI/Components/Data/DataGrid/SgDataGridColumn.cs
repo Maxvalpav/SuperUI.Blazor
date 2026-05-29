@@ -3,29 +3,49 @@ using SuperUI.Enums;
 
 namespace SuperUI.Components;
 
+/// <summary>Defines a column in the <see cref="SgDataGrid{TItem}"/>.</summary>
+/// <typeparam name="TItem">The type of data items displayed in the grid.</typeparam>
 public sealed class SgDataGridColumn<TItem> : ComponentBase, IDisposable where TItem : notnull
 {
+    /// <summary>Gets or sets the owning data grid instance, provided via cascading parameter.</summary>
     [CascadingParameter] public SgDataGrid<TItem>? Owner { get; set; }
 
+    /// <summary>An optional unique key for this column. If not set, a GUID is generated automatically.</summary>
     [Parameter] public string? ColumnKey { get; set; }
+    /// <summary>The display title shown in the column header.</summary>
     [Parameter, EditorRequired] public string Title { get; set; } = default!;
+    /// <summary>Optional function returning the cell value for this column from a data item. If not set, the column attempts to resolve the value from a property matching the <see cref="Title"/>.</summary>
     [Parameter] public Func<TItem, object?>? Value { get; set; }
+    /// <summary>Optional custom render fragment for cell content. When set, replaces the default value display.</summary>
     [Parameter] public RenderFragment<TItem>? Template { get; set; }
+    /// <summary>Whether the column is sortable by clicking the header.</summary>
     [Parameter] public bool Sortable { get; set; } = true;
+    /// <summary>Whether the column supports filtering via the filter menu.</summary>
     [Parameter] public bool Filterable { get; set; } = true;
+    /// <summary>Whether the column is pinned (frozen) to the left side of the grid.</summary>
     [Parameter] public bool Pinned { get; set; }
+    /// <summary>Whether the column is hidden from view.</summary>
     [Parameter] public bool Hidden { get; set; }
+    /// <summary>Whether the column width can be resized by the user.</summary>
     [Parameter] public bool Resizable { get; set; } = true;
+    /// <summary>Whether the column can be reordered by drag-and-drop.</summary>
     [Parameter] public bool Reorderable { get; set; } = true;
+    /// <summary>Whether the grid is initially grouped by this column.</summary>
     [Parameter] public bool GroupBy { get; set; }
+    /// <summary>Whether cells in this column can be edited inline.</summary>
     [Parameter] public bool Editable { get; set; }
+    /// <summary>Callback invoked when a cell value is changed through inline editing.</summary>
     [Parameter] public Action<TItem, object?>? OnValueChanged { get; set; }
+    /// <summary>The column width. Accepts any CSS width value (e.g. "150px", "20%", "auto").</summary>
     [Parameter] public string? Width { get; set; }
+    /// <summary>Optional format string for displaying cell values (e.g. "N2", "C", "{0:N2} ₽").</summary>
     [Parameter] public string? Format { get; set; }
+    /// <summary>The aggregate function to compute for this column in the status bar.</summary>
     [Parameter] public Aggregate Aggregate { get; set; } = Aggregate.None;
 
     /// <summary>Sets aggregate without going through Blazor parameter pipeline (internal use).</summary>
     internal void SetAggregate(Aggregate value) => Aggregate = value;
+    /// <summary>The underlying value type of the column, used for formatting and numeric detection.</summary>
     [Parameter] public Type? ValueType { get; set; }
 
     /// <summary>Optional function returning extra CSS class(es) for a cell based on the row item.</summary>
@@ -51,6 +71,7 @@ public sealed class SgDataGridColumn<TItem> : ComponentBase, IDisposable where T
 
     /// <summary>When set, numeric values are rendered with tabular-nums and right-aligned by default.</summary>
     [Parameter] public bool ShowTime { get; set; }
+    /// <summary>When true, forces numeric-style rendering (tabular-nums, right-aligned). When false, forces text-style. When null, auto-detects from data.</summary>
     [Parameter] public bool? NumericStyle { get; set; }
 
     // Cached result of numeric detection from sampled value (null = not yet detected)
@@ -175,5 +196,6 @@ public sealed class SgDataGridColumn<TItem> : ComponentBase, IDisposable where T
         return v.ToString() ?? string.Empty;
     }
 
+    /// <summary>Unregisters this column from the owning data grid.</summary>
     public void Dispose() => Owner?.UnregisterColumn(this);
 }

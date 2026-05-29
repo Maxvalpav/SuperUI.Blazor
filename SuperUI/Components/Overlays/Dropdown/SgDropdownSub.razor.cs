@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using SuperUI.Enums;
 
+/// <summary>Nested submenu item inside an <see cref="SgDropdown"/>.</summary>
 public partial class SgDropdownSub : IDisposable
 {
     private bool _open;

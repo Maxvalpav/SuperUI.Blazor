@@ -5,6 +5,7 @@ using SuperUI.Enums;
 
 namespace SuperUI.Components;
 
+/// <summary>Displays a vertical timeline of events with support for grouping, virtualization, and rich item rendering.</summary>
 public partial class SgTimeline : ComponentBase
 {
     private List<TimelineItem> _items = new();

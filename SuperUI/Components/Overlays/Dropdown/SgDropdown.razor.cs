@@ -7,6 +7,7 @@ using SuperUI.Base.ComponentBases;
 using SuperUI.Enums;
 using SuperUI.Services;
 
+/// <summary>Dropdown menu component with support for hover/click/context triggers, search, and nested submenus.</summary>
 public partial class SgDropdown : SgJsComponentBase
 {
     private bool _open;
@@ -29,43 +30,79 @@ public partial class SgDropdown : SgJsComponentBase
     [Inject] private SgZIndexService ZIndexService { get; set; } = default!;
 
     // ── Existing Parameters ──
+    /// <summary>Text displayed on the trigger button when no <see cref="TriggerContent"/> is provided.</summary>
     [Parameter] public string? Text { get; set; }
+    /// <summary>Optional icon rendered next to the trigger text.</summary>
     [Parameter] public RenderFragment? Icon { get; set; }
+    /// <summary>Visual variant of the trigger button.</summary>
     [Parameter] public SgButtonVariant Variant { get; set; } = SgButtonVariant.Default;
+    /// <summary>Size of the trigger button.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+    /// <summary>Disables the dropdown trigger.</summary>
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>Custom trigger content (replaces the default button).</summary>
     [Parameter] public RenderFragment? TriggerContent { get; set; }
+    /// <summary>Menu items and content inside the dropdown.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Optional header rendered at the top of the dropdown menu.</summary>
     [Parameter] public RenderFragment? HeaderContent { get; set; }
+    /// <summary>Optional footer rendered at the bottom of the dropdown menu.</summary>
     [Parameter] public RenderFragment? FooterContent { get; set; }
+    /// <summary>Additional CSS class for the dropdown menu element.</summary>
     [Parameter] public string? MenuCssClass { get; set; }
+    /// <summary>Maximum height of the dropdown menu in pixels.</summary>
     [Parameter] public int? MaxHeight { get; set; }
+    /// <summary>Minimum width of the dropdown menu in pixels.</summary>
     [Parameter] public int? MinWidth { get; set; }
+    /// <summary>How the dropdown is triggered (click, hover, or context menu).</summary>
     [Parameter] public SgDropdownTrigger Trigger { get; set; } = SgDropdownTrigger.Click;
+    /// <summary>Placement of the dropdown menu relative to the trigger.</summary>
     [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.BottomStart;
+    /// <summary>Automatically closes the dropdown when an item is selected.</summary>
     [Parameter] public bool CloseOnSelect { get; set; } = true;
+    /// <summary>Shows a caret arrow indicator on the trigger button.</summary>
     [Parameter] public bool ShowCaret { get; set; }
+    /// <summary>Delay in milliseconds before the dropdown opens on hover.</summary>
     [Parameter] public int OpenDelay { get; set; } = 80;
+    /// <summary>Delay in milliseconds before the dropdown closes on hover leave.</summary>
     [Parameter] public int CloseDelay { get; set; } = 120;
+    /// <summary>Fired when the open state changes.</summary>
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    /// <summary>Fired when the dropdown opens.</summary>
     [Parameter] public EventCallback OnOpen { get; set; }
+    /// <summary>Fired when the dropdown closes.</summary>
     [Parameter] public EventCallback OnClose { get; set; }
+    /// <summary>Shows a loading spinner in the trigger button.</summary>
     [Parameter] public bool Loading { get; set; }
+    /// <summary>Enables search/filter within the dropdown items.</summary>
     [Parameter] public bool Searchable { get; set; }
+    /// <summary>Placeholder text for the search input.</summary>
     [Parameter] public string? SearchPlaceholder { get; set; }
+    /// <summary>Matches the dropdown menu width to the trigger width.</summary>
     [Parameter] public bool MatchWidth { get; set; }
+    /// <summary>Gap between the trigger and the menu. Default is "4px".</summary>
     [Parameter] public string? Gap { get; set; }
+    /// <summary>Maximum width of the dropdown menu in pixels.</summary>
     [Parameter] public int? MenuMaxWidth { get; set; }
+    /// <summary>Enables open/close transition animations.</summary>
     [Parameter] public bool Animation { get; set; } = true;
 
     // ── New Optional Parameters ──
+    /// <summary>Renders the menu through a portal to avoid clipping by overflow parents.</summary>
     [Parameter] public bool UsePortal { get; set; }
+    /// <summary>Text shown when no items match the search filter.</summary>
     [Parameter] public string? EmptyText { get; set; }
+    /// <summary>Automatically focuses the search input when the dropdown opens.</summary>
     [Parameter] public bool AutoFocusSearch { get; set; }
+    /// <summary>Shows a clear button in the search input.</summary>
     [Parameter] public bool ShowSearchClear { get; set; }
+    /// <summary>Reduces spacing for a compact appearance.</summary>
     [Parameter] public bool Compact { get; set; }
+    /// <summary>Automatically flips the menu placement to stay within the viewport.</summary>
     [Parameter] public bool Flip { get; set; }
+    /// <summary>Shows a decorative arrow pointing to the trigger.</summary>
     [Parameter] public bool ShowArrow { get; set; }
+    /// <summary>Type of transition animation (scale, slide, fade, or none).</summary>
     [Parameter] public SgDropdownTransition DropdownTransition { get; set; } = SgDropdownTransition.Scale;
 
     public bool IsOpen => _open;
@@ -151,6 +188,7 @@ public partial class SgDropdown : SgJsComponentBase
 
     public Task ToggleAsync() => _open ? CloseAsync() : OpenAsync();
 
+    /// <summary>Opens the dropdown menu.</summary>
     public async Task OpenAsync()
     {
         if (Disabled || _open) return;
@@ -165,6 +203,7 @@ public partial class SgDropdown : SgJsComponentBase
         await InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>Closes the dropdown menu.</summary>
     public async Task CloseAsync()
     {
         if (!_open) return;

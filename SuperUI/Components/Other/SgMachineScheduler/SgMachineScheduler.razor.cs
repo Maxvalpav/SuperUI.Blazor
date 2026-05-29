@@ -11,21 +11,29 @@ using System.Threading.Tasks;
 
 namespace SuperUI.Components.SgMachineScheduler;
 
+/// <summary>Interactive Gantt-style machine/shop-floor scheduler with SkiaSharp canvas rendering, drag-and-drop, zoom, and tooltip support.</summary>
 public partial class SgMachineScheduler : ComponentBase, IAsyncDisposable
 {
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
-    // Parameters
+    /// <summary>List of machine resources displayed in the scheduler rows.</summary>
     [Parameter] public List<MachineResource> Resources { get; set; } = new();
+    /// <summary>List of reservations (jobs/operations) scheduled on machines.</summary>
     [Parameter] public List<MachineReservation> Reservations { get; set; } = new();
+    /// <summary>List of downtime periods displayed as blocked intervals on machine rows.</summary>
     [Parameter] public List<MachineDowntime> Downtimes { get; set; } = new();
+    /// <summary>Start of the visible time range.</summary>
     [Parameter] public DateTime VisibleStart { get; set; } = DateTime.Today;
+    /// <summary>End of the visible time range.</summary>
     [Parameter] public DateTime VisibleEnd { get; set; } = DateTime.Today.AddDays(7);
 
-    // Callbacks
+    /// <summary>Fired when a reservation bar is clicked.</summary>
     [Parameter] public EventCallback<MachineReservation> OnReservationClick { get; set; }
+    /// <summary>Fired after a reservation has been dragged to a new time slot or machine.</summary>
     [Parameter] public EventCallback<MachineReservation> OnReservationMoved { get; set; }
+    /// <summary>Fired after a reservation has been resized (start/end dragged).</summary>
     [Parameter] public EventCallback<MachineReservation> OnReservationResized { get; set; }
+    /// <summary>Fired when an empty slot is double-clicked.</summary>
     [Parameter] public EventCallback<(DateTime Start, int MachineId)> OnSlotDblClick { get; set; }
 
     // Internal state
@@ -128,6 +136,7 @@ public partial class SgMachineScheduler : ComponentBase, IAsyncDisposable
         }
     }
 
+    /// <summary>Scrolls the timeline so the specified time is visible.</summary>
     public void ScrollToTime(DateTime dt)
     {
         var x = (float)(dt - VisibleStart).TotalHours * _pixelsPerHour * _scaleFactor;
@@ -402,6 +411,7 @@ public partial class SgMachineScheduler : ComponentBase, IAsyncDisposable
         canvas.Restore();
     }
 
+    /// <summary>Zooms in, increasing the timeline scale factor.</summary>
     public void ZoomIn()
     {
         _scaleFactor = Math.Min(MaxScale, _scaleFactor * 1.2f);
@@ -409,6 +419,7 @@ public partial class SgMachineScheduler : ComponentBase, IAsyncDisposable
         _canvasView?.Invalidate();
     }
 
+    /// <summary>Zooms out, decreasing the timeline scale factor.</summary>
     public void ZoomOut()
     {
         _scaleFactor = Math.Max(MinScale, _scaleFactor / 1.2f);

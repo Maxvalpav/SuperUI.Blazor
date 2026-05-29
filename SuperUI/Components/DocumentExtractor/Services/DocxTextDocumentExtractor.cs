@@ -30,6 +30,7 @@ public sealed class DocxTextDocumentExtractor : IDocumentExtractor
 
     public bool CanHandle(SgDocumentSource source) => source.Kind == SgDocumentKind.Docx;
 
+    /// <summary>Extracts plain text and heuristic label:value fields from a DOCX file.</summary>
     public Task<SgDocumentExtractionResult> ExtractAsync(SgDocumentSource source, CancellationToken ct = default)
     {
         using var ms = new MemoryStream(source.Data, writable: false);

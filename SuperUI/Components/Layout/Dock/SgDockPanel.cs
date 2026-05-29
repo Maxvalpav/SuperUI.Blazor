@@ -47,41 +47,48 @@ public sealed class SgDockPanelBuilder
         _panel.Title = title;
     }
 
+    /// <summary>Sets the unique identifier for the panel.</summary>
     public SgDockPanelBuilder WithId(string id)
     {
         _panel.Id = id;
         return this;
     }
 
+    /// <summary>Sets the SVG icon markup for the panel tab.</summary>
     public SgDockPanelBuilder WithIcon(string icon)
     {
         _panel.Icon = icon;
         return this;
     }
 
+    /// <summary>Sets the dock position of the panel.</summary>
     public SgDockPanelBuilder At(SgDockPosition pos)
     {
         _panel.Position = pos;
         return this;
     }
 
+    /// <summary>Sets whether the panel can be closed by the user.</summary>
     public SgDockPanelBuilder Closable(bool value = true)
     {
         _panel.Closable = value;
         return this;
     }
 
+    /// <summary>Sets whether the panel is visible.</summary>
     public SgDockPanelBuilder Visible(bool value = true)
     {
         _panel.Visible = value;
         return this;
     }
 
+    /// <summary>Attaches arbitrary data to the panel.</summary>
     public SgDockPanelBuilder WithTag(object? tag)
     {
         _panel.Tag = tag;
         return this;
     }
 
+    /// <summary>Builds and returns the configured <see cref="SgDockPanel"/>.</summary>
     public SgDockPanel Build() => _panel;
 }

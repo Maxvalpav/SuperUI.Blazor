@@ -4,6 +4,7 @@ using System.Linq;
 
 namespace SuperUI.Components.Network.Models;
 
+/// <summary>Identifies a network protocol layer.</summary>
 public enum NetworkLayerType
 {
     Ethernet,
@@ -13,6 +14,7 @@ public enum NetworkLayerType
     Payload
 }
 
+/// <summary>Represents a complete network packet with Ethernet, IP, transport, and payload layers.</summary>
 public class SgNetworkPacket
 {
     public EthernetHeader Ethernet { get; set; } = new();
@@ -20,6 +22,7 @@ public class SgNetworkPacket
     public L4Header L4 { get; set; } = new TcpHeader();
     public string Payload { get; set; } = "";
 
+    /// <summary>Serializes the entire packet (Ethernet + IP + L4 + payload) into a byte array.</summary>
     public byte[] ToBytes()
     {
         var bytes = new List<byte>();
@@ -31,12 +34,14 @@ public class SgNetworkPacket
     }
 }
 
+/// <summary>Ethernet frame header with source/destination MAC addresses and EtherType.</summary>
 public class EthernetHeader
 {
     public string DestMac { get; set; } = "FF:FF:FF:FF:FF:FF";
     public string SrcMac { get; set; } = "00:00:00:00:00:00";
     public ushort EtherType { get; set; } = 0x0800; // IPv4
 
+    /// <summary>Serializes the Ethernet header into a 14-byte array.</summary>
     public byte[] ToBytes()
     {
         var bytes = new byte[14];
@@ -50,6 +55,7 @@ public class EthernetHeader
         mac.Split(':').Select(x => Convert.ToByte(x, 16)).ToArray();
 }
 
+/// <summary>IPv4 packet header with addressing, fragmentation, and protocol fields.</summary>
 public class IPv4Header
 {
     public byte Version { get; set; } = 4;
@@ -65,6 +71,7 @@ public class IPv4Header
     public string SrcIp { get; set; } = "192.168.1.10";
     public string DestIp { get; set; } = "8.8.8.8";
 
+    /// <summary>Serializes the IPv4 header into a 20-byte array.</summary>
     public byte[] ToBytes()
     {
         var bytes = new byte[20];
@@ -82,11 +89,13 @@ public class IPv4Header
     }
 }
 
+/// <summary>Abstract base for transport-layer (L4) headers (TCP, UDP).</summary>
 public abstract class L4Header
 {
     public abstract byte[] ToBytes();
 }
 
+/// <summary>TCP segment header with ports, sequence numbers, flags, and window size.</summary>
 public class TcpHeader : L4Header
 {
     public ushort SrcPort { get; set; } = 44332;
@@ -107,6 +116,7 @@ public class TcpHeader : L4Header
     public ushort Checksum { get; set; } = 0;
     public ushort UrgentPointer { get; set; } = 0;
 
+    /// <summary>Serializes the TCP header into a 20-byte array.</summary>
     public override byte[] ToBytes()
     {
         var bytes = new byte[20];
@@ -134,6 +144,7 @@ public class TcpHeader : L4Header
     }
 }
 
+/// <summary>UDP datagram header with source/destination ports, length, and checksum.</summary>
 public class UdpHeader : L4Header
 {
     public ushort SrcPort { get; set; } = 44332;
@@ -141,6 +152,7 @@ public class UdpHeader : L4Header
     public ushort Length { get; set; } = 8;
     public ushort Checksum { get; set; } = 0;
 
+    /// <summary>Serializes the UDP header into an 8-byte array.</summary>
     public override byte[] ToBytes()
     {
         var bytes = new byte[8];

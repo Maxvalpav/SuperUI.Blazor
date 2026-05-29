@@ -7,6 +7,7 @@ using SuperUI.Components.DocumentExtractor.Models;
 
 namespace SuperUI.Components.DocumentExtractor.Services;
 
+/// <summary>Saves edited fields by appending them as new lines to the original plain text.</summary>
 public sealed class PlainTextDocumentSaver : IDocumentSaver
 {
     public string Id => "plaintext";
@@ -16,6 +17,7 @@ public sealed class PlainTextDocumentSaver : IDocumentSaver
     public bool CanHandle(SgDocumentExtractionResult result) =>
         result.Source?.Kind == SgDocumentKind.PlainText;
 
+    /// <summary>Appends edited field values as a section at the end of the plain text document.</summary>
     public Task<SgDocumentSource> SaveAsync(
         SgDocumentExtractionResult result,
         IReadOnlyList<SgDocumentField> editedFields,

@@ -7,6 +7,7 @@ using SuperUI.Services.Llm;
 
 namespace SuperUI.Components.DocumentExtractor.Services;
 
+/// <summary>Configuration for an LLM endpoint used by the document extractor.</summary>
 public sealed class SgLlmEndpointConfig : SgLlmConfig
 {
     // Keeping this for backward compatibility and specialized extraction needs
@@ -32,12 +33,14 @@ public interface ILlmExtractionClient
     Task<List<SgLlmModelDescriptor>> ListModelsAsync(SgLlmEndpointConfig config, CancellationToken ct = default);
 }
 
+/// <summary>Supported LLM API provider types.</summary>
 public enum SgLlmEndpointKind
 {
     OpenAiCompatible,
     OpenRouter
 }
 
+/// <summary>Describes an LLM model available from a provider.</summary>
 public sealed class SgLlmModelDescriptor
 {
     public string Id { get; set; } = string.Empty;

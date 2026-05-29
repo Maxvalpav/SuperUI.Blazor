@@ -39,12 +39,19 @@ public sealed class SgRagService : IAsyncDisposable
 
     // ── Events ────────────────────────────────────────────────────────────────
 
+    /// <summary>Raised when embedding progress changes.</summary>
     public event Action<SgRagModelProgress>? OnEmbeddingProgress;
+    /// <summary>Raised when LLM progress changes.</summary>
     public event Action<SgRagModelProgress>? OnLlmProgress;
+    /// <summary>Raised when indexing progress changes.</summary>
     public event Action<SgRagIndexProgress>? OnIndexProgress;
+    /// <summary>Raised when a streaming token is received.</summary>
     public event Action<string>? OnStreamToken;
+    /// <summary>Raised when streaming completes.</summary>
     public event Action<SgRagAnswer>? OnStreamComplete;
+    /// <summary>Raised when an error occurs. Provides error code and message.</summary>
     public event Action<string, string>? OnError;
+    /// <summary>Raised when the service state changes.</summary>
     public event Action<SgRagReadyState>? OnStateChanged;
 
     public SgRagService(IJSRuntime js)
@@ -301,6 +308,9 @@ public sealed class SgRagService : IAsyncDisposable
 
     // ── Collections / DB ─────────────────────────────────────────────────────
 
+    /// <summary>Lists all vector collections.</summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A list of collection info objects.</returns>
     public async Task<IReadOnlyList<SgRagCollectionInfo>> ListCollectionsAsync(CancellationToken ct = default)
     {
         EnsureReady();
@@ -308,18 +318,28 @@ public sealed class SgRagService : IAsyncDisposable
         return ParseCollections(raw);
     }
 
+    /// <summary>Creates a new vector collection.</summary>
+    /// <param name="name">The name of the collection to create.</param>
+    /// <param name="ct">Cancellation token.</param>
     public async Task CreateCollectionAsync(string name, CancellationToken ct = default)
     {
         EnsureReady();
         await _module!.InvokeVoidAsync("createCollection", ct, _instanceId, name);
     }
 
+    /// <summary>Deletes a vector collection.</summary>
+    /// <param name="name">The name of the collection to delete.</param>
+    /// <param name="ct">Cancellation token.</param>
     public async Task DeleteCollectionAsync(string name, CancellationToken ct = default)
     {
         EnsureReady();
         await _module!.InvokeVoidAsync("deleteCollection", ct, _instanceId, name);
     }
 
+    /// <summary>Lists documents in a collection.</summary>
+    /// <param name="collection">The collection name.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A list of documents.</returns>
     public async Task<IReadOnlyList<SgRagDocument>> ListDocumentsAsync(
         string collection = "default",
         CancellationToken ct = default)
@@ -330,6 +350,10 @@ public sealed class SgRagService : IAsyncDisposable
         return ParseDocuments(raw);
     }
 
+    /// <summary>Gets a document by ID.</summary>
+    /// <param name="documentId">The document ID.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The document, or null if not found.</returns>
     public async Task<SgRagDocument?> GetDocumentAsync(string documentId, CancellationToken ct = default)
     {
         EnsureReady();
@@ -338,6 +362,9 @@ public sealed class SgRagService : IAsyncDisposable
         return ParseDocument(raw);
     }
 
+    /// <summary>Clears all documents from a collection.</summary>
+    /// <param name="collection">The collection name.</param>
+    /// <param name="ct">Cancellation token.</param>
     public async Task ClearCollectionAsync(string collection = "default", CancellationToken ct = default)
     {
         EnsureReady();

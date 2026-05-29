@@ -17,6 +17,7 @@ public sealed class PlainTextDocumentExtractor : IDocumentExtractor
     public IReadOnlyCollection<SgDocumentKind> SupportedKinds { get; } = new[] { SgDocumentKind.PlainText };
     public bool CanHandle(SgDocumentSource source) => source.Kind == SgDocumentKind.PlainText;
 
+    /// <summary>Extracts plain text from a UTF-8 encoded text document.</summary>
     public Task<SgDocumentExtractionResult> ExtractAsync(SgDocumentSource source, CancellationToken ct = default)
     {
         var text = Encoding.UTF8.GetString(source.Data);

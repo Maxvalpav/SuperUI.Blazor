@@ -28,6 +28,7 @@ public sealed class DocxDocumentSaver : IDocumentSaver
     public bool CanHandle(SgDocumentExtractionResult result) =>
         result.Source?.Kind == SgDocumentKind.Docx && result.Source.Data.Length > 0;
 
+    /// <summary>Saves edited fields back into a copy of the original DOCX document.</summary>
     public Task<SgDocumentSource> SaveAsync(
         SgDocumentExtractionResult result,
         IReadOnlyList<SgDocumentField> editedFields,

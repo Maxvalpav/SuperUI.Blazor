@@ -4,6 +4,8 @@ using System.Globalization;
 
 namespace SuperUI.Components
 {
+    /// <summary>A virtualized list component that renders only visible items for optimal performance with large datasets. Supports variable item heights, scroll restoration, intersection observer, and infinite scroll.</summary>
+    /// <typeparam name="TItem">The type of items in the list.</typeparam>
     public partial class SgVirtualList<TItem> : ComponentBase, IAsyncDisposable
     {
         /// <summary>
@@ -214,6 +216,8 @@ namespace SuperUI.Components
             }
         }
 
+        /// <summary>Handles scroll events from JS, updating the visible window.</summary>
+        /// <param name="scrollTop">The current scroll top position.</param>
         [JSInvokable]
         public async Task OnScroll(double scrollTop)
         {
@@ -224,6 +228,8 @@ namespace SuperUI.Components
             }
         }
 
+        /// <summary>Handles viewport visibility changes from the intersection observer.</summary>
+        /// <param name="isVisible">Whether the list is currently visible in the viewport.</param>
         [JSInvokable]
         public async Task OnViewportVisibilityChanged(bool isVisible)
         {
@@ -239,6 +245,9 @@ namespace SuperUI.Components
             }
         }
 
+        /// <summary>Handles edge sentinel intersection events for triggering load-more and scroll-boundary callbacks.</summary>
+        /// <param name="edge">The edge that changed ("start" or "end").</param>
+        /// <param name="isIntersecting">Whether the sentinel is currently intersecting.</param>
         [JSInvokable]
         public async Task OnEdgeIntersectionChanged(string edge, bool isIntersecting)
         {
@@ -346,6 +355,8 @@ namespace SuperUI.Components
             return Math.Max(1, height);
         }
 
+        /// <summary>Receives item size updates from JS after measuring actual rendered heights.</summary>
+        /// <param name="updates">A list of index/height pairs for items whose measured size changed.</param>
         [JSInvokable]
         public void OnItemsResized(List<ItemSizeUpdate> updates)
         {
@@ -379,9 +390,12 @@ namespace SuperUI.Components
             }
         }
 
+        /// <summary>Contains information about a measured item size change.</summary>
         public class ItemSizeUpdate
         {
+            /// <summary>The index of the item whose size changed.</summary>
             public int Index { get; set; }
+            /// <summary>The measured height of the item in pixels.</summary>
             public double height { get; set; }
         }
 
@@ -520,6 +534,7 @@ namespace SuperUI.Components
                 : 400;
         }
 
+        /// <summary>Releases the JS module reference and disposes interop resources.</summary>
         public async ValueTask DisposeAsync()
         {
             if (_module != null)
