@@ -5,36 +5,37 @@
 @implements IAsyncDisposable
 @inject ILlmService LlmService
 @inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
 
 <div class="sgc-llm-image-studio @CssClass" style="@Style">
-    <SgLlmHeader Title="Генерация изображений" Subtitle="Text-to-image и редактирование с маской"
+    <SgLlmHeader Title="@Localizer["Llm_ImageGenTitle"]" Subtitle="@Localizer["Llm_ImageGenSubtitle"]"
                  TaskPurpose="@SgLlmTaskPurpose.Images" />
 
     <div class="sgc-image-toolbar">
-        <SgTextArea @bind-Value="_prompt" Placeholder="Опишите изображение..." Rows="3" />
+        <SgTextArea @bind-Value="_prompt" Placeholder="@Localizer["Llm_ImageDescribePlaceholder"]" Rows="3" />
 
         <div class="sgc-image-controls">
-            <SgSelect TValue="string" @bind-Value="_size" Items="_sizes" Label="Размер" />
-            <SgSelect TValue="string" @bind-Value="_quality" Items="_qualities" Label="Качество" />
-            <SgSelect TValue="string" @bind-Value="_style" Items="_styles" Label="Стиль" />
-            <SgNumberInput TValue="int" @bind-Value="_count" Min="1" Max="4" Label="Кол-во" />
-            <SgTextBox @bind-Value="_model" Placeholder="gpt-image-1" Label="Модель" />
+            <SgSelect TValue="string" @bind-Value="_size" Items="_sizes" Label="@Localizer["Llm_ImageSize"]" />
+            <SgSelect TValue="string" @bind-Value="_quality" Items="_qualities" Label="@Localizer["Llm_ImageQuality"]" />
+            <SgSelect TValue="string" @bind-Value="_style" Items="_styles" Label="@Localizer["Llm_ImageStyle"]" />
+            <SgNumberInput TValue="int" @bind-Value="_count" Min="1" Max="4" Label="@Localizer["Llm_ImageCount"]" />
+            <SgTextBox @bind-Value="_model" Placeholder="gpt-image-1" Label="@Localizer["Llm_ImageModel"]" />
         </div>
 
         <div class="sgc-image-actions">
-            <SgButton Text="Сгенерировать" OnClick="GenerateAsync" Loading="_busy" Variant="SgButtonVariant.Primary" />
+            <SgButton Text="@Localizer["Llm_Generate"]" OnClick="GenerateAsync" Loading="_busy" Variant="SgButtonVariant.Primary" />
             @if (_lastImage != null)
             {
-                <SgButton Text="Редактировать" OnClick="@(() => _editMode = !_editMode)" Variant="SgButtonVariant.Outlined" />
+                <SgButton Text="@Localizer["Llm_Edit"]" OnClick="@(() => _editMode = !_editMode)" Variant="SgButtonVariant.Outlined" />
             }
         </div>
 
         @if (_editMode)
         {
-            <SgTextArea @bind-Value="_editPrompt" Placeholder="Опишите изменения..." Rows="2" />
-            <div class="sgc-image-label">Маска (опционально):</div>
+            <SgTextArea @bind-Value="_editPrompt" Placeholder="@Localizer["Llm_DescribeChanges"]" Rows="2" />
+            <div class="sgc-image-label">@Localizer["Llm_MaskOptional"]</div>
             <SgFileUpload OnFilesSelected="@OnMaskSelected" Accept="image/*" />
-            <SgButton Text="Применить редактирование" OnClick="EditAsync" Loading="_busy" Variant="SgButtonVariant.Primary" />
+            <SgButton Text="@Localizer["Llm_ApplyEdit"]" OnClick="EditAsync" Loading="_busy" Variant="SgButtonVariant.Primary" />
         }
     </div>
 
@@ -51,8 +52,8 @@
                 <div class="sgc-image-card">
                     <img src="@GetSrc(img)" alt="generated" />
                     <div class="sgc-image-card-actions">
-                        <SgButton Text="Скачать" Size="SgSize.Sm" OnClick="@(() => Download(img))" />
-                        <SgButton Text="Использовать" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                        <SgButton Text="@Localizer["Llm_Download"]" Size="SgSize.Sm" OnClick="@(() => Download(img))" />
+                        <SgButton Text="@Localizer["Llm_UseImage"]" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
                                   OnClick="@(() => UseAsBase(img))" />
                     </div>
                 </div>
@@ -60,7 +61,7 @@
         </div>
         @if (!string.IsNullOrEmpty(_revisedPrompt))
         {
-            <div class="sgc-image-revised"><b>Уточнённый промпт:</b> @_revisedPrompt</div>
+            <div class="sgc-image-revised"><b>@Localizer["Llm_RefinedPrompt"]</b> @_revisedPrompt</div>
         }
     }
 </div>
@@ -197,7 +198,7 @@
         }
         catch (Exception ex)
         {
-            _error = $"Не удалось скачать изображение: {ex.Message}";
+            _error = $"{Localizer["Llm_DownloadFailed"]}: {ex.Message}";
         }
     }
 

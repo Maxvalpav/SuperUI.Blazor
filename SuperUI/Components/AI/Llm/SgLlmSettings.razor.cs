@@ -23,7 +23,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     private bool _manualModel;
     private bool _showLogs;
     private string _lastStatus = "None";
-    private string _statusText = "Готов к подключению";
+    private string _statusText = "";
     private readonly List<LogEntry> _logs = new();
     private SgBadgeVariant StatusBadgeVariant => _lastStatus == "Success" ? SgBadgeVariant.Success : SgBadgeVariant.Danger;
     private string StatusBadgeText => _lastStatus == "Success" ? Localizer["Llm_Connected"] : Localizer["Llm_NotConnected"];
@@ -56,7 +56,9 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     private List<SgLlmHealthStatus> _healthStatuses = new();
     private bool _checkingHealth;
     private int TodayTokens => _usageRecords.Where(u => u.Timestamp.ToLocalTime().Date == DateTime.Now.Date).Sum(u => u.TotalTokens);
-    private string DailyLimitText => Config.DailyTokenLimit is > 0 ? $"{TodayTokens:N0} / {Config.DailyTokenLimit:N0} токенов сегодня" : $"{TodayTokens:N0} токенов сегодня";
+    private string DailyLimitText => Config.DailyTokenLimit is > 0
+        ? $"{TodayTokens:N0} / {Config.DailyTokenLimit:N0} today"
+        : $"{TodayTokens:N0} today";
     private string _lastAppliedFingerprint = "";
 
     private IEnumerable<SgLlmModelInfo> RecommendedModels =>
@@ -203,14 +205,14 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         get
         {
             var p = Config.Provider;
-            if (p == SgLlmProvider.None) return "Выберите провайдера сверху, чтобы загрузить список моделей.";
+            if (p == SgLlmProvider.None) return Localizer["Llm_SelectProviderHint"];
             if (p == SgLlmProvider.Ollama)
-                return "Запустите Ollama (по умолчанию http://localhost:11434) и нажмите «Обновить». Не забудьте OLLAMA_ORIGINS, если открываете из браузера.";
+                return Localizer["Llm_OllamaHint"];
             if (SgLlmProviderRegistry.GetPreset(p) is { Category: SgLlmProviderCategory.Local })
-                return "Запустите локальный сервер и проверьте Base URL. Часто нужна опция CORS — см. подсказки во вкладке «Соединение».";
+                return Localizer["Llm_LocalFilter"];
             if (SgLlmProviderRegistry.RequiresKey(p) && string.IsNullOrWhiteSpace(Config.ApiKey))
-                return "Введите API-ключ и нажмите «Обновить» — для этого провайдера он обязателен.";
-            return "Если /v1/models возвращает CORS, попробуйте включить Backend proxy в разделе «Соединение».";
+                return Localizer["Llm_NoApiKey"];
+            return Localizer["Llm_CorsHint"];
         }
     }
 
@@ -307,7 +309,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     private static bool SupportsReasoning(SgLlmProvider p) => SgLlmProviderRegistry.SupportsReasoning(p);
     private static bool SupportsServiceTier(SgLlmProvider p) => SgLlmProviderRegistry.SupportsServiceTier(p);
     private static string DefaultBaseUrl(SgLlmProvider p) => SgLlmProviderRegistry.DefaultBaseUrl(p);
-    private static string ProviderLabel(SgLlmProvider p) => p == SgLlmProvider.None ? "Не выбран" : SgLlmProviderRegistry.Label(p);
+    private static string ProviderLabel(SgLlmProvider p) => p == SgLlmProvider.None ? "None" : SgLlmProviderRegistry.Label(p);
     private static string ProviderShortHint(SgLlmProvider p) => SgLlmProviderRegistry.ShortHint(p);
     private static string ProviderConnectionHint(SgLlmProvider p) => SgLlmProviderRegistry.ConnectionHint(p);
 
@@ -317,13 +319,13 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
 
     private static string LocalCorsHint(SgLlmProvider p) => p switch
     {
-        SgLlmProvider.Ollama => "Ollama: переменная окружения OLLAMA_ORIGINS должна включать ваш origin (например, http://localhost:5000).",
-        SgLlmProvider.LmStudio => "LM Studio: включите «Cross-Origin Resource Sharing (CORS)» в Local Server → Settings.",
-        SgLlmProvider.Vllm => "vLLM: запускайте с --allow-cors, иначе браузер заблокирует запросы.",
-        SgLlmProvider.LlamaCpp => "llama.cpp server: используйте флаг --api-cors-allow * (или укажите ваш origin).",
-        SgLlmProvider.KoboldCpp => "KoboldCpp: запускайте с --openai-compatibility, иначе чат-роуты не работают.",
-        SgLlmProvider.Jan => "Jan: API сервер должен быть включён в настройках (Settings → Advanced → API).",
-        _ => "Если запросы блокируются CORS, проверьте настройки CORS вашего локального сервера."
+        SgLlmProvider.Ollama => "Ollama: set OLLAMA_ORIGINS to include your origin (e.g. http://localhost:5000).",
+        SgLlmProvider.LmStudio => "LM Studio: enable CORS in Local Server → Settings.",
+        SgLlmProvider.Vllm => "vLLM: start with --allow-cors, otherwise the browser blocks requests.",
+        SgLlmProvider.LlamaCpp => "llama.cpp server: use --api-cors-allow * (or specify your origin).",
+        SgLlmProvider.KoboldCpp => "KoboldCpp: start with --openai-compatibility, otherwise chat routes won't work.",
+        SgLlmProvider.Jan => "Jan: enable API server in Settings → Advanced → API.",
+        _ => "If CORS blocks requests, check your local server CORS configuration."
     };
 
     private bool _testingLocalPort;
@@ -340,12 +342,12 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
             _localPortOk = result.Ok;
             _localPortStatus = result.Ok
                 ? $"OK · HTTP {result.Status}"
-                : $"Не доступен · {(result.Status > 0 ? "HTTP " + result.Status + " · " : "")}{result.Message}";
+                : $"Unreachable · {(result.Status > 0 ? "HTTP " + result.Status + " · " : "")}{result.Message}";
         }
         catch (Exception ex)
         {
             _localPortOk = false;
-            _localPortStatus = $"Ошибка: {ex.Message}";
+            _localPortStatus = $"Error: {ex.Message}";
         }
         finally
         {
@@ -467,6 +469,10 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
             Config.UpdateFrom(LlmService.CurrentConfig);
             _lastStatus = "Success";
             _statusText = Localizer["Llm_LoadedFromService"];
+        }
+        else
+        {
+            _statusText = Localizer["Llm_Ready"];
         }
 
         EnsureBaseUrl();
@@ -633,7 +639,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
             _models = SgLlmProviderRegistry.FallbackModels(Config.Provider);
             _modelIds = _models.Select(m => m.Id).ToList();
             _lastStatus = _modelIds.Count > 0 ? "Success" : "Error";
-            _statusText = _modelIds.Count > 0 ? "Показаны встроенные модели" : Localizer["Llm_LoadError"];
+            _statusText = _modelIds.Count > 0 ? Localizer["Llm_ShowBuiltInModels"] : Localizer["Llm_LoadError"];
         }
         finally
         {
@@ -785,7 +791,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     {
         _checkingConnection = true;
         _lastStatus = "Pending";
-        _statusText = "Проверка подключения…";
+        _statusText = Localizer["Llm_Checking"];
         try
         {
             EnsureBaseUrl();
@@ -814,7 +820,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         if (string.IsNullOrWhiteSpace(Config.ModelId))
         {
             _lastStatus = "Error";
-            _statusText = "Выберите модель";
+            _statusText = Localizer["Llm_ModelNotSelected"];
             AddLog("Apply stopped: model is empty", "Error");
             return;
         }
@@ -822,14 +828,14 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         if (Config.OnlyFreeModels && SelectedModelLooksPaid)
         {
             _lastStatus = "Error";
-            _statusText = "Выбрана paid-модель, а включён режим only-free";
+            _statusText = Localizer["Llm_WarnPaidModels"];
             AddLog("Apply stopped: paid model blocked by cost guard", "Error");
             return;
         }
         if (Config.DailyTokenLimit is > 0 && TodayTokens >= Config.DailyTokenLimit.Value)
         {
             _lastStatus = "Error";
-            _statusText = "Дневной лимит токенов исчерпан";
+            _statusText = Localizer["Llm_DailyTokenLimit"];
             AddLog("Apply stopped: daily token limit reached", "Error");
             return;
         }

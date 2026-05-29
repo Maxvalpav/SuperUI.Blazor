@@ -1,6 +1,7 @@
 @namespace SuperUI.Components
 @using SuperUI.Services.Llm
 @inject ILlmService LlmService
+@inject ISuperUILocalizer Localizer
 @implements IDisposable
 
 @*
@@ -44,12 +45,12 @@
 
         @if (!string.IsNullOrEmpty(DocsUrl))
         {
-            <a class="sgc-llm-header-help" href="@DocsUrl" target="_blank" rel="noopener" title="Документация провайдера">?</a>
+            <a class="sgc-llm-header-help" href="@DocsUrl" target="_blank" rel="noopener" title="@Localizer["Llm_ProviderDocs"]">?</a>
         }
 
         @if (ShowSettingsButton)
         {
-            <button type="button" class="sgc-llm-header-settings" @onclick="ToggleSettings" title="Настройки LLM">⚙</button>
+            <button type="button" class="sgc-llm-header-settings" @onclick="ToggleSettings" title="@Localizer["Llm_HeaderSettings"]">⚙</button>
         }
     </div>
 </div>
@@ -58,8 +59,8 @@
 {
     <div class="sgc-llm-header-popover" @onclick:stopPropagation="true">
         <div class="sgc-llm-header-popover-head">
-            <span>Настройки LLM</span>
-            <button type="button" @onclick="ToggleSettings" title="Закрыть">✕</button>
+            <span>@Localizer["Llm_HeaderSettings"]</span>
+            <button type="button" @onclick="ToggleSettings" title="@Localizer["Llm_Close"]">✕</button>
         </div>
         <SgLlmSettings Compact="true" />
     </div>
@@ -117,10 +118,10 @@
     };
 
     private string StatusCls => _lastError != null ? "error" : _ready ? "ok" : "idle";
-    private string StatusText => _lastError != null ? "Ошибка" : _ready ? "готов" : "не настроен";
+    private string StatusText => _lastError != null ? Localizer["Llm_ErrorStatus"] : _ready ? Localizer["Llm_Ready"] : Localizer["Llm_NotConfigured"];
     private string StatusTooltip => _lastError ?? (_ready
-        ? "Провайдер настроен и модель выбрана"
-        : "Выберите провайдера и модель в настройках");
+        ? Localizer["Llm_ConfiguredAndReady"]
+        : Localizer["Llm_SelectProviderHint"]);
 
     protected override void OnInitialized()
     {
@@ -160,14 +161,14 @@
         {
             _resolvedConfig = null;
             _providerLabel = "—";
-            _modelLabel = "не выбрана";
+            _modelLabel = Localizer["Llm_NotSelected"];
             _ready = false;
             return;
         }
 
         _resolvedConfig = LlmService.ResolveConfigForTask(TaskPurpose, root);
         _providerLabel = SgLlmProviderRegistry.Label(_resolvedConfig.Provider);
-        _modelLabel = string.IsNullOrWhiteSpace(_resolvedConfig.ModelId) ? "модель не выбрана" : _resolvedConfig.ModelId!;
+        _modelLabel = string.IsNullOrWhiteSpace(_resolvedConfig.ModelId) ? Localizer["Llm_ModelNotSelected"] : _resolvedConfig.ModelId!;
         _ready = !string.IsNullOrEmpty(_resolvedConfig.ModelId)
             && (!SgLlmProviderRegistry.RequiresKey(_resolvedConfig.Provider) || !string.IsNullOrEmpty(_resolvedConfig.ApiKey));
 

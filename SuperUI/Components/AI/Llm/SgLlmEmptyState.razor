@@ -2,6 +2,7 @@
 @using SuperUI.Services.Llm
 @implements IDisposable
 @inject ILlmService LlmService
+@inject ISuperUILocalizer Localizer
 
 @*
    SgLlmEmptyState — стандартизированное пустое состояние для AI-компонентов.
@@ -11,7 +12,7 @@
 
 <div class="sgc-llm-empty-state @CssClass">
     <div class="sgc-llm-empty-icon">@(string.IsNullOrEmpty(Icon) ? "🤖" : Icon)</div>
-    <div class="sgc-llm-empty-title">@(string.IsNullOrEmpty(Title) ? "Нет данных" : Title)</div>
+    <div class="sgc-llm-empty-title">@(string.IsNullOrEmpty(Title) ? Localizer["Llm_NoData"] : Title)</div>
     @if (!string.IsNullOrWhiteSpace(Message))
     {
         <div class="sgc-llm-empty-message">@Message</div>
@@ -31,7 +32,7 @@
     [Parameter] public string Icon { get; set; } = "🤖";
 
     /// <summary>Bold one-line heading.</summary>
-    [Parameter] public string Title { get; set; } = "Нет данных";
+    [Parameter] public string Title { get; set; } = "";
 
     /// <summary>Free-form descriptive line under the title.</summary>
     [Parameter] public string? Message { get; set; }
@@ -65,7 +66,7 @@
         var cfg = LlmService.CurrentConfig;
         if (cfg == null || cfg.Provider == SgLlmProvider.None)
         {
-            _hint = "Выберите провайдера и модель в настройках LLM.";
+            _hint = Localizer["Llm_SelectProviderHint"];
             return;
         }
 
@@ -74,10 +75,10 @@
         {
             _hint = cfg.Provider switch
             {
-                SgLlmProvider.Ollama => "Запустите Ollama на localhost:11434 и проверьте, что OLLAMA_ORIGINS разрешает ваш origin.",
-                SgLlmProvider.LmStudio => "Запустите Local Server в LM Studio (по умолчанию http://localhost:1234/v1).",
-                SgLlmProvider.Vllm => "Запустите vLLM с флагом --allow-cors, иначе браузер не сможет вызвать API.",
-                _ => "Локальный сервер должен быть запущен; проверьте Base URL и CORS."
+                SgLlmProvider.Ollama => Localizer["Llm_OllamaHint"],
+                SgLlmProvider.LmStudio => Localizer["Llm_LmStudioHint"],
+                SgLlmProvider.Vllm => Localizer["Llm_VllmHint"],
+                _ => Localizer["Llm_LocalServerHint"]
             };
             return;
         }
@@ -85,8 +86,8 @@
         {
             var keyUrl = preset?.ApiKeyUrl;
             _hint = string.IsNullOrEmpty(keyUrl)
-                ? "Введите API-ключ в настройках LLM."
-                : $"Введите API-ключ. Получить ключ: {keyUrl}";
+                ? Localizer["Llm_ApiKeyHint"]
+                : Localizer.GetString("Llm_ApiKeyUrlHint", keyUrl);
             return;
         }
         if (cfg.UseBackendProxy)
@@ -94,7 +95,7 @@
             _hint = null;
             return;
         }
-        _hint = "Если запросы блокируются CORS, попробуйте включить Backend proxy в настройках.";
+        _hint = Localizer["Llm_CorsHint"];
     }
 
     public void Dispose()
