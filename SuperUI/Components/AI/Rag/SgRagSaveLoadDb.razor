@@ -1,5 +1,5 @@
 @namespace SuperUI.Components
-@implements IDisposable
+@implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject ISuperUILocalizer Localizer
 
@@ -77,6 +77,14 @@
     private List<SgRagSnapshotInfo> _snapshots = new();
     private string? _error;
     private System.Timers.Timer? _autoTimer;
+    private IJSObjectReference? _ragModule;
+
+    private async Task EnsureModuleAsync()
+    {
+        if (_ragModule is not null) return;
+        try { _ragModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-rag.js"); }
+        catch { }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -86,7 +94,7 @@
         if (EnableAutoSnapshot && AutoSnapshotIntervalMin > 0)
         {
             _autoTimer = new System.Timers.Timer(AutoSnapshotIntervalMin * 60_000);
-            _autoTimer.Elapsed += async (_, _) => await AutoSnapshotAsync();
+            _autoTimer.Elapsed += OnAutoSnapshotTimer;
             _autoTimer.AutoReset = true;
             _autoTimer.Start();
         }
@@ -101,8 +109,10 @@
             var data = await _ragService.ExportAsync();
             var bytes = System.Text.Encoding.UTF8.GetBytes(data);
             var b64 = Convert.ToBase64String(bytes);
-            await JS.InvokeVoidAsync("eval",
-                $"const a=document.createElement('a');a.href='data:application/json;base64,{b64}';a.download='sg-rag-export-{DateTime.Now:yyyyMMdd-HHmmss}.sgrag';document.body.appendChild(a);a.click();document.body.removeChild(a);");
+            var fileName = $"sg-rag-export-{DateTime.Now:yyyyMMdd-HHmmss}.sgrag";
+            await EnsureModuleAsync();
+            if (_ragModule is not null)
+                await _ragModule.InvokeVoidAsync("downloadBlob", fileName, "application/json", b64);
 
             var snap = new SgRagSnapshotInfo { Note = "export", SizeBytes = bytes.Length };
             if (OnExported.HasDelegate) await OnExported.InvokeAsync(snap);
@@ -142,11 +152,22 @@
         catch (Exception ex) { _error = ex.Message; StateHasChanged(); }
     }
 
+    // System.Timers.Timer fires on a thread-pool thread. Marshal back to the
+    // renderer's sync context via InvokeAsync; never let an exception escape
+    // (an async-void lambda here would crash the Blazor Server circuit).
+    private void OnAutoSnapshotTimer(object? sender, System.Timers.ElapsedEventArgs e)
+        => _ = InvokeAsync(AutoSnapshotAsync);
+
     private async Task AutoSnapshotAsync()
     {
         if (_ragService is null) return;
-        try { await _ragService.CreateSnapshotAsync(SgRagSnapshotKind.Auto); }
-        catch { }
+        try
+        {
+            var snap = await _ragService.CreateSnapshotAsync(SgRagSnapshotKind.Auto);
+            _snapshots.Insert(0, snap);
+            StateHasChanged();
+        }
+        catch (Exception ex) { _error = ex.Message; StateHasChanged(); }
     }
 
     private async Task LoadSnapshotsAsync()
@@ -174,9 +195,24 @@
         _             => $"{bytes / (1024.0 * 1024):F1} MB",
     };
 
-    public void Dispose()
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
     {
-        _autoTimer?.Stop();
-        _autoTimer?.Dispose();
+        if (_autoTimer is not null)
+        {
+            _autoTimer.Elapsed -= OnAutoSnapshotTimer;
+            _autoTimer.Stop();
+            _autoTimer.Dispose();
+            _autoTimer = null;
+        }
+        if (_ragModule is not null)
+        {
+            try { await _ragModule.DisposeAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch (TaskCanceledException) { /* shutdown in flight */ }
+            catch (ObjectDisposedException) { /* already disposed */ }
+            _ragModule = null;
+        }
+        GC.SuppressFinalize(this);
     }
 }

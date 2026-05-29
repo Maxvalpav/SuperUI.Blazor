@@ -1,5 +1,6 @@
 @namespace SuperUI.Components.Llm
 @using SuperUI.Services.Llm
+@implements IDisposable
 @inject IOpenRouterService OpenRouterService
 
 <div class="sgc-or-model-details @CssClass" style="@Style">
@@ -155,10 +156,14 @@
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public string? Style { get; set; }
 
+    /// <summary>Debounce window (ms) before a model-id change triggers a catalog lookup.</summary>
+    [Parameter] public int DebounceMs { get; set; } = 400;
+
     private SgOpenRouterModel? _model;
     private bool _loading;
+    private CancellationTokenSource? _debounceCts;
 
-    protected override async Task OnParametersSetAsync()
+    protected override void OnParametersSet()
     {
         if (Model != null)
         {
@@ -166,23 +171,48 @@
         }
         else if (!string.IsNullOrEmpty(ModelId) && (_model == null || _model.Id != ModelId))
         {
-            await LoadModelDetailsAsync();
+            DebouncedLoad();
         }
+    }
+
+    // Debounce the catalog lookup so binding ModelId to an oninput textbox does
+    // not fetch the OpenRouter model list on every keystroke.
+    private void DebouncedLoad()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(DebounceMs, token);
+                await LoadModelDetailsAsync();
+            }
+            catch (OperationCanceledException) { /* superseded by a newer keystroke */ }
+        });
     }
 
     private async Task LoadModelDetailsAsync()
     {
         if (string.IsNullOrEmpty(ModelId)) return;
-        
+
         _loading = true;
+        StateHasChanged();
         try
         {
             var models = await OpenRouterService.GetModelsAsync();
             _model = models.FirstOrDefault(m => m.Id == ModelId);
         }
+        catch
+        {
+            _model = null;
+        }
         finally
         {
             _loading = false;
+            StateHasChanged();
         }
     }
 
@@ -199,5 +229,12 @@
         {
             await OnSelected.InvokeAsync(_model.Id);
         }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
     }
 }

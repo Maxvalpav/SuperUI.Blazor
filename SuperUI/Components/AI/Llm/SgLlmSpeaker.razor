@@ -1,5 +1,7 @@
 @namespace SuperUI.Components
 @using SuperUI.Services.Llm
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
 @inject ILlmService LlmService
 @inject IJSRuntime JS
 
@@ -92,6 +94,7 @@
             _mime = res.MimeType;
             _audioUrl = $"data:{_mime};base64,{Convert.ToBase64String(_audio)}";
         }
+        catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
 
@@ -121,5 +124,19 @@
         {
             _error = $"Не удалось скачать файл: {ex.Message}";
         }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        if (_blobModule is not null)
+        {
+            try { await _blobModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+            catch (TaskCanceledException) { /* shutdown in flight */ }
+            catch (ObjectDisposedException) { /* already disposed */ }
+            _blobModule = null;
+        }
+        GC.SuppressFinalize(this);
     }
 }

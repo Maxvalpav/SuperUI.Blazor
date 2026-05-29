@@ -2202,6 +2202,31 @@ async function _exportChatToPdf(messages, jsPdfScript) {
   return doc.output('datauristring');
 }
 
+// ── Exported: downloadBlob ─────────────────────────────────────────────────
+// Triggers a file download from base64 content without eval(). `name` is set
+// directly as the anchor's download attribute (no string interpolation into
+// executable code), closing the eval/XSS sink the previous implementation had.
+export function downloadBlob(name, mime, base64) {
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name || 'download';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Revoke after a tick so the download has a chance to start.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ── Exported: scrollToBottom ───────────────────────────────────────────────
+export function scrollToBottom(selector) {
+  document.querySelector(selector)?.scrollTo({ top: 9999999, behavior: 'smooth' });
+}
+
 // ── Exported: exportChat ───────────────────────────────────────────────────
 export async function exportChat(instanceId, format, messages) {
   switch (format.toLowerCase()) {

@@ -74,46 +74,52 @@
     {
         if (Provider != null)
         {
-            Provider.InitializedReceived += HandleInitialized;
-            Provider.StepReceived += HandleStep;
-            
+            // Subscribe to the service's multicast events directly (fired on a
+            // thread-pool thread); each handler marshals onto the renderer.
+            Provider.Service.OnInitialized += HandleInitialized;
+            Provider.Service.OnStep += HandleStep;
+
             if (Provider.IsInitialized && Provider.Schema != null)
             {
-                HandleInitialized(Provider.Schema);
+                BuildGraph(Provider.Schema);
             }
         }
     }
 
-    private void HandleInitialized(SgLangGraphSchema schema)
+    private void HandleInitialized(SgLangGraphSchema schema) => _ = InvokeAsync(() =>
     {
-        _nodes = schema.Nodes.Select(n => new SgDiagramNode { 
-            Id = n.Id, 
+        BuildGraph(schema);
+        StateHasChanged();
+    });
+
+    private void BuildGraph(SgLangGraphSchema schema)
+    {
+        _nodes = schema.Nodes.Select(n => new SgDiagramNode {
+            Id = n.Id,
             Label = n.Label,
             Width = 100,
             Height = 40
         }).ToList();
 
-        _edges = schema.Edges.Select(e => new SgDiagramEdge { 
-            SourceId = e.SourceId, 
-            TargetId = e.TargetId, 
-            Label = e.Label 
+        _edges = schema.Edges.Select(e => new SgDiagramEdge {
+            SourceId = e.SourceId,
+            TargetId = e.TargetId,
+            Label = e.Label
         }).ToList();
-        
-        InvokeAsync(StateHasChanged);
     }
 
-    private void HandleStep(SgLangGraphStep step)
+    private void HandleStep(SgLangGraphStep step) => _ = InvokeAsync(() =>
     {
         _currentNode = step.Node;
-        InvokeAsync(StateHasChanged);
-    }
+        StateHasChanged();
+    });
 
     public void Dispose()
     {
         if (Provider != null)
         {
-            Provider.InitializedReceived -= HandleInitialized;
-            Provider.StepReceived -= HandleStep;
+            Provider.Service.OnInitialized -= HandleInitialized;
+            Provider.Service.OnStep -= HandleStep;
         }
     }
 }

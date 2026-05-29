@@ -24,6 +24,13 @@
                 <span>Загрузка моделей Ollama...</span>
             </div>
         }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="sgc-ollama-state">
+                @((MarkupString)SgIcons.Info)
+                <span>@_error</span>
+            </div>
+        }
         else if (!_filteredModels.Any())
         {
             <div class="sgc-ollama-state">
@@ -133,6 +140,7 @@
     private List<SgOllamaModel> _filteredModels = new();
     private string _searchQuery = "";
     private bool _loading;
+    private string _error = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -141,11 +149,15 @@
 
     private async Task LoadModelsAsync()
     {
-        _loading = true;
+        _loading = true; _error = "";
         try
         {
             _models = await LlmService.GetOllamaModelsAsync(BaseUrl);
             ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
         }
         finally
         {

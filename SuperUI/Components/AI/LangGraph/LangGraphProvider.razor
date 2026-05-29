@@ -18,11 +18,12 @@
     [Parameter] public EventCallback<SgLangGraphInterrupt> OnInterrupt { get; set; }
     [Parameter] public Func<string, object, Task<SgLangGraphNodeResult>>? OnNodeExecute { get; set; }
 
-    public event Action<SgLangGraphStep>? StepReceived;
-    public event Action<string>? ErrorReceived;
-    public event Action<SgLangGraphSchema>? InitializedReceived;
-    public event Action<SgLangGraphInterrupt>? InterruptReceived;
-
+    /// <summary>
+    /// The underlying graph service. Child components subscribe to its events
+    /// (<see cref="SgLangGraphService.OnStep"/> etc.) directly for in-code,
+    /// multi-subscriber notifications; the <c>On*</c> <see cref="EventCallback"/>
+    /// parameters above are the razor-attribute API for the parent.
+    /// </summary>
     public SgLangGraphService Service => LangGraphService;
     public SgLangGraphStep? CurrentStep { get; private set; }
     public SgLangGraphSchema? Schema { get; private set; }
@@ -59,7 +60,6 @@
             try
             {
                 await OnStep.InvokeAsync(step);
-                StepReceived?.Invoke(step);
                 StateHasChanged();
             }
             catch (Exception ex)
@@ -76,7 +76,6 @@
             try
             {
                 await OnError.InvokeAsync(error);
-                ErrorReceived?.Invoke(error);
                 StateHasChanged();
             }
             catch (Exception ex)
@@ -95,7 +94,6 @@
             try
             {
                 await OnInitialized.InvokeAsync(schema);
-                InitializedReceived?.Invoke(schema);
                 StateHasChanged();
             }
             catch (Exception ex)
@@ -112,7 +110,6 @@
             try
             {
                 await OnInterrupt.InvokeAsync(interrupt);
-                InterruptReceived?.Invoke(interrupt);
                 StateHasChanged();
             }
             catch (Exception ex)

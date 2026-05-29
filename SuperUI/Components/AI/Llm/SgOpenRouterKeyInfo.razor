@@ -1,5 +1,6 @@
 @namespace SuperUI.Components.Llm
 @using SuperUI.Services.Llm
+@implements IDisposable
 @inject IOpenRouterService OpenRouterService
 @inject ISuperUILocalizer Localizer
 
@@ -95,32 +96,62 @@
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public string? Style { get; set; }
 
+    /// <summary>Debounce window (ms) before an API-key change triggers a balance lookup.</summary>
+    [Parameter] public int DebounceMs { get; set; } = 400;
+
     private SgOpenRouterKeyData? _keyData;
     private bool _loading;
+    private string? _lastCheckedKey;
+    private CancellationTokenSource? _debounceCts;
 
-    protected override async Task OnParametersSetAsync()
+    protected override void OnParametersSet()
     {
         if (!string.IsNullOrEmpty(ApiKey) && (_keyData == null || ApiKey != _lastCheckedKey))
         {
-            await CheckKeyAsync();
+            DebouncedCheck();
         }
     }
 
-    private string? _lastCheckedKey;
+    // Restart the debounce timer on each parameter change; only the final value
+    // after the quiet window fires an actual request, so binding ApiKey to an
+    // oninput textbox no longer hits OpenRouter on every keystroke.
+    private void DebouncedCheck()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(DebounceMs, token);
+                await CheckKeyAsync();
+            }
+            catch (OperationCanceledException) { /* superseded by a newer keystroke */ }
+        });
+    }
 
+    /// <summary>Validates <see cref="ApiKey"/> against OpenRouter and refreshes the displayed balance.</summary>
     public async Task CheckKeyAsync()
     {
         if (string.IsNullOrEmpty(ApiKey)) return;
 
         _loading = true;
         _lastCheckedKey = ApiKey;
+        StateHasChanged();
         try
         {
             _keyData = await OpenRouterService.GetKeyInfoAsync(ApiKey);
         }
+        catch
+        {
+            _keyData = null;
+        }
         finally
         {
             _loading = false;
+            StateHasChanged();
         }
     }
 
@@ -130,5 +161,12 @@
         if (ratio > 0.9) return SgSpinnerVariant.Danger;
         if (ratio > 0.7) return SgSpinnerVariant.Warn;
         return SgSpinnerVariant.Info;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
     }
 }

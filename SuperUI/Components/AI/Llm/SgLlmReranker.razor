@@ -27,7 +27,12 @@
                   Disabled="@(string.IsNullOrWhiteSpace(_query) || string.IsNullOrWhiteSpace(_docs))" />
     </div>
 
-    @if (_results.Count == 0 && !_busy)
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+
+    @if (_results.Count == 0 && !_busy && string.IsNullOrEmpty(_error))
     {
         <SgLlmEmptyState Icon="📊" Title="Введите запрос и список документов"
                          Message="Каждая непустая строка — отдельный документ. Реранкер вернёт их в порядке релевантности." />
@@ -66,6 +71,7 @@
     private string _model = "";
     private int _topN;
     private bool _busy;
+    private string _error = "";
     private List<SgLlmRerankResult> _results = new();
 
     private async Task RunAsync()
@@ -74,7 +80,7 @@
             .Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
         if (lines.Count == 0) return;
 
-        _busy = true; _results.Clear();
+        _busy = true; _error = ""; _results.Clear();
         try
         {
             var effective = LlmService.ResolveConfigForTask(TaskPurpose);
@@ -87,6 +93,7 @@
                 TopN = _topN > 0 ? _topN : null
             });
         }
+        catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
 }

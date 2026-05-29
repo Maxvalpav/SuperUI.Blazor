@@ -17,8 +17,23 @@
     private async Task<string> HandleToolCall(string toolName, string argsJson)
     {
         var args = new ToolCallEventArgs { ToolName = toolName, ArgsJson = argsJson };
-        await OnToolCall.InvokeAsync(args);
-        return args.ResultJson ?? "{}";
+        try
+        {
+            await OnToolCall.InvokeAsync(args);
+            return args.ResultJson ?? "{}";
+        }
+        catch (Exception ex)
+        {
+            // Surface the failure to the model as a structured tool result instead of
+            // letting the exception bubble up (which the model would see as an empty
+            // "success"). The graph can then decide how to recover.
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                error = true,
+                tool = toolName,
+                message = ex.Message,
+            });
+        }
     }
 
     public void Dispose()

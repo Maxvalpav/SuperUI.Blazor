@@ -1,6 +1,8 @@
 @namespace SuperUI.Components
 @using SuperUI.Services.Llm
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
 @inject ILlmService LlmService
 @inject IJSRuntime JS
 
@@ -122,6 +124,7 @@
             _revisedPrompt = res.RevisedPrompt ?? "";
             _lastImage = _images.FirstOrDefault();
         }
+        catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
 
@@ -142,6 +145,7 @@
             if (!string.IsNullOrEmpty(res.Error)) _error = res.Error;
             else { _images = res.Images; _lastImage = _images.FirstOrDefault(); }
         }
+        catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
 
@@ -195,5 +199,19 @@
         {
             _error = $"Не удалось скачать изображение: {ex.Message}";
         }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        if (_blobModule is not null)
+        {
+            try { await _blobModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+            catch (TaskCanceledException) { /* shutdown in flight */ }
+            catch (ObjectDisposedException) { /* already disposed */ }
+            _blobModule = null;
+        }
+        GC.SuppressFinalize(this);
     }
 }

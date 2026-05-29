@@ -195,17 +195,17 @@
 
 ### Фаза 1 — корректность (1–2 недели)
 
-- [ ] **F1-1** Подписки → `IDisposable`/`IAsyncDisposable` по всем 6 LangGraph-компонентам.
-- [ ] **F1-2** `async void` в `LangGraphProvider` → `async Task` с `InvokeAsync(...)` и try/catch.
-- [ ] **F1-3** `SgRagService` стриминг: `streamId` в JS callback'и + per-stream `Channel<string>` вместо multicast + busy-wait.
-- [ ] **F1-4** `catch (Exception ex) { _error = ex.Message; … }` в `RunAsync` всех 5 компонентов `AI/Llm/` (`SgLlmReranker`, `SgLlmImageStudio`, `SgLlmSpeaker`, `SgLlmTranscriber`, `SgOllamaModelPicker.LoadModelsAsync`).
-- [ ] **F1-5** `SgLlmImageStudio` + `SgLlmSpeaker`: реализовать `IAsyncDisposable` для `_blobModule` (по образцу `SgChat.razor.cs:416-442`).
-- [ ] **F1-6** `BlazorToolExecutor`: обернуть `OnToolCall.InvokeAsync` в try/catch, вернуть структурированный error-JSON в графовый сервис.
-- [ ] **F1-7** `SgRagSaveLoadDb._autoTimer.Elapsed`: убрать `async void`, обернуть try/catch, `InvokeAsync(StateHasChanged)`.
-- [ ] **F1-8** `Enter`-handlers: добавить `e.IsComposing` guard + `@onkeydown:preventDefault` (`SgChat`, `SgPuterChat`, `LangGraph/GraphStreamingChat`).
-- [ ] **F1-9** `SgOpenRouterKeyInfo` / `SgOpenRouterModelDetails`: debounce 400ms или явная кнопка «Validate» вместо запроса на keystroke.
-- [ ] **F1-10** `eval`-загрузки (`SgRagChat`, `SgRagSaveLoadDb`) → `downloadBlob(name, mime, base64)` в `sg-rag.js`.
-- [ ] **F1-11** `LangGraphProvider`: убрать дублирование `EventCallback` + `event Action` — оставить одно.
+- [x] **F1-1** Подписки → `IDisposable`/`IAsyncDisposable` по всем 6 LangGraph-компонентам. *(коммит 62ba568)*
+- [x] **F1-2** `async void` в `LangGraphProvider` → `async Task` с `InvokeAsync(...)` и try/catch. *(коммит 62ba568)*
+- [x] **F1-3** `SgRagService` стриминг: `streamId` в JS callback'и + per-stream `Channel<string>` вместо multicast + busy-wait. *(коммит 3929a7c)*
+- [x] **F1-4** `catch (Exception ex) { _error = ex.Message; … }` в `RunAsync` всех 5 компонентов `AI/Llm/` (`SgLlmReranker`, `SgLlmImageStudio`, `SgLlmSpeaker`, `SgLlmTranscriber`, `SgOllamaModelPicker.LoadModelsAsync`). Reranker и ModelPicker также получили поле `_error` + error-surface; ImageStudio.EditAsync тоже обёрнут.
+- [x] **F1-5** `SgLlmImageStudio` + `SgLlmSpeaker`: реализовать `IAsyncDisposable` для `_blobModule` (по образцу `SgChat.razor.cs:416-442`).
+- [x] **F1-6** `BlazorToolExecutor`: обернуть `OnToolCall.InvokeAsync` в try/catch, вернуть структурированный error-JSON в графовый сервис.
+- [x] **F1-7** `SgRagSaveLoadDb._autoTimer.Elapsed`: убрать `async void`, обернуть try/catch, `InvokeAsync(StateHasChanged)`. Именованный handler `OnAutoSnapshotTimer`, отписка в Dispose.
+- [x] **F1-8** `Enter`-handlers: добавить `e.IsComposing` guard (`SgChat`, `SgPuterChat`, `LangGraph/GraphStreamingChat`). `KeyboardEventArgs.IsComposing` доступен в .NET 9/10 — `@onkeydown:preventDefault` не понадобился.
+- [x] **F1-9** `SgOpenRouterKeyInfo` / `SgOpenRouterModelDetails`: debounce 400ms (`DebounceMs` параметр) через `CancellationTokenSource` + `Task.Delay`, `IDisposable`, плюс `catch` на провал запроса.
+- [x] **F1-10** `eval`-загрузки (`SgRagChat`×2, `SgRagSaveLoadDb`) → `downloadBlob(name, mime, base64)` в `sg-rag.js`. Бонус: `scrollToBottom(selector)` заменил третий `eval` в `SgRagChat`.
+- [x] **F1-11** `LangGraphProvider`: ~~убрать дублирование `EventCallback` + `event Action`~~ — по факту это не дублирование, а два разных канала (razor-атрибут для родителя vs in-code подписка для детей). Решение (по согласованию): свести к `EventCallback`, удалить relay-слой `event Action` (`StepReceived`/`ErrorReceived`/`InitializedReceived`/`InterruptReceived`); 5 дочерних компонентов теперь подписываются напрямую на `Provider.Service.On*` с `InvokeAsync`-обёрткой.
 
 ### Фаза 2 — публичный контракт (3–5 дней)
 

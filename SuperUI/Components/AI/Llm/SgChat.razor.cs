@@ -305,7 +305,9 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && !e.ShiftKey)
+        // Ignore Enter while an IME composition is active (e.IsComposing) so CJK
+        // users committing a candidate don't submit a half-typed message.
+        if (e.Key == "Enter" && !e.ShiftKey && !e.IsComposing)
         {
             await SendAsync();
         }

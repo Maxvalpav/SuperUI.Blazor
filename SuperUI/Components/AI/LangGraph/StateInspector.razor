@@ -43,16 +43,16 @@
     {
         if (Provider != null)
         {
-            Provider.StepReceived += HandleStep;
+            Provider.Service.OnStep += HandleStep;
         }
     }
 
-    private void HandleStep(SgLangGraphStep step)
+    private void HandleStep(SgLangGraphStep step) => _ = InvokeAsync(() =>
     {
         _currentState = step.State;
         _cachedJson = null;
-        InvokeAsync(StateHasChanged);
-    }
+        StateHasChanged();
+    });
 
     private string JsonState => _cachedJson ??= _currentState != null
         ? System.Text.Json.JsonSerializer.Serialize(_currentState, s_jsonOptions)
@@ -62,7 +62,7 @@
     {
         if (Provider != null)
         {
-            Provider.StepReceived -= HandleStep;
+            Provider.Service.OnStep -= HandleStep;
         }
     }
 }

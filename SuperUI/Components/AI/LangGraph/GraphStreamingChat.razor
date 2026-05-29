@@ -83,16 +83,19 @@
     {
         if (Provider != null)
         {
-            Provider.StepReceived += HandleStep;
-            Provider.ErrorReceived += HandleError;
+            // Subscribe to the service's multicast events directly. These fire on a
+            // thread-pool thread (JS callbacks), so each handler marshals its full
+            // body onto the renderer's sync context via InvokeAsync.
+            Provider.Service.OnStep += HandleStep;
+            Provider.Service.OnError += HandleError;
         }
     }
 
-    private void HandleStep(SgLangGraphStep step)
+    private void HandleStep(SgLangGraphStep step) => _ = InvokeAsync(() =>
     {
         _currentNode = step.Node;
         _isThinking = true;
-        
+
         if (!string.IsNullOrEmpty(step.Content))
         {
             var lastMsg = _messages.LastOrDefault();
@@ -102,34 +105,34 @@
             }
             else
             {
-                _messages.Add(new ChatMessage { 
-                    Text = step.Content, 
-                    IsUser = false, 
+                _messages.Add(new ChatMessage {
+                    Text = step.Content,
+                    IsUser = false,
                     Node = step.Node,
-                    Timestamp = DateTime.Now 
+                    Timestamp = DateTime.Now
                 });
             }
         }
-        
+
         // If the step is "end" or similar, we might stop thinking
         if (step.Node == "__end__" || step.Node == "end")
         {
             _isThinking = false;
         }
-        
-        InvokeAsync(StateHasChanged);
-    }
 
-    private void HandleError(string error)
+        StateHasChanged();
+    });
+
+    private void HandleError(string error) => _ = InvokeAsync(() =>
     {
         _isThinking = false;
-        _messages.Add(new ChatMessage { 
-            Text = $"Error: {error}", 
-            IsUser = false, 
-            Timestamp = DateTime.Now 
+        _messages.Add(new ChatMessage {
+            Text = $"Error: {error}",
+            IsUser = false,
+            Timestamp = DateTime.Now
         });
-        InvokeAsync(StateHasChanged);
-    }
+        StateHasChanged();
+    });
 
     private async Task SendAsync()
     {
@@ -146,15 +149,17 @@
 
     private async Task HandleKeyUp(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter") await SendAsync();
+        // Shift+Enter inserts a newline; ignore Enter during IME composition
+        // (e.IsComposing) so CJK users don't submit a half-typed message.
+        if (e.Key == "Enter" && !e.ShiftKey && !e.IsComposing) await SendAsync();
     }
 
     public void Dispose()
     {
         if (Provider != null)
         {
-            Provider.StepReceived -= HandleStep;
-            Provider.ErrorReceived -= HandleError;
+            Provider.Service.OnStep -= HandleStep;
+            Provider.Service.OnError -= HandleError;
         }
     }
 
