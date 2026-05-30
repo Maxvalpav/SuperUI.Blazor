@@ -22,7 +22,7 @@ export function attach(trigger, tooltip, placement, dotnet, offset = 8, followCu
     const handleMouseMove = (e) => {
         cursorX = e.clientX;
         cursorY = e.clientY;
-        if (tooltip.style.display !== 'none' && tooltip.style.opacity !== '0') {
+        if (tooltip && tooltip.style && tooltip.style.display !== 'none' && tooltip.style.opacity !== '0') {
             positionTooltip(trigger, tooltip, placement, offset, cursorX, cursorY, followCursor);
         }
     };
@@ -63,7 +63,7 @@ export function attach(trigger, tooltip, placement, dotnet, offset = 8, followCu
     };
 
     const reposition = () => {
-        if (tooltip.style.display === 'none') return;
+        if (!tooltip || !tooltip.style || tooltip.style.display === 'none') return;
         if (followCursor) {
             positionTooltip(trigger, tooltip, placement, offset, cursorX, cursorY, true);
         } else {
@@ -123,7 +123,7 @@ export function detach(trigger) {
 }
 
 export function show(trigger, tooltip, placement = 'top', zIndex, offset = 8) {
-    if (!trigger || !tooltip) return;
+    if (!trigger || !tooltip || !tooltip.style) return;
 
     const instance = tooltipInstances.get(trigger);
 
@@ -134,6 +134,7 @@ export function show(trigger, tooltip, placement = 'top', zIndex, offset = 8) {
     tooltip.style.visibility = 'hidden';
 
     requestAnimationFrame(() => {
+        if (!tooltip || !tooltip.style) return;
         if (instance && instance.followCursor) {
             positionTooltip(trigger, tooltip, placement, offset, instance.cursorX, instance.cursorY, true);
         } else {
@@ -145,19 +146,21 @@ export function show(trigger, tooltip, placement = 'top', zIndex, offset = 8) {
 }
 
 export function hide(tooltip) {
-    if (!tooltip) return;
+    if (!tooltip || !tooltip.style) return;
     tooltip.style.opacity = '0';
     setTimeout(() => {
-        if (tooltip.style.opacity === '0') {
+        if (tooltip && tooltip.style && tooltip.style.opacity === '0') {
             tooltip.style.display = 'none';
         }
     }, 150);
 }
 
 function positionTooltip(trigger, tooltip, placement = 'top', offset = 8, cursorX, cursorY, followCursor = false) {
-    if (!trigger || !tooltip) return;
+    if (!trigger || !tooltip || !tooltip.style) return;
 
     const tooltipRect = tooltip.getBoundingClientRect();
+    if (tooltipRect.width === 0 && tooltipRect.height === 0) return; // Hidden or detached
+
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
@@ -184,6 +187,7 @@ function positionTooltip(trigger, tooltip, placement = 'top', offset = 8, cursor
         }
     } else {
         const triggerRect = trigger.getBoundingClientRect();
+        if (triggerRect.width === 0 && triggerRect.height === 0) return; // Trigger is hidden/detached
 
         if (dir === 'bottom') {
             top = triggerRect.bottom + offset;
@@ -209,28 +213,32 @@ function positionTooltip(trigger, tooltip, placement = 'top', offset = 8, cursor
     }
 
     // ── Viewport collision detection (auto-flip) ──
+    const getTriggerRect = () => trigger.getBoundingClientRect();
+
     if (dir === 'top' && top < 4) {
         top = followCursor
-            ? (cursorY !== undefined ? cursorY + offset : (trigger.getBoundingClientRect().bottom + offset))
-            : (trigger.getBoundingClientRect().bottom + offset);
+            ? (cursorY !== undefined ? cursorY + offset : (getTriggerRect().bottom + offset))
+            : (getTriggerRect().bottom + offset);
     } else if (dir === 'bottom' && top + tooltipRect.height > vh - 4) {
         top = followCursor
-            ? (cursorY !== undefined ? cursorY - tooltipRect.height - offset : (trigger.getBoundingClientRect().top - tooltipRect.height - offset))
-            : (trigger.getBoundingClientRect().top - tooltipRect.height - offset);
+            ? (cursorY !== undefined ? cursorY - tooltipRect.height - offset : (getTriggerRect().top - tooltipRect.height - offset))
+            : (getTriggerRect().top - tooltipRect.height - offset);
     } else if (dir === 'left' && left < 4) {
         left = followCursor
-            ? (cursorX !== undefined ? cursorX + offset : (trigger.getBoundingClientRect().right + offset))
-            : (trigger.getBoundingClientRect().right + offset);
+            ? (cursorX !== undefined ? cursorX + offset : (getTriggerRect().right + offset))
+            : (getTriggerRect().right + offset);
     } else if (dir === 'right' && left + tooltipRect.width > vw - 4) {
         left = followCursor
-            ? (cursorX !== undefined ? cursorX - tooltipRect.width - offset : (trigger.getBoundingClientRect().left - tooltipRect.width - offset))
-            : (trigger.getBoundingClientRect().left - tooltipRect.width - offset);
+            ? (cursorX !== undefined ? cursorX - tooltipRect.width - offset : (getTriggerRect().left - tooltipRect.width - offset))
+            : (getTriggerRect().left - tooltipRect.width - offset);
     }
 
     // ── Clamp within viewport with padding ──
     left = Math.max(4, Math.min(left, vw - tooltipRect.width - 4));
     top = Math.max(4, Math.min(top, vh - tooltipRect.height - 4));
 
-    tooltip.style.top = `${top}px`;
-    tooltip.style.left = `${left}px`;
+    if (tooltip.style) {
+        tooltip.style.top = `${top}px`;
+        tooltip.style.left = `${left}px`;
+    }
 }

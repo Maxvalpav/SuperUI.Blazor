@@ -97,10 +97,15 @@ function positionPopover(trigger, popover, placement, offset, closeOnEscape, int
 
 export function attach(root, popover, trigger, dotnetRef, closeOnOutsideClick, closeOnEscape, offset = 6, interactive = false) {
     detach(root);
-    if (!root || !popover || !trigger) return;
+    if (!root || !popover || !trigger) {
+        console.warn('SuperUI Popover: attach failed - missing elements', { root, popover, trigger });
+        return;
+    }
 
-    popover.style.visibility = 'hidden';
-    popover.style.opacity = '0';
+    if (popover.style) {
+        popover.style.visibility = 'hidden';
+        popover.style.opacity = '0';
+    }
 
     let isDisposed = false;
     let scrollParents = [];

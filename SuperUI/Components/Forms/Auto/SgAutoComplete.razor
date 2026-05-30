@@ -8,7 +8,7 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<div class="@GetRootClasses()" style="@Style" @ref="_rootRef">
+<div class="@GetRootClasses()" style="@Style">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
@@ -18,12 +18,14 @@
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="listbox"
          aria-labelledby="@_labelId"
+         aria-controls="@_listboxId"
          aria-required="@(Required ? "true" : null)"
          aria-disabled="@(Disabled ? "true" : null)"
          aria-invalid="@(IsInvalid ? "true" : null)"
          aria-describedby="@DescribedBy"
          @onclick:stopPropagation="true"
-         @attributes="AdditionalAttributes">
+         @attributes="AdditionalAttributes"
+         @ref="_rootRef">
         <div class="sgc-combo-control" @onfocusin="OnFocusInAsync">
             @if (Prefix != null)
             {
@@ -72,134 +74,136 @@
             var menuAnim = Animated ? "sgc-combo-menu-enter sgc-combo-menu-enter-active" : "";
             var menuShadow = MenuElevation != SgShadow.None ? GetMenuShadowClass(MenuElevation) : "";
 
-            <div id="@_listboxId" class="sgc-combo-menu @menuAnim @menuShadow" role="listbox" style="@GetMenuStyle(filtered.Count)" @onmousedown:stopPropagation="true">
-                @if (DropdownHeader != null)
-                {
-                    <div class="sgc-combo-menu-header">@DropdownHeader</div>
-                }
-                @if (filtered.Count == 0 && !_showCreateOption)
-                {
-                    @if (_search.Length < MinCharacters)
+            <SgPortal Visible="@_open">
+                <div id="@_listboxId" class="sgc-combo-menu @menuAnim @menuShadow" role="listbox" style="@GetMenuStyle(filtered.Count)" @onmousedown:stopPropagation="true">
+                    @if (DropdownHeader != null)
                     {
-                        <div class="sgc-combo-empty" role="status">@Localizer["DataGrid_AutoCompleteMinChars"]</div>
+                        <div class="sgc-combo-menu-header">@DropdownHeader</div>
                     }
-                    else if (Loading)
+                    @if (filtered.Count == 0 && !_showCreateOption)
                     {
-                        <div class="sgc-combo-loading" role="status">
-                            @LoadingIcon
-                            <span>@Localizer["Loading"]</span>
-                        </div>
-                    }
-                    else
-                    {
-                        @if (EmptyContent != null)
+                        @if (_search.Length < MinCharacters)
                         {
-                            @EmptyContent
+                            <div class="sgc-combo-empty" role="status">@Localizer["DataGrid_AutoCompleteMinChars"]</div>
                         }
-                        else if (NoResultsTemplate != null)
+                        else if (Loading)
                         {
-                            @NoResultsTemplate
+                            <div class="sgc-combo-loading" role="status">
+                                @LoadingIcon
+                                <span>@Localizer["Loading"]</span>
+                            </div>
                         }
                         else
                         {
-                            <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                            @if (EmptyContent != null)
+                            {
+                                @EmptyContent
+                            }
+                            else if (NoResultsTemplate != null)
+                            {
+                                @NoResultsTemplate
+                            }
+                            else
+                            {
+                                <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                            }
                         }
                     }
-                }
-                else
-                {
-                    <div class="sgc-combo-options" role="listbox">
-                        @{
-                            string? currentGroup = null;
-                            var idx = 0;
-                            foreach (var item in filtered)
-                            {
-                                var itemGroup = GroupSelector?.Invoke(item);
-                                if (itemGroup != currentGroup)
+                    else
+                    {
+                        <div class="sgc-combo-options" role="listbox">
+                            @{
+                                string? currentGroup = null;
+                                var idx = 0;
+                                foreach (var item in filtered)
                                 {
-                                    currentGroup = itemGroup;
-                                    if (itemGroup != null)
+                                    var itemGroup = GroupSelector?.Invoke(item);
+                                    if (itemGroup != currentGroup)
                                     {
-                                        var isCollapsed = CollapsibleGroups && _collapsedGroups.Contains(itemGroup);
-                                        <div class="sgc-combo-group-header @(CollapsibleGroups ? "sgc-combo-group-collapsible" : "")"
-                                             role="group" aria-label="@itemGroup"
-                                             @onmousedown:stopPropagation="true"
-                                             @onclick:stopPropagation="true"
-                                             @onclick="() => ToggleGroup(itemGroup)">
-                                            @if (CollapsibleGroups)
-                                            {
-                                                <span class="sgc-combo-group-chevron @(isCollapsed ? "" : "sgc-open")">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd"/></svg>
-                                                </span>
-                                            }
-                                            <span class="sgc-combo-group-label">@itemGroup</span>
-                                        </div>
-                                    }
-                                }
-                                if (itemGroup != null && CollapsibleGroups && _collapsedGroups.Contains(itemGroup))
-                                {
-                                    idx++;
-                                    continue;
-                                }
-
-                                var isActive = idx == _activeIndex;
-                                var isSelected = IsSelected(item);
-                                var showCheck = ShouldShowCheck(item, itemGroup);
-                                var optClasses = "sgc-combo-option";
-                                if (isActive) optClasses += " sgc-active";
-                                if (isSelected) optClasses += " sgc-selected";
-                                var desc = OptionDescription?.Invoke(item);
-
-                                <div class="@optClasses"
-                                     role="option"
-                                     aria-selected="@(isSelected ? "true" : "false")"
-                                     @onclick="() => PickAsync(item)">
-                                    @if (ItemTemplate != null)
-                                    {
-                                        @ItemTemplate(item)
-                                    }
-                                    else
-                                    {
-                                        @if (showCheck)
+                                        currentGroup = itemGroup;
+                                        if (itemGroup != null)
                                         {
-                                            <span class="sgc-combo-option-check">@CheckedIcon</span>
+                                            var isCollapsed = CollapsibleGroups && _collapsedGroups.Contains(itemGroup);
+                                            <div class="sgc-combo-group-header @(CollapsibleGroups ? "sgc-combo-group-collapsible" : "")"
+                                                 role="group" aria-label="@itemGroup"
+                                                 @onmousedown:stopPropagation="true"
+                                                 @onclick:stopPropagation="true"
+                                                 @onclick="() => ToggleGroup(itemGroup)">
+                                                @if (CollapsibleGroups)
+                                                {
+                                                    <span class="sgc-combo-group-chevron @(isCollapsed ? "" : "sgc-open")">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd"/></svg>
+                                                    </span>
+                                                }
+                                                <span class="sgc-combo-group-label">@itemGroup</span>
+                                            </div>
                                         }
-                                        <span class="sgc-combo-option-body">
-                                            @if (desc != null)
-                                            {
-                                                <span class="sgc-combo-option-desc">@desc</span>
-                                            }
-                                            <span class="sgc-combo-option-label">
-                                                @if (HighlightMatch && !string.IsNullOrEmpty(_search))
-                                                {
-                                                    @((MarkupString)HighlightText(LabelFrom(item), _search))
-                                                }
-                                                else
-                                                {
-                                                    @LabelFrom(item)
-                                                }
-                                            </span>
-                                        </span>
                                     }
-                                </div>
-                                idx++;
+                                    if (itemGroup != null && CollapsibleGroups && _collapsedGroups.Contains(itemGroup))
+                                    {
+                                        idx++;
+                                        continue;
+                                    }
+
+                                    var isActive = idx == _activeIndex;
+                                    var isSelected = IsSelected(item);
+                                    var showCheck = ShouldShowCheck(item, itemGroup);
+                                    var optClasses = "sgc-combo-option";
+                                    if (isActive) optClasses += " sgc-active";
+                                    if (isSelected) optClasses += " sgc-selected";
+                                    var desc = OptionDescription?.Invoke(item);
+
+                                    <div class="@optClasses"
+                                         role="option"
+                                         aria-selected="@(isSelected ? "true" : "false")"
+                                         @onclick="() => PickAsync(item)">
+                                        @if (ItemTemplate != null)
+                                        {
+                                            @ItemTemplate(item)
+                                        }
+                                        else
+                                        {
+                                            @if (showCheck)
+                                            {
+                                                <span class="sgc-combo-option-check">@CheckedIcon</span>
+                                            }
+                                            <span class="sgc-combo-option-body">
+                                                @if (desc != null)
+                                                {
+                                                    <span class="sgc-combo-option-desc">@desc</span>
+                                                }
+                                                <span class="sgc-combo-option-label">
+                                                    @if (HighlightMatch && !string.IsNullOrEmpty(_search))
+                                                    {
+                                                        @((MarkupString)HighlightText(LabelFrom(item), _search))
+                                                    }
+                                                    else
+                                                    {
+                                                        @LabelFrom(item)
+                                                    }
+                                                </span>
+                                            </span>
+                                        }
+                                    </div>
+                                    idx++;
+                                }
+                                @if (_showCreateOption)
+                                {
+                                    var isActive = idx == _activeIndex;
+                                    <div class="sgc-combo-option sgc-combo-create @(isActive ? "sgc-active" : "")" role="option" @onclick="() => HandleCreateAsync()">
+                                        <span class="sgc-combo-option-check" style="opacity:1;">+</span>
+                                        <span class="sgc-combo-option-label">@CreateOptionText</span>
+                                    </div>
+                                }
                             }
-                            @if (_showCreateOption)
-                            {
-                                var isActive = idx == _activeIndex;
-                                <div class="sgc-combo-option sgc-combo-create @(isActive ? "sgc-active" : "")" role="option" @onclick="() => HandleCreateAsync()">
-                                    <span class="sgc-combo-option-check" style="opacity:1;">+</span>
-                                    <span class="sgc-combo-option-label">@CreateOptionText</span>
-                                </div>
-                            }
-                        }
-                    </div>
-                }
-                @if (DropdownFooter != null)
-                {
-                    <div class="sgc-combo-menu-footer">@DropdownFooter</div>
-                }
-            </div>
+                        </div>
+                    }
+                    @if (DropdownFooter != null)
+                    {
+                        <div class="sgc-combo-menu-footer">@DropdownFooter</div>
+                    }
+                </div>
+            </SgPortal>
         }
     </div>
     @if (IsInvalid)

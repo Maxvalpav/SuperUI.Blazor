@@ -70,7 +70,8 @@ export function attach(root, dotnetRef, placement, matchWidth) {
 
     const reposition = () => {
         if (isDisposed) return;
-        const menu = root.querySelector('.sgc-combo-menu');
+        const menuId = root.getAttribute('aria-controls');
+        const menu = menuId ? document.getElementById(menuId) : root.querySelector('.sgc-combo-menu');
         if (!menu) return;
         positionMenu(root, menu, placement || 'BottomStart', !!matchWidth);
     };
@@ -113,7 +114,8 @@ export function detach(root) {
 }
 
 export function repositionMenu(root) {
-    const menu = root.querySelector('.sgc-combo-menu');
+    const menuId = root.getAttribute('aria-controls');
+    const menu = menuId ? document.getElementById(menuId) : root.querySelector('.sgc-combo-menu');
     if (!menu) return;
     const placement = root._sgAutoCompletePlacement || 'BottomStart';
     const matchWidth = root._sgAutoCompleteMatchWidth;
@@ -125,7 +127,8 @@ export function repositionMenu(root) {
 }
 
 export function scrollToSelected(root) {
-    const menu = root.querySelector('.sgc-combo-menu');
+    const menuId = root.getAttribute('aria-controls');
+    const menu = menuId ? document.getElementById(menuId) : root.querySelector('.sgc-combo-menu');
     if (!menu) return;
     const selected = menu.querySelector('.sgc-combo-option.sgc-active');
     if (selected) {

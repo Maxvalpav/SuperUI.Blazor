@@ -14,6 +14,7 @@ public sealed class ThemeRegistry
     {
         // Register built-in themes
         Register(new NaturaTheme());
+        Register(new SolarisTheme());
     }
 
     /// <summary>Registers a new theme.</summary>

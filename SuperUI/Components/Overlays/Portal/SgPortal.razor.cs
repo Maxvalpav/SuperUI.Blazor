@@ -12,6 +12,7 @@ namespace SuperUI.Components;
 public partial class SgPortal : SgJsComponentBase
 {
     private bool _prevVisible;
+    private bool _isTeleported;
     private int _allocatedZIndex;
 
     [Inject]
@@ -51,6 +52,7 @@ public partial class SgPortal : SgJsComponentBase
 
     private string PortalWrapperStyle => Styles()
         .AddStyle("display", "contents")
+        .AddStyle("visibility", "hidden", !(_isTeleported && Visible))
         .Build();
 
     private int ResolvedZIndex
@@ -77,12 +79,15 @@ public partial class SgPortal : SgJsComponentBase
                 renderAt = RenderAt,
                 transitionDuration = TransitionDuration > 0 ? TransitionDuration : (int?)null,
             });
+            _isTeleported = true;
             await OnTeleported.InvokeAsync();
+            StateHasChanged();
         }
         else if (!Visible && _prevVisible)
         {
             await SafeInvokeVoidAsync("close", RootRef);
             ReleaseZIndex();
+            _isTeleported = false;
         }
         else if (Visible && _prevVisible)
         {
