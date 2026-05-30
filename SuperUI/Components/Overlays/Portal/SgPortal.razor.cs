@@ -50,7 +50,7 @@ public partial class SgPortal : SgJsComponentBase
     protected override string ModulePath => "./_content/SuperUI/superui-portal.js";
 
     private string PortalWrapperStyle => Styles()
-        .AddStyle("position", "relative")
+        .AddStyle("display", "contents")
         .Build();
 
     private int ResolvedZIndex

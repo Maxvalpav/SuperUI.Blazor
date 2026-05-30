@@ -29,13 +29,13 @@ public sealed class SgZIndexService
     public const int DrawerBase = 1200;
 
     /// <summary>Base z-index for popovers.</summary>
-    public const int PopoverBase = 1300;
+    public const int PopoverBase = 4000;
 
     /// <summary>Base z-index for tooltips.</summary>
-    public const int TooltipBase = 1400;
+    public const int TooltipBase = 5000;
 
     /// <summary>Base z-index for floating windows (e.g. <c>SgDockWindow</c>).</summary>
-    public const int WindowBase = 2000;
+    public const int WindowBase = 6000;
 
     /// <summary>Base z-index for modal-like overlays (command palette, tour).</summary>
     public const int ModalOverlayBase = 8000;

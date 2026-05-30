@@ -126,6 +126,24 @@ public partial class SgPopover : SgJsComponentBase
     [Parameter, EditorRequired] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
+    /// Gets or sets whether to use a Portal to render the popover content.
+    /// Recommended to stay true to avoid overflow clipping and stacking context issues.
+    /// </summary>
+    [Parameter] public bool UsePortal { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the target element selector where the popover should be rendered via Portal.
+    /// Default is "body". Set to null to render in-place (not recommended for nested overlays).
+    /// </summary>
+    [Parameter] public string? PortalTarget { get; set; } = "body";
+
+    /// <summary>
+    /// Gets or sets a fixed z-index for the popover.
+    /// If not provided, it will be automatically allocated from <see cref="SgZIndexService.PopoverBase"/>.
+    /// </summary>
+    [Parameter] public int? ZIndex { get; set; }
+
+    /// <summary>
     /// Gets or sets the popover size. When null, uses the default size.
     /// </summary>
     [Parameter] public SgSize? Size { get; set; }
@@ -240,7 +258,7 @@ public partial class SgPopover : SgJsComponentBase
 
     private async Task AttachAsync()
     {
-        _zIndex = ZIndexService.Allocate(this, SgZIndexService.PopoverBase);
+        _zIndex = ZIndex ?? ZIndexService.Allocate(this, SgZIndexService.PopoverBase);
         _isClosing = false;
         _attached = false;
         await SafeInvokeVoidAsync("attach",
@@ -252,7 +270,9 @@ public partial class SgPopover : SgJsComponentBase
     private async Task DetachAsync()
     {
         if (!_attached) return;
-        ZIndexService.Release(this);
+        if (!ZIndex.HasValue)
+            ZIndexService.Release(this);
+        
         _zIndex = 0;
         await SafeInvokeVoidAsync("detach", RootRef);
         _attached = false;
