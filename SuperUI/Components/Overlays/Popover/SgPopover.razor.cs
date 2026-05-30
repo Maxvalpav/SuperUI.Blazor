@@ -233,7 +233,7 @@ public partial class SgPopover : SgJsComponentBase
         if (_open && !_lastRenderedOpen)
         {
             _lastRenderedOpen = true;
-            if (Module is not null)
+            if (Module is not null && !_attached) // Only attach if not already attached via OnInteractiveAsync
                 await AttachAsync();
         }
         else if (!_open && _lastRenderedOpen)
@@ -260,7 +260,9 @@ public partial class SgPopover : SgJsComponentBase
     {
         _zIndex = ZIndex ?? ZIndexService.Allocate(this, SgZIndexService.PopoverBase);
         _isClosing = false;
-        _attached = false;
+        // Ensure state is synced before calling JS
+        StateHasChanged();
+        
         await SafeInvokeVoidAsync("attach",
             RootRef, _popoverRef, _triggerRef, SelfRef,
             CloseOnOutsideClick, CloseOnEscape, Offset, Interactive && Trigger == SgTrigger.Hover);
@@ -282,9 +284,17 @@ public partial class SgPopover : SgJsComponentBase
     {
         _isClosing = true;
         StateHasChanged();
-        await Task.Delay(CloseAnimationMs, ComponentLifetime);
-        _isClosing = false;
-        StateHasChanged();
+        try
+        {
+            await Task.Delay(CloseAnimationMs, ComponentLifetime);
+        }
+        catch (OperationCanceledException) { return; }
+
+        if (!_open) // Only reset if it didn't reopen in the meantime
+        {
+            _isClosing = false;
+            StateHasChanged();
+        }
     }
 
     private async Task OnTriggerClickAsync()
