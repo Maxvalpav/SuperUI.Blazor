@@ -98,9 +98,11 @@ Targets `net10.0` — works with Blazor WebAssembly, Server, Web App, Hybrid.
 ```
 
 ```razor
-@* Theming — light/dark toggle built in *@
+@* Theming — light/dark toggle, two built-in themes *@
 <SgThemeSwitcher />
 ```
+
+Two built-in themes: **Default** (blue-600 + slate, φ/Fibonacci radii, natural easing) and **Natura UI** (OKLCH ocean/sky, φ-proportioned, compact). Switch via `SgThemeService.SetThemeAsync("natura-ui")`.
 
 ---
 
