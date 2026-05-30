@@ -2,7 +2,7 @@ namespace SuperUI.Themes;
 
 /// <summary>
 /// Default SuperUI theme — strict, compact, angular.
-/// Palette: royal blue primary on slate neutrals (Inter / JetBrains Mono).
+/// Palette: azure primary on slate neutrals (Inter / JetBrains Mono).
 /// Geometry: φ-radii, 30px controls, 1px borders.
 /// Motion: no vertical hops — color shifts + scale(0.98) press, 150ms ease-out.
 /// "Изюминка": 2px accent stripe on focused inputs, top-accent that grows on cards,
@@ -575,17 +575,17 @@ internal class DefaultPrimitives : IThemePrimitives
     public virtual string Neutral800 => "#1e293b";
     public virtual string Neutral900 => "#0f172a";
 
-    // Primary — Royal Blue (unique, не скопирован)
-    public virtual string Primary50  => "#eef1ff";
-    public virtual string Primary100 => "#dde4ff";
-    public virtual string Primary200 => "#bac8ff";
-    public virtual string Primary300 => "#97adff";
-    public virtual string Primary400 => "#748eff";
-    public virtual string Primary500 => "#556fe8";
-    public virtual string Primary600 => "#3b5be3";
-    public virtual string Primary700 => "#2d46b8";
-    public virtual string Primary800 => "#23378e";
-    public virtual string Primary900 => "#192763";
+    // Primary — Azure Blue (чистый синий, без фиолетового отлива)
+    public virtual string Primary50  => "#eef6ff";
+    public virtual string Primary100 => "#d8e4ff";
+    public virtual string Primary200 => "#b1c9ff";
+    public virtual string Primary300 => "#89aeff";
+    public virtual string Primary400 => "#6293ff";
+    public virtual string Primary500 => "#4f86ff";
+    public virtual string Primary600 => "#3B78FF";
+    public virtual string Primary700 => "#2f60cc";
+    public virtual string Primary800 => "#234899";
+    public virtual string Primary900 => "#183066";
 
     // Success — Emerald
     public virtual string Success50  => "#ecfdf5";
@@ -650,22 +650,22 @@ internal class DefaultSemanticLight : IThemeSemantic
     public virtual string FgMuted     => "#64748b";    // slate-500
     public virtual string FgDisabled  => "#94a3b8";    // slate-400
     public virtual string FgInverse   => "#ffffff";
-    public virtual string FgLink      => "#3b5be3";    // royal blue
-    public virtual string FgLinkHover => "#2d46b8";    // royal blue hover
+    public virtual string FgLink      => "#3B78FF";    // azure blue
+    public virtual string FgLinkHover => "#2f60cc";    // azure blue hover
 
     // Borders
     public virtual string BorderDefault => "#e2e8f0";  // slate-200
     public virtual string BorderSubtle  => "#f1f5f9";  // slate-100
     public virtual string BorderStrong  => "#cbd5e1";  // slate-300
-    public virtual string BorderFocus   => "#3b5be3";  // royal blue
+    public virtual string BorderFocus   => "#3B78FF";  // azure blue
     public virtual string Divider       => "#f1f5f9";  // slate-100
 
-    // Primary — Royal Blue
-    public virtual string ColorPrimary        => "#3b5be3";
-    public virtual string ColorPrimarySubtle  => "#eef1ff";
-    public virtual string ColorPrimaryMuted   => "#dde4ff";
-    public virtual string ColorPrimaryHover   => "#2d46b8";
-    public virtual string ColorPrimaryActive  => "#23378e";
+    // Primary — Azure Blue
+    public virtual string ColorPrimary        => "#3B78FF";
+    public virtual string ColorPrimarySubtle  => "#eef6ff";
+    public virtual string ColorPrimaryMuted   => "#d8e4ff";
+    public virtual string ColorPrimaryHover   => "#2f60cc";
+    public virtual string ColorPrimaryActive  => "#234899";
     public virtual string ColorPrimaryFg      => "#ffffff";
 
     // Success — Emerald 600
@@ -716,7 +716,7 @@ internal class DefaultSemanticLight : IThemeSemantic
     public virtual string TransitionBase => "200ms cubic-bezier(0.19, 1, 0.22, 1)";
     public virtual string TransitionSlow => "350ms cubic-bezier(0.19, 1, 0.22, 1)";
 
-    public virtual string FocusRing       => "0 0 0 2px #ffffff, 0 0 0 4px #3b5be3";
+    public virtual string FocusRing       => "0 0 0 2px #ffffff, 0 0 0 4px #3B78FF";
     public virtual string FocusRingDanger => "0 0 0 2px #ffffff, 0 0 0 4px #dc2626";
 
     public virtual int ZDropdown => 1000;
@@ -748,22 +748,22 @@ internal class DefaultSemanticDark : IThemeSemantic
     public virtual string FgMuted     => "oklch(0.58 0.008 240)";   // text-muted / slate-400
     public virtual string FgDisabled  => "oklch(0.42 0.010 240)";   // slate-500
     public virtual string FgInverse   => "oklch(0.12 0.008 240)";
-    public virtual string FgLink      => "oklch(0.50 0.20 265)";    // royal blue
-    public virtual string FgLinkHover => "oklch(0.56 0.18 265)";    // royal blue hover
+    public virtual string FgLink      => "oklch(0.50 0.20 240)";    // azure blue
+    public virtual string FgLinkHover => "oklch(0.56 0.18 240)";    // azure blue hover
 
     // Borders — границы и разделители (slate)
     public virtual string BorderDefault => "oklch(0.25 0.016 240)";  // border-strong / slate-700
     public virtual string BorderSubtle  => "oklch(0.18 0.012 240)";  // border-weak
     public virtual string BorderStrong  => "oklch(0.30 0.018 240)";
-    public virtual string BorderFocus   => "oklch(0.50 0.20 265)";   // royal blue
+    public virtual string BorderFocus   => "oklch(0.50 0.20 240)";   // azure blue
     public virtual string Divider       => "oklch(0.18 0.012 240)";  // border-weak
 
-    // Primary — Royal Blue (уникальный, deeper, hue 265°)
-    public virtual string ColorPrimary        => "oklch(0.50 0.20 265)";
-    public virtual string ColorPrimarySubtle  => "oklch(0.20 0.04 265)";
-    public virtual string ColorPrimaryMuted   => "oklch(0.28 0.07 265)";
-    public virtual string ColorPrimaryHover   => "oklch(0.56 0.18 265)";
-    public virtual string ColorPrimaryActive  => "oklch(0.45 0.20 265)";
+    // Primary — Azure Blue (чистый синий, hue 240°)
+    public virtual string ColorPrimary        => "oklch(0.50 0.20 240)";
+    public virtual string ColorPrimarySubtle  => "oklch(0.20 0.04 240)";
+    public virtual string ColorPrimaryMuted   => "oklch(0.28 0.07 240)";
+    public virtual string ColorPrimaryHover   => "oklch(0.56 0.18 240)";
+    public virtual string ColorPrimaryActive  => "oklch(0.45 0.20 240)";
     public virtual string ColorPrimaryFg      => "oklch(0.98 0 0)";
 
     // Success — #10b981 (emerald)
@@ -812,7 +812,7 @@ internal class DefaultSemanticDark : IThemeSemantic
     public virtual string TransitionBase => "200ms cubic-bezier(0.19, 1, 0.22, 1)";
     public virtual string TransitionSlow => "350ms cubic-bezier(0.19, 1, 0.22, 1)";
 
-    public virtual string FocusRing       => "0 0 0 2px oklch(0.12 0.008 240), 0 0 0 4px oklch(0.50 0.20 265)";
+    public virtual string FocusRing       => "0 0 0 2px oklch(0.12 0.008 240), 0 0 0 4px oklch(0.50 0.20 240)";
     public virtual string FocusRingDanger => "0 0 0 2px oklch(0.12 0.008 240), 0 0 0 4px oklch(0.58 0.22 22)";
 
     public virtual int ZDropdown => 1000;
