@@ -145,6 +145,9 @@
     private bool _visible;
     private bool _hovered;
     private int _progress = -1;
+    private int _prevThreshold;
+    private bool _prevShowProgress;
+    private string? _prevTarget;
 
     private string PositionStyle
     {
@@ -192,8 +195,18 @@
             if (_isDisposed) return;
             _self ??= DotNetObjectReference.Create(this);
 
-            if (firstRender || _handleId < 0)
+            var needsAttach = firstRender || _handleId < 0
+                || _prevThreshold != VisibilityHeight
+                || _prevShowProgress != ShowProgress
+                || _prevTarget != Target;
+
+            if (needsAttach)
             {
+                if (_handleId >= 0)
+                {
+                    await _module.InvokeVoidAsync("backtopDetach", _handleId);
+                    _handleId = -1;
+                }
                 _handleId = await _module.InvokeAsync<int>("backtopAttach", _self,
                     new
                     {
@@ -202,6 +215,9 @@
                         direction = "bottom",
                         trackProgress = ShowProgress
                     });
+                _prevThreshold = VisibilityHeight;
+                _prevShowProgress = ShowProgress;
+                _prevTarget = Target;
             }
         }
         catch (JSException) { }
