@@ -67,7 +67,7 @@ internal static class NaturaMath
 
 /// <summary>
 /// Natura UI — природная дизайн-система на золотом сечении φ, числах Фибоначчи.
-/// Светлая тема: океан/небо/море — белый с оттенком синевы (OKLCH).
+/// Светлая тема: Royal Cornflower — белый с оттенком василька (OKLCH).
 /// Тёмная тема: «две скрепки» — холодный металлик, сталь.
 /// Размеры уменьшены: medium → large, compact-форма.
 /// </summary>
@@ -75,7 +75,7 @@ public sealed class NaturaTheme : ThemeBase
 {
     public override string Id => "natura-ui";
     public override string Name => "Natura UI";
-    public override string? Description => "Природная дизайн-система: φ-пропорции, Фибоначчи-спейсинг. Светлая — океан/море (OKLCH). Тёмная — металлик «две скрепки». Уменьшенные размеры.";
+    public override string? Description => "Природная дизайн-система: φ-пропорции, Фибоначчи-спейсинг. Светлая — Royal Cornflower (OKLCH). Тёмная — металлик «две скрепки». Уменьшенные размеры.";
     public override string? Author => "SuperUI + Natura";
     public override string Version => "1.0.0";
 
@@ -87,8 +87,8 @@ public sealed class NaturaTheme : ThemeBase
     public override string? AdditionalCss => $$"""
         /* ═══════════════════════════════════════════════════════════════
            NATURA UI — φ-proportioned design system
-           Brand: blue #2563EB / green #00A86B / red #E11D48
-           Light: cool white with blue tint
+           Brand: Royal Cornflower / green #00A86B / red #E11D48
+           Light: cool white with cornflower tint
            Dark:  deep cool steel
            Compact sizing, φ/Fibonacci proportions
            Selector: [data-theme-id="natura-ui"]
@@ -582,30 +582,30 @@ public sealed class NaturaTheme : ThemeBase
 
 internal class NaturaPrimitives : IThemePrimitives
 {
-    // Neutral — cool scale (hue 251°, aligned with brand primary)
+    // Neutral — cool scale (hue 262°, aligned with brand primary)
     public virtual string Neutral0   => "oklch(1 0 0)";
-    public virtual string Neutral50  => "oklch(0.985 0.003 251)";
-    public virtual string Neutral100 => "oklch(0.97 0.005 251)";
-    public virtual string Neutral200 => "oklch(0.93 0.008 251)";
-    public virtual string Neutral300 => "oklch(0.87 0.01 251)";
-    public virtual string Neutral400 => "oklch(0.76 0.012 251)";
-    public virtual string Neutral500 => "oklch(0.64 0.012 251)";
-    public virtual string Neutral600 => "oklch(0.52 0.014 251)";
-    public virtual string Neutral700 => "oklch(0.40 0.016 251)";
-    public virtual string Neutral800 => "oklch(0.28 0.018 251)";
-    public virtual string Neutral900 => "oklch(0.16 0.02 251)";
+    public virtual string Neutral50  => "oklch(0.985 0.003 262)";
+    public virtual string Neutral100 => "oklch(0.97 0.005 262)";
+    public virtual string Neutral200 => "oklch(0.93 0.008 262)";
+    public virtual string Neutral300 => "oklch(0.87 0.01 262)";
+    public virtual string Neutral400 => "oklch(0.76 0.012 262)";
+    public virtual string Neutral500 => "oklch(0.64 0.012 262)";
+    public virtual string Neutral600 => "oklch(0.52 0.014 262)";
+    public virtual string Neutral700 => "oklch(0.40 0.016 262)";
+    public virtual string Neutral800 => "oklch(0.28 0.018 262)";
+    public virtual string Neutral900 => "oklch(0.16 0.02 262)";
 
-    // Primary — Brand blue #2563EB → oklch(53.2% 0.228 251.4)
-    public virtual string Primary50  => "oklch(0.95 0.03 251)";
-    public virtual string Primary100 => "oklch(0.90 0.06 251)";
-    public virtual string Primary200 => "oklch(0.82 0.10 251)";
-    public virtual string Primary300 => "oklch(0.719 0.138 253.9)"; // Preview #85A5FF
-    public virtual string Primary400 => "oklch(0.63 0.18 251)";
-    public virtual string Primary500 => "oklch(0.55 0.22 251)";
-    public virtual string Primary600 => "oklch(0.48 0.22 251)";
-    public virtual string Primary700 => "oklch(0.40 0.20 251)";
-    public virtual string Primary800 => "oklch(0.30 0.18 251)";
-    public virtual string Primary900 => "oklch(0.20 0.15 251)";
+    // Primary — Royal Cornflower (hue 262°)
+    public virtual string Primary50  => "oklch(0.95 0.03 262)";
+    public virtual string Primary100 => "oklch(0.90 0.06 262)";
+    public virtual string Primary200 => "oklch(0.82 0.10 262)";
+    public virtual string Primary300 => "oklch(0.719 0.138 262)"; // Preview
+    public virtual string Primary400 => "oklch(0.63 0.18 262)";
+    public virtual string Primary500 => "oklch(0.55 0.22 262)";
+    public virtual string Primary600 => "oklch(0.48 0.22 262)";
+    public virtual string Primary700 => "oklch(0.40 0.20 262)";
+    public virtual string Primary800 => "oklch(0.30 0.18 262)";
+    public virtual string Primary900 => "oklch(0.20 0.15 262)";
 
     // Success — Brand green #00A86B → oklch(62.7% 0.194 153.2)
     public virtual string Success50  => "oklch(0.95 0.03 153)";
@@ -650,40 +650,40 @@ internal class NaturaPrimitives : IThemePrimitives
 
 internal class NaturaSemanticLight : IThemeSemantic
 {
-    // Light — white with cool blue tint (hue 251°)
-    public virtual string BgDefault     => "oklch(0.99 0.004 251)";
-    public virtual string BgSubtle      => "oklch(0.97 0.008 251)";
-    public virtual string BgMuted       => "oklch(0.935 0.012 251)";
-    public virtual string BgEmphasized  => "oklch(0.89 0.016 251)";
-    public virtual string BgOverlay     => "oklch(0.15 0.025 251 / 0.40)";
-    public virtual string BgGlass       => "oklch(0.99 0.004 251 / 0.7)";
-    public virtual string BorderGlass   => "oklch(0.87 0.015 251 / 0.3)";
+    // Light — white with cool blue tint (hue 262°)
+    public virtual string BgDefault     => "oklch(0.99 0.004 262)";
+    public virtual string BgSubtle      => "oklch(0.97 0.008 262)";
+    public virtual string BgMuted       => "oklch(0.935 0.012 262)";
+    public virtual string BgEmphasized  => "oklch(0.89 0.016 262)";
+    public virtual string BgOverlay     => "oklch(0.15 0.025 262 / 0.40)";
+    public virtual string BgGlass       => "oklch(0.99 0.004 262 / 0.7)";
+    public virtual string BorderGlass   => "oklch(0.87 0.015 262 / 0.3)";
     public virtual string BlurGlass     => "12px";
 
     public virtual string Surface         => "oklch(1 0 0)";
     public virtual string SurfaceRaised   => "oklch(1 0 0)";
     public virtual string SurfaceOverlay  => "oklch(1 0 0)";
 
-    public virtual string FgDefault   => "oklch(0.14 0.02 251)";
-    public virtual string FgSubtle    => "oklch(0.36 0.015 251)";
-    public virtual string FgMuted     => "oklch(0.52 0.012 251)";
-    public virtual string FgDisabled  => "oklch(0.68 0.008 251)";
-    public virtual string FgInverse   => "oklch(0.99 0.004 251)";
-    public virtual string FgLink      => "oklch(0.532 0.228 251.4)";
-    public virtual string FgLinkHover => "oklch(0.48 0.22 251)";
+    public virtual string FgDefault   => "oklch(0.14 0.02 262)";
+    public virtual string FgSubtle    => "oklch(0.36 0.015 262)";
+    public virtual string FgMuted     => "oklch(0.52 0.012 262)";
+    public virtual string FgDisabled  => "oklch(0.68 0.008 262)";
+    public virtual string FgInverse   => "oklch(0.99 0.004 262)";
+    public virtual string FgLink      => "oklch(0.56 0.22 262)";
+    public virtual string FgLinkHover => "oklch(0.50 0.22 262)";
 
-    public virtual string BorderDefault => "oklch(0.88 0.012 251)";
-    public virtual string BorderSubtle  => "oklch(0.93 0.01 251)";
-    public virtual string BorderStrong  => "oklch(0.80 0.015 251)";
-    public virtual string BorderFocus   => "oklch(0.532 0.228 251.4)";
-    public virtual string Divider       => "oklch(0.93 0.01 251)";
+    public virtual string BorderDefault => "oklch(0.88 0.012 262)";
+    public virtual string BorderSubtle  => "oklch(0.93 0.01 262)";
+    public virtual string BorderStrong  => "oklch(0.80 0.015 262)";
+    public virtual string BorderFocus   => "oklch(0.56 0.22 262)";
+    public virtual string Divider       => "oklch(0.93 0.01 262)";
 
-    // Primary — Brand blue #2563EB
-    public virtual string ColorPrimary        => "oklch(0.532 0.228 251.4)";
-    public virtual string ColorPrimarySubtle  => "oklch(0.94 0.04 251)";
-    public virtual string ColorPrimaryMuted   => "oklch(0.85 0.08 251)";
-    public virtual string ColorPrimaryHover   => "oklch(0.48 0.23 251)";
-    public virtual string ColorPrimaryActive  => "oklch(0.42 0.22 251)";
+    // Primary — Royal Cornflower
+    public virtual string ColorPrimary        => "oklch(0.56 0.22 262)";
+    public virtual string ColorPrimarySubtle  => "oklch(0.94 0.04 262)";
+    public virtual string ColorPrimaryMuted   => "oklch(0.85 0.08 262)";
+    public virtual string ColorPrimaryHover   => "oklch(0.50 0.23 262)";
+    public virtual string ColorPrimaryActive  => "oklch(0.44 0.22 262)";
     public virtual string ColorPrimaryFg      => "oklch(0.99 0 0)";
 
     // Success — Brand green #00A86B
@@ -702,7 +702,7 @@ internal class NaturaSemanticLight : IThemeSemantic
     public virtual string ColorWarning        => "oklch(0.767 0.181 83.1)";
     public virtual string ColorWarningSubtle  => "oklch(0.96 0.04 83)";
     public virtual string ColorWarningHover   => "oklch(0.70 0.18 83)";
-    public virtual string ColorWarningFg      => "oklch(0.14 0.02 251)";
+    public virtual string ColorWarningFg      => "oklch(0.14 0.02 262)";
 
     // Info
     public virtual string ColorInfo           => "oklch(0.55 0.15 254)";
@@ -718,11 +718,11 @@ internal class NaturaSemanticLight : IThemeSemantic
     public virtual string TextLg   => "1.25rem";
 
     // Тени — холодные, brand-aligned
-    public virtual string ShadowXs => "0 1px 1px 0 oklch(0.14 0.02 251 / 0.04)";
-    public virtual string ShadowSm => "0 1px 2px 0 oklch(0.14 0.02 251 / 0.06), 0 1px 1px -1px oklch(0.14 0.02 251 / 0.06)";
-    public virtual string ShadowMd => "0 2px 4px -1px oklch(0.14 0.02 251 / 0.08), 0 1px 2px -1px oklch(0.14 0.02 251 / 0.06)";
-    public virtual string ShadowLg => "0 8px 16px -4px oklch(0.14 0.02 251 / 0.10), 0 2px 4px -2px oklch(0.14 0.02 251 / 0.06)";
-    public virtual string ShadowXl => "0 16px 32px -8px oklch(0.14 0.02 251 / 0.14), 0 4px 8px -4px oklch(0.14 0.02 251 / 0.08)";
+    public virtual string ShadowXs => "0 1px 1px 0 oklch(0.14 0.02 262 / 0.04)";
+    public virtual string ShadowSm => "0 1px 2px 0 oklch(0.14 0.02 262 / 0.06), 0 1px 1px -1px oklch(0.14 0.02 262 / 0.06)";
+    public virtual string ShadowMd => "0 2px 4px -1px oklch(0.14 0.02 262 / 0.08), 0 1px 2px -1px oklch(0.14 0.02 262 / 0.06)";
+    public virtual string ShadowLg => "0 8px 16px -4px oklch(0.14 0.02 262 / 0.10), 0 2px 4px -2px oklch(0.14 0.02 262 / 0.06)";
+    public virtual string ShadowXl => "0 16px 32px -8px oklch(0.14 0.02 262 / 0.14), 0 4px 8px -4px oklch(0.14 0.02 262 / 0.08)";
 
     public virtual string RadiusSm   => "5px";
     public virtual string RadiusMd   => "8px";
@@ -734,7 +734,7 @@ internal class NaturaSemanticLight : IThemeSemantic
     public virtual string TransitionBase => "200ms cubic-bezier(0.19, 1, 0.22, 1)";
     public virtual string TransitionSlow => "350ms cubic-bezier(0.19, 1, 0.22, 1)";
 
-    public virtual string FocusRing       => "0 0 0 2px #fff, 0 0 0 4px oklch(0.532 0.228 251.4)";
+    public virtual string FocusRing       => "0 0 0 2px #fff, 0 0 0 4px oklch(0.56 0.22 262)";
     public virtual string FocusRingDanger => "0 0 0 2px #fff, 0 0 0 4px oklch(0.552 0.244 19.3)";
 
     public virtual int ZDropdown => 1000;
@@ -747,41 +747,41 @@ internal class NaturaSemanticLight : IThemeSemantic
 internal class NaturaSemanticDark : IThemeSemantic
 {
     // Dark — слои и фоны по техзаданию
-    public virtual string BgDefault     => "oklch(0.123 0.007 245.5)";  // bg-app
-    public virtual string BgSubtle      => "oklch(0.21 0.022 252)";    // element
-    public virtual string BgMuted       => "oklch(0.18 0.02 250)";     // между element и surface
-    public virtual string BgEmphasized  => "oklch(0.24 0.024 252)";    // чуть светлее element
+    public virtual string BgDefault     => "oklch(0.123 0.007 256)";  // bg-app
+    public virtual string BgSubtle      => "oklch(0.21 0.022 262)";    // element
+    public virtual string BgMuted       => "oklch(0.18 0.02 260)";     // между element и surface
+    public virtual string BgEmphasized  => "oklch(0.24 0.024 262)";    // чуть светлее element
     public virtual string BgOverlay     => "oklch(0 0 0 / 0.72)";
-    public virtual string BgGlass       => "oklch(0.123 0.007 245.5 / 0.7)";
+    public virtual string BgGlass       => "oklch(0.123 0.007 256 / 0.7)";
     public virtual string BorderGlass   => "oklch(0.99 0 0 / 0.08)";
     public virtual string BlurGlass     => "16px";
 
-    public virtual string Surface         => "oklch(0.142 0.015 250)";  // bg-surface
-    public virtual string SurfaceRaised   => "oklch(0.165 0.018 250)";  // bg-overlay
-    public virtual string SurfaceOverlay  => "oklch(0.165 0.018 250)";  // bg-overlay
+    public virtual string Surface         => "oklch(0.142 0.015 260)";  // bg-surface
+    public virtual string SurfaceRaised   => "oklch(0.165 0.018 260)";  // bg-overlay
+    public virtual string SurfaceOverlay  => "oklch(0.165 0.018 260)";  // bg-overlay
 
     // Foreground — типографика
     public virtual string FgDefault   => "oklch(0.98 0 0)";            // text-primary
-    public virtual string FgSubtle    => "oklch(0.88 0.01 240)";       // text-secondary
-    public virtual string FgMuted     => "oklch(0.65 0.015 240)";      // text-muted
-    public virtual string FgDisabled  => "oklch(0.40 0.012 251)";
-    public virtual string FgInverse   => "oklch(0.123 0.007 245.5)";
-    public virtual string FgLink      => "oklch(0.532 0.228 251.4)";
-    public virtual string FgLinkHover => "oklch(0.60 0.22 251)";
+    public virtual string FgSubtle    => "oklch(0.88 0.01 250)";       // text-secondary
+    public virtual string FgMuted     => "oklch(0.65 0.015 250)";      // text-muted
+    public virtual string FgDisabled  => "oklch(0.40 0.012 262)";
+    public virtual string FgInverse   => "oklch(0.123 0.007 256)";
+    public virtual string FgLink      => "oklch(0.56 0.22 262)";
+    public virtual string FgLinkHover => "oklch(0.62 0.22 262)";
 
     // Borders — границы и разделители
-    public virtual string BorderDefault => "oklch(0.255 0.025 252)";   // border-strong
-    public virtual string BorderSubtle  => "oklch(0.18 0.015 252)";    // border-weak
-    public virtual string BorderStrong  => "oklch(0.30 0.025 252)";
-    public virtual string BorderFocus   => "oklch(0.532 0.228 251.4)";
-    public virtual string Divider       => "oklch(0.18 0.015 252)";    // border-weak
+    public virtual string BorderDefault => "oklch(0.255 0.025 262)";   // border-strong
+    public virtual string BorderSubtle  => "oklch(0.18 0.015 262)";    // border-weak
+    public virtual string BorderStrong  => "oklch(0.30 0.025 262)";
+    public virtual string BorderFocus   => "oklch(0.56 0.22 262)";
+    public virtual string Divider       => "oklch(0.18 0.015 262)";    // border-weak
 
-    // Primary — #2563EB / oklch(53.2% 0.228 251.4)
-    public virtual string ColorPrimary        => "oklch(0.532 0.228 251.4)";
-    public virtual string ColorPrimarySubtle  => "oklch(0.20 0.05 251)";
-    public virtual string ColorPrimaryMuted   => "oklch(0.28 0.08 251)";
-    public virtual string ColorPrimaryHover   => "oklch(0.60 0.22 251)";
-    public virtual string ColorPrimaryActive  => "oklch(0.48 0.22 251)";
+    // Primary — Royal Cornflower (hue 262°)
+    public virtual string ColorPrimary        => "oklch(0.56 0.22 262)";
+    public virtual string ColorPrimarySubtle  => "oklch(0.20 0.05 262)";
+    public virtual string ColorPrimaryMuted   => "oklch(0.28 0.08 262)";
+    public virtual string ColorPrimaryHover   => "oklch(0.62 0.22 262)";
+    public virtual string ColorPrimaryActive  => "oklch(0.50 0.22 262)";
     public virtual string ColorPrimaryFg      => "oklch(0.98 0 0)";
 
     // Success — #00A86B / oklch(62.7% 0.194 153.2)
@@ -800,7 +800,7 @@ internal class NaturaSemanticDark : IThemeSemantic
     public virtual string ColorWarning        => "oklch(0.767 0.181 83.1)";
     public virtual string ColorWarningSubtle  => "oklch(0.24 0.04 75)";
     public virtual string ColorWarningHover   => "oklch(0.82 0.16 83)";
-    public virtual string ColorWarningFg      => "oklch(0.123 0.007 245.5)";
+    public virtual string ColorWarningFg      => "oklch(0.123 0.007 256)";
 
     // Info
     public virtual string ColorInfo           => "oklch(0.55 0.15 254)";
@@ -831,8 +831,8 @@ internal class NaturaSemanticDark : IThemeSemantic
     public virtual string TransitionBase => "200ms cubic-bezier(0.19, 1, 0.22, 1)";
     public virtual string TransitionSlow => "350ms cubic-bezier(0.19, 1, 0.22, 1)";
 
-    public virtual string FocusRing       => "0 0 0 2px oklch(0.123 0.007 245.5), 0 0 0 4px oklch(0.532 0.228 251.4)";
-    public virtual string FocusRingDanger => "0 0 0 2px oklch(0.123 0.007 245.5), 0 0 0 4px oklch(0.552 0.244 19.3)";
+    public virtual string FocusRing       => "0 0 0 2px oklch(0.123 0.007 256), 0 0 0 4px oklch(0.56 0.22 262)";
+    public virtual string FocusRingDanger => "0 0 0 2px oklch(0.123 0.007 256), 0 0 0 4px oklch(0.552 0.244 19.3)";
 
     public virtual int ZDropdown => 1000;
     public virtual int ZSticky   => 1020;
