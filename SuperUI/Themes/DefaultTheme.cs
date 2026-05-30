@@ -89,10 +89,32 @@ public sealed class DefaultTheme : ThemeBase
             --sui-radius-md:   var(--sg-radius-md);
             --sui-radius-lg:   var(--sg-radius-lg);
             --sui-radius-full: var(--sg-radius-full);
+
+            /* φ constants & Fibonacci spacing */
+            --natura-phi: 1.618033988749895;
+            --natura-phi-inv: 0.618033988749895;
+
+            /* Fibonacci spacing scale (compact) */
+            --natura-fib-1: 3px;
+            --natura-fib-2: 5px;
+            --natura-fib-3: 8px;
+            --natura-fib-4: 13px;
+            --natura-fib-5: 21px;
+            --natura-fib-6: 34px;
+            --natura-fib-7: 55px;
+            --natura-fib-8: 89px;
+            --natura-fib-9: 144px;
+
+            /* φ natural easing curves */
+            --natura-ease-growth: cubic-bezier(0.19, 1, 0.22, 1);
+            --natura-ease-breath: cubic-bezier(0.37, 0, 0.63, 1);
+            --natura-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --natura-ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+            --natura-ease-fall:   cubic-bezier(0.68, 0, 0.36, 1);
         }
 
         /* ═══════════════════════════════════════════════════════════════
-           DEFAULT THEME — strict, angular, calm
+           DEFAULT THEME — strict, angular, calm, φ-proportioned
            Selector: [data-theme-id="superui-default"]
            ═══════════════════════════════════════════════════════════════ */
 
@@ -124,10 +146,10 @@ public sealed class DefaultTheme : ThemeBase
             background: var(--sg-surface);
             border: 1px solid var(--sg-border);
             border-top: 2px solid var(--sg-border);
-            border-radius: 3px;
+            border-radius: var(--natura-fib-2, 5px);
             box-shadow: var(--sg-shadow-xs);
-            transition: border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-                        box-shadow   150ms cubic-bezier(0.4, 0, 0.2, 1);
+            transition: border-color 200ms var(--natura-ease-growth),
+                        box-shadow   200ms var(--natura-ease-growth);
         }
         [data-theme-id="superui-default"] .sgc-card:hover {
             border-top-color: var(--sg-color-primary);
@@ -148,10 +170,10 @@ public sealed class DefaultTheme : ThemeBase
         }
         [data-theme-id="superui-default"] .sgc-card-header {
             border-bottom: 1px solid var(--sg-divider);
-            padding: 10px 14px;
+            padding: var(--natura-fib-2) var(--natura-fib-4);
         }
         [data-theme-id="superui-default"] .sgc-card-body {
-            padding: 12px 14px;
+            padding: var(--natura-fib-3) var(--natura-fib-4);
         }
 
         /* ═══════════════════════════════════════════════════════════════
@@ -161,7 +183,7 @@ public sealed class DefaultTheme : ThemeBase
         [data-theme-id="superui-default"] .sgc-table {
             --sg-table-padding: 6px 10px;
             border: 1px solid var(--sg-border);
-            border-radius: 3px;
+            border-radius: var(--natura-fib-2, 5px);
             /* overflow: hidden убран — ломает position:sticky на thead th в SgDataGrid */
         }
         [data-theme-id="superui-default"] .sgc-table thead th {
@@ -169,11 +191,11 @@ public sealed class DefaultTheme : ThemeBase
             border-bottom: 1px solid var(--sg-border);
             color: var(--sg-fg-subtle);
             font-weight: 600;
-            padding: 8px 10px;
+            padding: var(--natura-fib-2) var(--natura-fib-3);
         }
         [data-theme-id="superui-default"] .sgc-table tbody td {
             border-bottom: 1px solid var(--sg-divider);
-            padding: 7px 10px;
+            padding: var(--natura-fib-1) var(--natura-fib-3);
         }
         [data-theme-id="superui-default"] .sgc-table tbody tr:last-child td {
             border-bottom: none;
@@ -189,12 +211,12 @@ public sealed class DefaultTheme : ThemeBase
             border-left: 3px solid transparent;
             margin: 1px 0;
             border-radius: 0;
-            padding: 7px 16px 7px 13px;
+            padding: var(--natura-fib-1) var(--natura-fib-5) var(--natura-fib-1) var(--natura-fib-4);
             font-size: 12.5px;
             color: var(--sg-fg-subtle);
-            transition: background 120ms cubic-bezier(0.4, 0, 0.2, 1),
-                        color      120ms cubic-bezier(0.4, 0, 0.2, 1),
-                        border-color 120ms cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background 200ms var(--natura-ease-growth),
+                        color      200ms var(--natura-ease-growth),
+                        border-color 200ms var(--natura-ease-growth);
             position: relative;
         }
         [data-theme-id="superui-default"] .sgc-nav-link:hover {
@@ -220,13 +242,13 @@ public sealed class DefaultTheme : ThemeBase
             transform: translateY(-50%);
         }
         [data-theme-id="superui-default"] .sgc-nav-section {
-            padding: 14px 16px 6px;
+            padding: var(--natura-fib-5) var(--natura-fib-5) var(--natura-fib-1);
             color: var(--sg-fg-muted);
             font-weight: 700;
         }
         [data-theme-id="superui-default"] .sgc-nav-group-header {
             border-radius: 0;
-            padding: 7px 13px;
+            padding: var(--natura-fib-1) var(--natura-fib-4);
         }
 
         /* Top app bar — strict 1px border, no shadow */
@@ -244,14 +266,14 @@ public sealed class DefaultTheme : ThemeBase
            - Primary keeps inset 1px highlight + soft colored halo on hover
            ═══════════════════════════════════════════════════════════════ */
         [data-theme-id="superui-default"] .sgc-btn {
-            border-radius: 3px;
+            border-radius: var(--natura-fib-2, 5px);
             font-weight: 600;
             letter-spacing: 0.01em;
-            transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-                        border-color     150ms cubic-bezier(0.4, 0, 0.2, 1),
-                        color            150ms cubic-bezier(0.4, 0, 0.2, 1),
-                        box-shadow       150ms cubic-bezier(0.4, 0, 0.2, 1),
-                        transform        100ms cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background-color 200ms var(--natura-ease-growth),
+                        border-color     200ms var(--natura-ease-growth),
+                        color            200ms var(--natura-ease-growth),
+                        box-shadow       200ms var(--natura-ease-growth),
+                        transform        120ms var(--natura-ease-spring);
             transform: translateZ(0);
         }
         [data-theme-id="superui-default"] .sgc-btn:hover:not(:disabled) {
@@ -372,12 +394,12 @@ public sealed class DefaultTheme : ThemeBase
         [data-theme-id="superui-default"] .sgc-select,
         [data-theme-id="superui-default"] .sgc-textarea {
             border: 1px solid var(--sg-border);
-            border-radius: 3px;
+            border-radius: var(--natura-fib-1, 3px);
             background: var(--sg-bg);
             color: var(--sg-fg);
-            transition: border-color    150ms cubic-bezier(0.4, 0, 0.2, 1),
-                        background      150ms cubic-bezier(0.4, 0, 0.2, 1),
-                        box-shadow      150ms cubic-bezier(0.4, 0, 0.2, 1);
+            transition: border-color    200ms var(--natura-ease-growth),
+                        background      200ms var(--natura-ease-growth),
+                        box-shadow      200ms var(--natura-ease-growth);
         }
         [data-theme-id="superui-default"] .sgc-input::placeholder,
         [data-theme-id="superui-default"] .sgc-textarea::placeholder {
@@ -414,19 +436,19 @@ public sealed class DefaultTheme : ThemeBase
             border-bottom: 1px solid var(--sg-border);
             border-radius: 0;
             padding: 0;
-            gap: 4px;
+            gap: var(--natura-fib-1, 3px);
         }
         [data-theme-id="superui-default"] .sgc-tab {
             border-radius: 0;
-            padding: 8px 12px;
+            padding: var(--natura-fib-2) var(--natura-fib-3);
             border-bottom: 2px solid transparent;
             margin-bottom: -1px;
             font-weight: 500;
             font-size: 12.5px;
             color: var(--sg-fg-subtle);
             background: transparent;
-            transition: color        150ms cubic-bezier(0.4, 0, 0.2, 1),
-                        border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            transition: color        200ms var(--natura-ease-growth),
+                        border-color 200ms var(--natura-ease-growth);
         }
         [data-theme-id="superui-default"] .sgc-tab:hover {
             color: var(--sg-fg);
@@ -445,7 +467,7 @@ public sealed class DefaultTheme : ThemeBase
            ═══════════════════════════════════════════════════════════════ */
         [data-theme-id="superui-default"] .sgc-chip,
         [data-theme-id="superui-default"] .sgc-badge {
-            border-radius: 3px;
+            border-radius: var(--natura-fib-1, 3px);
             padding: 1px 7px;
             font-size: 11px;
             font-weight: 500;
@@ -463,8 +485,8 @@ public sealed class DefaultTheme : ThemeBase
         [data-theme-id="superui-default"] .sgc-alert {
             border: 1px solid;
             border-left-width: 3px;
-            border-radius: 3px;
-            padding: 10px 12px;
+            border-radius: var(--natura-fib-1, 3px);
+            padding: var(--natura-fib-2) var(--natura-fib-3);
             font-size: 12.5px;
             box-shadow: none;
         }
@@ -480,34 +502,34 @@ public sealed class DefaultTheme : ThemeBase
         [data-theme-id="superui-default"] .sgc-drawer-content {
             background: var(--sg-surface);
             border: 1px solid var(--sg-border);
-            border-radius: 6px;
+            border-radius: var(--natura-fib-3, 8px);
             box-shadow: var(--sg-shadow-xl);
         }
         [data-theme-id="superui-default"] .sgc-modal-header,
         [data-theme-id="superui-default"] .sgc-drawer-header {
             border-bottom: 1px solid var(--sg-divider);
-            padding: 12px 16px;
+            padding: var(--natura-fib-3) var(--natura-fib-5);
         }
         [data-theme-id="superui-default"] .sgc-modal-footer,
         [data-theme-id="superui-default"] .sgc-drawer-footer {
             border-top: 1px solid var(--sg-divider);
-            padding: 12px 16px;
+            padding: var(--natura-fib-3) var(--natura-fib-5);
         }
 
         /* ═══════════════════════════════════════════════════════════════
            SCROLLBAR — thin, on-brand
            ═══════════════════════════════════════════════════════════════ */
         [data-theme-id="superui-default"] ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
+            width: var(--natura-fib-2, 5px);
+            height: var(--natura-fib-2, 5px);
         }
         [data-theme-id="superui-default"] ::-webkit-scrollbar-track {
             background: transparent;
         }
         [data-theme-id="superui-default"] ::-webkit-scrollbar-thumb {
             background: var(--sg-border-strong);
-            border: 2px solid var(--sg-bg);
-            border-radius: 3px;
+            border: 1px solid var(--sg-bg);
+            border-radius: var(--natura-fib-1, 3px);
         }
         [data-theme-id="superui-default"] ::-webkit-scrollbar-thumb:hover {
             background: var(--sg-fg-muted);
@@ -528,8 +550,10 @@ public sealed class DefaultTheme : ThemeBase
             [data-theme-id="superui-default"] *,
             [data-theme-id="superui-default"] *::before,
             [data-theme-id="superui-default"] *::after {
-                transition-duration: 1ms !important;
-                animation-duration: 1ms !important;
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
                 transform: none !important;
             }
         }
@@ -593,14 +617,14 @@ internal class DefaultPrimitives : IThemePrimitives
     public virtual string FontMono  => "'JetBrains Mono', 'Fira Code', ui-monospace, monospace";
     public virtual string FontSerif => "Georgia, 'Times New Roman', serif";
 
-    // Angular radii — small, tight, strict
+    // φ/Fibonacci radii — organic proportions, compact scale
     public virtual string RadiusNone => "0";
-    public virtual string RadiusXs   => "2px";
-    public virtual string RadiusSm   => "3px";
-    public virtual string RadiusMd   => "4px";
-    public virtual string RadiusLg   => "6px";
-    public virtual string RadiusXl   => "8px";
-    public virtual string Radius2Xl  => "12px";
+    public virtual string RadiusXs   => "3px";    // fib-1
+    public virtual string RadiusSm   => "5px";    // fib-2
+    public virtual string RadiusMd   => "8px";    // fib-3
+    public virtual string RadiusLg   => "13px";   // fib-4
+    public virtual string RadiusXl   => "21px";   // fib-5
+    public virtual string Radius2Xl  => "34px";   // fib-6
     public virtual string RadiusFull => "9999px";
 }
 
@@ -680,16 +704,17 @@ internal class DefaultSemanticLight : IThemeSemantic
     public virtual string ShadowLg => "0 8px 16px -4px rgba(15, 23, 42, 0.10), 0 2px 4px -2px rgba(15, 23, 42, 0.06)";
     public virtual string ShadowXl => "0 16px 32px -8px rgba(15, 23, 42, 0.14), 0 4px 8px -4px rgba(15, 23, 42, 0.08)";
 
-    // Angular, strict
-    public virtual string RadiusSm   => "2px";
-    public virtual string RadiusMd   => "3px";
-    public virtual string RadiusLg   => "4px";
-    public virtual string RadiusXl   => "6px";
+    // φ/Fibonacci radii — organic proportions
+    public virtual string RadiusSm   => "5px";    // fib-2
+    public virtual string RadiusMd   => "8px";    // fib-3
+    public virtual string RadiusLg   => "13px";   // fib-4
+    public virtual string RadiusXl   => "21px";   // fib-5
     public virtual string RadiusFull => "9999px";
 
-    public virtual string TransitionFast => "100ms cubic-bezier(0.4, 0, 0.2, 1)";
-    public virtual string TransitionBase => "150ms cubic-bezier(0.4, 0, 0.2, 1)";
-    public virtual string TransitionSlow => "250ms cubic-bezier(0.4, 0, 0.2, 1)";
+    // φ natural easing curves
+    public virtual string TransitionFast => "120ms cubic-bezier(0.37, 0, 0.63, 1)";
+    public virtual string TransitionBase => "200ms cubic-bezier(0.19, 1, 0.22, 1)";
+    public virtual string TransitionSlow => "350ms cubic-bezier(0.19, 1, 0.22, 1)";
 
     public virtual string FocusRing       => "0 0 0 2px #ffffff, 0 0 0 4px #2563eb";
     public virtual string FocusRingDanger => "0 0 0 2px #ffffff, 0 0 0 4px #dc2626";
@@ -771,15 +796,16 @@ internal class DefaultSemanticDark : IThemeSemantic
     public virtual string ShadowLg => "0 8px 16px -4px rgba(0, 0, 0, 0.60)";
     public virtual string ShadowXl => "0 16px 32px -8px rgba(0, 0, 0, 0.70)";
 
-    public virtual string RadiusSm   => "2px";
-    public virtual string RadiusMd   => "3px";
-    public virtual string RadiusLg   => "4px";
-    public virtual string RadiusXl   => "6px";
+    public virtual string RadiusSm   => "5px";    // fib-2
+    public virtual string RadiusMd   => "8px";    // fib-3
+    public virtual string RadiusLg   => "13px";   // fib-4
+    public virtual string RadiusXl   => "21px";   // fib-5
     public virtual string RadiusFull => "9999px";
 
-    public virtual string TransitionFast => "100ms cubic-bezier(0.4, 0, 0.2, 1)";
-    public virtual string TransitionBase => "150ms cubic-bezier(0.4, 0, 0.2, 1)";
-    public virtual string TransitionSlow => "250ms cubic-bezier(0.4, 0, 0.2, 1)";
+    // φ natural easing curves
+    public virtual string TransitionFast => "120ms cubic-bezier(0.37, 0, 0.63, 1)";
+    public virtual string TransitionBase => "200ms cubic-bezier(0.19, 1, 0.22, 1)";
+    public virtual string TransitionSlow => "350ms cubic-bezier(0.19, 1, 0.22, 1)";
 
     public virtual string FocusRing       => "0 0 0 2px #0f172a, 0 0 0 4px #3b82f6";
     public virtual string FocusRingDanger => "0 0 0 2px #0f172a, 0 0 0 4px #ef4444";
@@ -793,28 +819,28 @@ internal class DefaultSemanticDark : IThemeSemantic
 
 internal class DefaultComponents : IThemeComponents
 {
-    // Strict, compact, angular
-    public virtual string BtnRadius     => "3px";
-    public virtual string BtnFontSize   => "0.75rem";   // 12px
+    // φ/Fibonacci proportions — compact scale
+    public virtual string BtnRadius     => "5px";    // fib-2
+    public virtual string BtnFontSize   => "0.75rem";
     public virtual string BtnFontWeight => "600";
     public virtual string BtnHeight     => "30px";
     public virtual string BtnHeightSm   => "24px";
     public virtual string BtnHeightLg   => "36px";
 
-    public virtual string InputRadius   => "3px";
-    public virtual string InputFontSize => "0.8125rem";  // 13px
+    public virtual string InputRadius   => "3px";    // fib-1
+    public virtual string InputFontSize => "0.8125rem";
     public virtual string InputHeight   => "30px";
     public virtual string InputHeightSm => "24px";
     public virtual string InputHeightLg => "36px";
 
-    public virtual string CardRadius      => "3px";
-    public virtual string CardPadding     => "12px";
+    public virtual string CardRadius      => "5px";  // fib-2
+    public virtual string CardPadding     => "8px";  // fib-3
     public virtual string CardBorderColor => "var(--sg-border)";
     public virtual string CardBg          => "var(--sg-surface)";
 
-    public virtual string ModalRadius => "6px";
+    public virtual string ModalRadius => "8px";     // fib-3
 
-    public virtual string TableRadius          => "3px";
+    public virtual string TableRadius          => "5px";   // fib-2
     public virtual string TableHeaderFontWeight => "600";
 
     public virtual string TabsIndicatorHeight => "2px";
