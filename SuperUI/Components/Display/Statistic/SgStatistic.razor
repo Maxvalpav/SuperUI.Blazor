@@ -226,15 +226,26 @@
     private void StartAnimation()
     {
         _animTimer?.Dispose();
+        var from = _animFrom;
+        var to = _animTo;
+        if (from is null || to is null) return;
         _animTimer = new System.Threading.Timer(_ =>
         {
             var elapsed = (DateTime.UtcNow - _animStart).TotalMilliseconds;
             var t = Math.Clamp(elapsed / Math.Max(1, AnimateDurationMs), 0, 1);
-            // ease-out cubic
             var eased = 1 - Math.Pow(1 - t, 3);
-            _animatedValue = _animFrom!.Value + (_animTo!.Value - _animFrom.Value) * eased;
-            InvokeAsync(StateHasChanged);
-            if (t >= 1) { _animTimer?.Dispose(); _animTimer = null; }
+            var value = from.Value + (to.Value - from.Value) * eased;
+            InvokeAsync(() =>
+            {
+                if (_animFrom != from || _animTo != to) return;
+                _animatedValue = value;
+                StateHasChanged();
+            });
+            if (t >= 1)
+            {
+                var timer = System.Threading.Interlocked.Exchange(ref _animTimer, null);
+                timer?.Dispose();
+            }
         }, null, 0, 16);
     }
 

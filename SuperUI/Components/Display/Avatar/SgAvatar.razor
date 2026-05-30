@@ -1,7 +1,8 @@
 @namespace SuperUI.Components
 @using System.Globalization
+@using SuperUI.Components.Display.Avatar
 
-<span class="sgc-avatar @SizeClass @ShapeClass @StatusClass @StateClass @CssClass"
+<span class="sgc-avatar @ResolvedSizeClass @ResolvedShapeClass @StatusClass @StateClass @CssClass"
       role="@(Clickable ? "button" : "img")"
       tabindex="@(Clickable && !Disabled ? "0" : null)"
       aria-label="@AriaLabelComputed"
@@ -74,6 +75,8 @@
     /// <summary>Optional badge content overlaid on the avatar.</summary>
     [Parameter] public RenderFragment? BadgeContent { get; set; }
 
+    [CascadingParameter] private SgAvatarGroupContext? GroupContext { get; set; }
+
     /// <summary>Avatar size. Default <see cref="SgSize.Md"/>.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
 
@@ -122,7 +125,11 @@
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string SizeClass => PixelSize.HasValue ? "sgc-avatar-custom" : Size switch
+    private SgSize ResolvedSize => GroupContext?.Size ?? Size;
+
+    private SgAvatarShape ResolvedShape => GroupContext?.Shape ?? Shape;
+
+    private string ResolvedSizeClass => PixelSize.HasValue ? "sgc-avatar-custom" : ResolvedSize switch
     {
         SgSize.Sm => "sgc-sm",
         SgSize.Lg => "sgc-lg",
@@ -130,7 +137,7 @@
         _         => "sgc-md"
     };
 
-    private string ShapeClass => Shape switch
+    private string ResolvedShapeClass => ResolvedShape switch
     {
         SgAvatarShape.Square  => "sgc-square",
         SgAvatarShape.Rounded => "sgc-rounded",
