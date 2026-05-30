@@ -12,11 +12,9 @@ public sealed class ThemeRegistry
 
     public ThemeRegistry()
     {
-        // Register built-in themes
+        // Register built-in themes — только Default и Natura
         Register(new DefaultTheme());
-        Register(new MaterialTheme());
-        Register(new TailwindTheme());
-        Register(new GlassTheme());
+        Register(new NaturaTheme());
     }
 
     /// <summary>Registers a new theme.</summary>

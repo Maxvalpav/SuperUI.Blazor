@@ -85,6 +85,38 @@ public sealed class ThemeBuilder
         return this;
     }
 
+    /// <summary>Organic φ/Fibonacci-based border radius preset.</summary>
+    public ThemeBuilder AsOrganic()
+    {
+        _radiusSm = "5px";
+        _radiusMd = "8px";
+        _radiusLg = "13px";
+        _radiusFull = "9999px";
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the primary color palette from a nature biome.
+    /// Uses OKLCH color values for perceptual uniformity.
+    /// </summary>
+    public ThemeBuilder WithBiome(string biome)
+    {
+        var (light, dark) = biome.ToLowerInvariant() switch
+        {
+            "sky"    => ("oklch(0.56 0.14 230)", "oklch(0.60 0.08 230)"),
+            "ocean"  => ("oklch(0.50 0.14 225)", "oklch(0.58 0.10 225)"),
+            "forest" => ("oklch(0.55 0.16 154)", "oklch(0.62 0.10 154)"),
+            "steel"  => ("oklch(0.54 0.06 240)", "oklch(0.58 0.05 240)"),
+            "clay"   => ("oklch(0.58 0.12 42)",  "oklch(0.62 0.08 42)"),
+            "mineral" => ("oklch(0.52 0.10 280)", "oklch(0.58 0.06 280)"),
+            "sunset" => ("oklch(0.58 0.16 28)",  "oklch(0.64 0.12 28)"),
+            _ => (light: "oklch(0.56 0.14 230)", dark: "oklch(0.60 0.08 230)")
+        };
+        _primaryColor = light;
+        _primaryColorDark = dark;
+        return this;
+    }
+
     public IThemeDefinition Build()
     {
         return new BuiltTheme(
