@@ -32,6 +32,9 @@ public interface IThemeDefinition
     /// <summary>Component-specific overrides.</summary>
     IThemeComponents? Components { get; }
 
+    /// <summary>Optional typography settings (heading scale, fonts).</summary>
+    IThemeTypography? Typography { get; }
+
     /// <summary>Additional CSS for this theme.</summary>
     string? AdditionalCss { get; }
 

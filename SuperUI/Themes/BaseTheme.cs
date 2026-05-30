@@ -140,9 +140,22 @@ internal class BaseSemanticLight : IThemeSemantic
 
     public virtual string Font     => "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif";
     public virtual string FontMono => "'JetBrains Mono', ui-monospace, monospace";
-    public virtual string TextSm   => "0.75rem";    // 12px
-    public virtual string TextBase => "0.8125rem";  // 13px (compact)
-    public virtual string TextLg   => "0.9375rem";  // 15px
+    public virtual string TextXs   => "0.6875rem";   // 11px
+    public virtual string TextSm   => "0.75rem";     // 12px
+    public virtual string TextBase => "0.8125rem";   // 13px (compact)
+    public virtual string TextLg   => "0.9375rem";   // 15px
+    public virtual string TextXl   => "1.125rem";    // 18px
+    public virtual string Text2Xl  => "1.375rem";    // 22px
+    public virtual string Text3Xl  => "1.75rem";     // 28px
+
+    public virtual string FontWeightNormal   => "400";
+    public virtual string FontWeightMedium   => "500";
+    public virtual string FontWeightSemibold => "600";
+    public virtual string FontWeightBold     => "700";
+
+    public virtual string LineHeightTight   => "1.25";
+    public virtual string LineHeightNormal  => "1.5";
+    public virtual string LineHeightRelaxed => "1.75";
 
     public virtual string ShadowXs => "0 1px 1px 0 rgba(15, 23, 42, 0.04)";
     public virtual string ShadowSm => "0 1px 2px 0 rgba(15, 23, 42, 0.06), 0 1px 1px -1px rgba(15, 23, 42, 0.06)";
@@ -241,9 +254,22 @@ internal class BaseSemanticDark : IThemeSemantic
 
     public virtual string Font     => "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif";
     public virtual string FontMono => "'JetBrains Mono', ui-monospace, monospace";
+    public virtual string TextXs   => "0.6875rem";
     public virtual string TextSm   => "0.75rem";
     public virtual string TextBase => "0.8125rem";
     public virtual string TextLg   => "0.9375rem";
+    public virtual string TextXl   => "1.125rem";
+    public virtual string Text2Xl  => "1.375rem";
+    public virtual string Text3Xl  => "1.75rem";
+
+    public virtual string FontWeightNormal   => "400";
+    public virtual string FontWeightMedium   => "500";
+    public virtual string FontWeightSemibold => "600";
+    public virtual string FontWeightBold     => "700";
+
+    public virtual string LineHeightTight   => "1.25";
+    public virtual string LineHeightNormal  => "1.5";
+    public virtual string LineHeightRelaxed => "1.75";
 
     public virtual string ShadowXs => "0 1px 2px 0 oklch(0 0 0 / 0.40)";
     public virtual string ShadowSm => "0 2px 4px -1px oklch(0 0 0 / 0.50)";

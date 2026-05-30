@@ -10,18 +10,32 @@ public static class SgThemeGenerator
     public static string GenerateFullThemeCss(IThemeDefinition theme)
     {
         var sb = new StringBuilder();
-        
+
+        // 0. Google Fonts @import (must precede all other CSS)
+        if (theme.Typography?.EmbedGoogleFontsImport == true &&
+            !string.IsNullOrEmpty(theme.Typography.GoogleFontsImportUrl))
+        {
+            sb.AppendLine($"@import url('{theme.Typography.GoogleFontsImportUrl}');");
+            sb.AppendLine();
+        }
+
         // 1. Light Mode (Default)
         sb.AppendLine(GenerateCss(theme.Primitives, theme.Light, ":root"));
-        
+
         // 2. Dark Mode (if supported)
         if (theme.Dark != null)
         {
             sb.AppendLine();
             sb.AppendLine(GenerateCss(theme.Primitives, theme.Dark, "[data-theme=\"dark\"]"));
         }
-        
-        // 3. Component Overrides
+
+        // 3. Typography settings (optional, in :root)
+        if (theme.Typography != null)
+        {
+            AppendTypographyCss(sb, theme.Typography);
+        }
+
+        // 4. Component Overrides
         if (theme.Components != null)
         {
             sb.AppendLine();
@@ -32,13 +46,13 @@ public static class SgThemeGenerator
             sb.AppendLine($"    --sgc-btn-height: {theme.Components.BtnHeight};");
             sb.AppendLine($"    --sgc-btn-height-sm: {theme.Components.BtnHeightSm};");
             sb.AppendLine($"    --sgc-btn-height-lg: {theme.Components.BtnHeightLg};");
-            
+
             sb.AppendLine($"    --sgc-input-radius: {theme.Components.InputRadius};");
             sb.AppendLine($"    --sgc-input-font-size: {theme.Components.InputFontSize};");
             sb.AppendLine($"    --sgc-input-height: {theme.Components.InputHeight};");
             sb.AppendLine($"    --sgc-input-height-sm: {theme.Components.InputHeightSm};");
             sb.AppendLine($"    --sgc-input-height-lg: {theme.Components.InputHeightLg};");
-            
+
             sb.AppendLine($"    --sgc-card-radius: {theme.Components.CardRadius};");
             sb.AppendLine($"    --sgc-card-padding: {theme.Components.CardPadding};");
             sb.AppendLine($"    --sgc-card-border-color: {theme.Components.CardBorderColor};");
@@ -50,25 +64,60 @@ public static class SgThemeGenerator
             sb.AppendLine($"    --sgc-nav-fg: {theme.Components.NavFg};");
             sb.AppendLine($"    --sgc-nav-active-bg: {theme.Components.NavActiveBg};");
             sb.AppendLine($"    --sgc-nav-active-fg: {theme.Components.NavActiveFg};");
-            
+
             sb.AppendLine($"    --sgc-modal-radius: {theme.Components.ModalRadius};");
-            
+
             sb.AppendLine($"    --sgc-table-radius: {theme.Components.TableRadius};");
             sb.AppendLine($"    --sgc-table-header-font-weight: {theme.Components.TableHeaderFontWeight};");
-            
+
             sb.AppendLine($"    --sgc-tabs-indicator-height: {theme.Components.TabsIndicatorHeight};");
             sb.AppendLine($"    --sgc-tooltip-max-width: {theme.Components.TooltipMaxWidth};");
             sb.AppendLine("}");
         }
-        
-        // 4. Additional CSS
+
+        // 5. Additional CSS
         if (!string.IsNullOrEmpty(theme.AdditionalCss))
         {
             sb.AppendLine();
             sb.AppendLine(theme.AdditionalCss);
         }
-        
+
         return sb.ToString();
+    }
+
+    private static void AppendTypographyCss(StringBuilder sb, IThemeTypography t)
+    {
+        sb.AppendLine();
+        sb.AppendLine(":root {");
+
+        if (!string.IsNullOrEmpty(t.HeadingFont))
+        {
+            sb.AppendLine($"    --sg-font-heading: {t.HeadingFont};");
+        }
+
+        AppendHeadingCss(sb, "h1", t.H1, t.HeadingFont);
+        AppendHeadingCss(sb, "h2", t.H2, t.HeadingFont);
+        AppendHeadingCss(sb, "h3", t.H3, t.HeadingFont);
+        AppendHeadingCss(sb, "h4", t.H4, t.HeadingFont);
+        AppendHeadingCss(sb, "h5", t.H5, t.HeadingFont);
+        AppendHeadingCss(sb, "h6", t.H6, t.HeadingFont);
+
+        sb.AppendLine("}");
+    }
+
+    private static void AppendHeadingCss(StringBuilder sb, string tag, HeadingSettings h, string? defaultFont)
+    {
+        sb.AppendLine($"    --sg-{tag}-font-size: {h.FontSize};");
+        if (h.FontFamily != null)
+            sb.AppendLine($"    --sg-{tag}-font-family: {h.FontFamily};");
+        else if (defaultFont != null)
+            sb.AppendLine($"    --sg-{tag}-font-family: var(--sg-font-heading);");
+        if (h.FontWeight != null)
+            sb.AppendLine($"    --sg-{tag}-font-weight: {h.FontWeight};");
+        if (h.LineHeight != null)
+            sb.AppendLine($"    --sg-{tag}-line-height: {h.LineHeight};");
+        if (h.LetterSpacing != null)
+            sb.AppendLine($"    --sg-{tag}-letter-spacing: {h.LetterSpacing};");
     }
 
     public static string GenerateCss(IThemePrimitives p, IThemeSemantic s, string selector = ":root")
@@ -191,9 +240,22 @@ public static class SgThemeGenerator
 
         sb.AppendLine($"    --sg-font: {s.Font};");
         sb.AppendLine($"    --sg-font-mono: {s.FontMono};");
+        sb.AppendLine($"    --sg-text-xs: {s.TextXs};");
         sb.AppendLine($"    --sg-text-sm: {s.TextSm};");
         sb.AppendLine($"    --sg-text-base: {s.TextBase};");
         sb.AppendLine($"    --sg-text-lg: {s.TextLg};");
+        sb.AppendLine($"    --sg-text-xl: {s.TextXl};");
+        sb.AppendLine($"    --sg-text-2xl: {s.Text2Xl};");
+        sb.AppendLine($"    --sg-text-3xl: {s.Text3Xl};");
+        sb.AppendLine();
+        sb.AppendLine($"    --sg-font-weight-normal: {s.FontWeightNormal};");
+        sb.AppendLine($"    --sg-font-weight-medium: {s.FontWeightMedium};");
+        sb.AppendLine($"    --sg-font-weight-semibold: {s.FontWeightSemibold};");
+        sb.AppendLine($"    --sg-font-weight-bold: {s.FontWeightBold};");
+        sb.AppendLine();
+        sb.AppendLine($"    --sg-line-height-tight: {s.LineHeightTight};");
+        sb.AppendLine($"    --sg-line-height-normal: {s.LineHeightNormal};");
+        sb.AppendLine($"    --sg-line-height-relaxed: {s.LineHeightRelaxed};");
 
         sb.AppendLine($"    --sg-radius-sm: {s.RadiusSm};");
         sb.AppendLine($"    --sg-radius-md: {s.RadiusMd};");

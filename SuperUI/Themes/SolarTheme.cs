@@ -1,4 +1,4 @@
-namespace SuperUI.Themes;
+﻿namespace SuperUI.Themes;
 
 /// <summary>
 /// Solaris — солнечная дизайн-система на природных пропорциях φ.
@@ -17,6 +17,7 @@ public sealed class SolarisTheme : ThemeBase
     protected override IThemeSemantic CreateLight() => new SolarisSemanticLight();
     protected override IThemeSemantic? CreateDark() => new SolarisSemanticDark();
     protected override IThemeComponents? CreateComponents() => new SolarisComponents();
+    protected override IThemeTypography? CreateTypography() => new SolarisTypography();
 
     public override string? AdditionalCss => $$"""
         :root,
@@ -395,6 +396,20 @@ internal class SolarisSemanticLight : IThemeSemantic
     public virtual string TextBase => "1rem";
     public virtual string TextLg   => "1.25rem";
 
+    public virtual string TextXs   => "0.6875rem";
+    public virtual string TextXl   => "1.125rem";
+    public virtual string Text2Xl  => "1.375rem";
+    public virtual string Text3Xl  => "1.75rem";
+
+    public virtual string FontWeightNormal   => "400";
+    public virtual string FontWeightMedium   => "500";
+    public virtual string FontWeightSemibold => "600";
+    public virtual string FontWeightBold     => "700";
+
+    public virtual string LineHeightTight   => "1.25";
+    public virtual string LineHeightNormal  => "1.5";
+    public virtual string LineHeightRelaxed => "1.75";
+
     public virtual string ShadowXs => "0 1px 1px 0 oklch(0.14 0.02 50 / 0.04)";
     public virtual string ShadowSm => "0 1px 2px 0 oklch(0.14 0.02 50 / 0.06), 0 1px 1px -1px oklch(0.14 0.02 50 / 0.06)";
     public virtual string ShadowMd => "0 2px 4px -1px oklch(0.14 0.02 50 / 0.08), 0 1px 2px -1px oklch(0.14 0.02 50 / 0.06)";
@@ -488,6 +503,20 @@ internal class SolarisSemanticDark : IThemeSemantic
     public virtual string TextBase => "1rem";
     public virtual string TextLg   => "1.25rem";
 
+    public virtual string TextXs   => "0.6875rem";
+    public virtual string TextXl   => "1.125rem";
+    public virtual string Text2Xl  => "1.375rem";
+    public virtual string Text3Xl  => "1.75rem";
+
+    public virtual string FontWeightNormal   => "400";
+    public virtual string FontWeightMedium   => "500";
+    public virtual string FontWeightSemibold => "600";
+    public virtual string FontWeightBold     => "700";
+
+    public virtual string LineHeightTight   => "1.25";
+    public virtual string LineHeightNormal  => "1.5";
+    public virtual string LineHeightRelaxed => "1.75";
+
     public virtual string ShadowXs => "0 1px 2px 0 oklch(0 0 0 / 0.40)";
     public virtual string ShadowSm => "0 2px 4px -1px oklch(0 0 0 / 0.50)";
     public virtual string ShadowMd => "0 4px 12px -2px oklch(0 0 0 / 0.55)";
@@ -550,3 +579,16 @@ internal class SolarisComponents : IThemeComponents
     public virtual string NavActiveBg => "var(--sg-color-primary-subtle)";
     public virtual string NavActiveFg => "var(--sg-color-primary)";
 }
+
+    internal sealed class SolarisTypography : IThemeTypography
+    {
+        public string GoogleFontsImportUrl => "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&family=DM+Mono&display=swap";
+        public bool EmbedGoogleFontsImport => true;
+        public string? HeadingFont => "'DM Serif Display', serif";
+        public HeadingSettings H1 => new("2.618rem", HeadingFont, "700", "1.1", "-0.02em");
+        public HeadingSettings H2 => new("2.118rem", HeadingFont, "600", "1.15", "-0.015em");
+        public HeadingSettings H3 => new("1.618rem", HeadingFont, "600", "1.2", "-0.01em");
+        public HeadingSettings H4 => new("1.25rem", HeadingFont, "600", "1.25", "0");
+        public HeadingSettings H5 => new("1rem", HeadingFont, "600", "1.3", "0");
+        public HeadingSettings H6 => new("0.875rem", HeadingFont, "500", "1.35", "0.01em");
+    }

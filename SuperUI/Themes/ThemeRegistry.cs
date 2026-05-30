@@ -15,6 +15,22 @@ public sealed class ThemeRegistry
         // Register built-in themes
         Register(new NaturaTheme());
         Register(new SolarisTheme());
+        Register(new RoyalTheme());
+        Register(new GraphiteTheme());
+        Register(new ForestTheme());
+        Register(new NeonTheme());
+        Register(new GlassTheme());
+        Register(new SignatureTheme());
+        Register(new ChronoTheme());
+        Register(new InclusTheme());
+        Register(new SylvanTheme());
+        Register(new ReaderTheme());
+        Register(new WaveTheme());
+        Register(new AureaTheme());
+        Register(new CantusTheme());
+        Register(new FractalisTheme());
+        Register(new CosmosTheme());
+        Register(new GordianTheme());
     }
 
     /// <summary>Registers a new theme.</summary>

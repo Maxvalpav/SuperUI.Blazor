@@ -22,6 +22,7 @@ public sealed class ThemeBuilder
     private string? _radiusLg;
     private string? _radiusFull;
     private string? _additionalCss;
+    private IThemeTypography? _typography;
 
     private ThemeBuilder() { }
 
@@ -32,6 +33,8 @@ public sealed class ThemeBuilder
     public ThemeBuilder WithDescription(string d) { _description = d; return this; }
     public ThemeBuilder WithAuthor(string author) { _author = author; return this; }
     public ThemeBuilder WithAdditionalCss(string css) { _additionalCss = css; return this; }
+
+    public ThemeBuilder WithTypography(IThemeTypography typography) { _typography = typography; return this; }
 
     public ThemeBuilder WithPrimaryColor(string light, string? dark = null)
     {
@@ -136,7 +139,8 @@ public sealed class ThemeBuilder
             radiusMd: _radiusMd,
             radiusLg: _radiusLg,
             radiusFull: _radiusFull,
-            additionalCss: _additionalCss
+            additionalCss: _additionalCss,
+            typography: _typography
         );
     }
 }
@@ -149,13 +153,14 @@ internal sealed class BuiltTheme : ThemeBase
     private readonly string? _font, _fontMono;
     private readonly string? _rSm, _rMd, _rLg, _rFull;
     private readonly string? _css;
+    private readonly IThemeTypography? _typography;
 
     public BuiltTheme(string id, string name, string description, string author,
         string primary, string primaryDark,
         string? success, string? danger, string? warning, string? info,
         string? font, string? fontMono,
         string? radiusSm, string? radiusMd, string? radiusLg, string? radiusFull,
-        string? additionalCss)
+        string? additionalCss, IThemeTypography? typography = null)
     {
         _id = id; _name = name; _desc = description; _author = author;
         _primary = primary; _primaryDark = primaryDark;
@@ -163,6 +168,7 @@ internal sealed class BuiltTheme : ThemeBase
         _font = font; _fontMono = fontMono;
         _rSm = radiusSm; _rMd = radiusMd; _rLg = radiusLg; _rFull = radiusFull;
         _css = additionalCss;
+        _typography = typography;
     }
 
     public override string Id => _id;
@@ -203,6 +209,8 @@ internal sealed class BuiltTheme : ThemeBase
     }
 
     protected override IThemeComponents? CreateComponents() => new BaseComponents();
+
+    protected override IThemeTypography? CreateTypography() => _typography;
 }
 
 internal sealed class OverrideSemanticLight : BaseSemanticLight

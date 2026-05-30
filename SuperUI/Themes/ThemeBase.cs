@@ -23,12 +23,16 @@ public abstract class ThemeBase : IThemeDefinition
     private IThemeComponents? _components;
     public IThemeComponents? Components => _components ??= CreateComponents();
 
+    private IThemeTypography? _typography;
+    public IThemeTypography? Typography => _typography ??= CreateTypography();
+
     public virtual string? AdditionalCss => null;
 
     protected abstract IThemePrimitives CreatePrimitives();
     protected abstract IThemeSemantic CreateLight();
     protected virtual IThemeSemantic? CreateDark() => null;
     protected virtual IThemeComponents? CreateComponents() => null;
+    protected virtual IThemeTypography? CreateTypography() => null;
 
     public virtual string GenerateCss()
     {

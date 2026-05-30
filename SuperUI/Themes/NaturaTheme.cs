@@ -1,4 +1,4 @@
-namespace SuperUI.Themes;
+﻿namespace SuperUI.Themes;
 
 internal static class NaturaMath
 {
@@ -83,6 +83,8 @@ public sealed class NaturaTheme : ThemeBase
     protected override IThemeSemantic CreateLight() => new NaturaSemanticLight();
     protected override IThemeSemantic? CreateDark() => new NaturaSemanticDark();
     protected override IThemeComponents? CreateComponents() => new NaturaComponents();
+
+    protected override IThemeTypography? CreateTypography() => new NaturaTypography();
 
     public override string? AdditionalCss => $$"""
         /* ── Global fallback aliases (backward compat with --sui-*) ── */
@@ -681,6 +683,19 @@ public sealed class NaturaTheme : ThemeBase
             }
         }
         """;
+
+    internal sealed class NaturaTypography : IThemeTypography
+    {
+        public string GoogleFontsImportUrl => "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap";
+        public bool EmbedGoogleFontsImport => true;
+        public string? HeadingFont => "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif";
+        public HeadingSettings H1 => new("2.5rem", HeadingFont, "700", "1.1", "-0.02em");
+        public HeadingSettings H2 => new("2rem", HeadingFont, "600", "1.15", "-0.015em");
+        public HeadingSettings H3 => new("1.5rem", HeadingFont, "600", "1.2", "-0.01em");
+        public HeadingSettings H4 => new("1.125rem", HeadingFont, "600", "1.25", "0");
+        public HeadingSettings H5 => new("1rem", HeadingFont, "600", "1.3", "0");
+        public HeadingSettings H6 => new("0.875rem", HeadingFont, "500", "1.35", "0.01em");
+    }
 }
 
 internal class NaturaPrimitives : IThemePrimitives
@@ -820,6 +835,20 @@ internal class NaturaSemanticLight : IThemeSemantic
     public virtual string TextBase => "1rem";
     public virtual string TextLg   => "1.25rem";
 
+    public virtual string TextXs   => "0.6875rem";
+    public virtual string TextXl   => "1.25rem";
+    public virtual string Text2Xl  => "1.5rem";
+    public virtual string Text3Xl  => "2rem";
+
+    public virtual string FontWeightNormal   => "400";
+    public virtual string FontWeightMedium   => "500";
+    public virtual string FontWeightSemibold => "600";
+    public virtual string FontWeightBold     => "700";
+
+    public virtual string LineHeightTight   => "1.25";
+    public virtual string LineHeightNormal  => "1.5";
+    public virtual string LineHeightRelaxed => "1.75";
+
     // Тени — холодные, brand-aligned
     public virtual string ShadowXs => "0 1px 1px 0 oklch(0.14 0.02 262 / 0.04)";
     public virtual string ShadowSm => "0 1px 2px 0 oklch(0.14 0.02 262 / 0.06), 0 1px 1px -1px oklch(0.14 0.02 262 / 0.06)";
@@ -916,6 +945,20 @@ internal class NaturaSemanticDark : IThemeSemantic
     public virtual string TextSm   => "0.8125rem";
     public virtual string TextBase => "1rem";
     public virtual string TextLg   => "1.25rem";
+
+    public virtual string TextXs   => "0.6875rem";
+    public virtual string TextXl   => "1.25rem";
+    public virtual string Text2Xl  => "1.5rem";
+    public virtual string Text3Xl  => "2rem";
+
+    public virtual string FontWeightNormal   => "400";
+    public virtual string FontWeightMedium   => "500";
+    public virtual string FontWeightSemibold => "600";
+    public virtual string FontWeightBold     => "700";
+
+    public virtual string LineHeightTight   => "1.25";
+    public virtual string LineHeightNormal  => "1.5";
+    public virtual string LineHeightRelaxed => "1.75";
 
     // Тени — глубокие, металлические
     public virtual string ShadowXs => "0 1px 2px 0 oklch(0 0 0 / 0.40)";

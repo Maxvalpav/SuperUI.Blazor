@@ -62,9 +62,22 @@ public interface IThemeSemantic
 
     string Font { get; }
     string FontMono { get; }
+    string TextXs { get; }
     string TextSm { get; }
     string TextBase { get; }
     string TextLg { get; }
+    string TextXl { get; }
+    string Text2Xl { get; }
+    string Text3Xl { get; }
+
+    string FontWeightNormal { get; }
+    string FontWeightMedium { get; }
+    string FontWeightSemibold { get; }
+    string FontWeightBold { get; }
+
+    string LineHeightTight { get; }
+    string LineHeightNormal { get; }
+    string LineHeightRelaxed { get; }
 
     string ShadowXs { get; }
     string ShadowSm { get; }
