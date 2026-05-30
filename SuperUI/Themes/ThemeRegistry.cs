@@ -8,12 +8,11 @@ namespace SuperUI.Themes;
 public sealed class ThemeRegistry
 {
     private readonly ConcurrentDictionary<string, IThemeDefinition> _themes = new();
-    private string _defaultThemeId = "superui-default";
+    private string _defaultThemeId = "natura-ui";
 
     public ThemeRegistry()
     {
         // Register built-in themes
-        Register(new DefaultTheme());
         Register(new NaturaTheme());
     }
 

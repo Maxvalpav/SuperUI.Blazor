@@ -51,16 +51,28 @@ function positionMenu(root, menu, placement) {
     menu.style.minWidth = Math.max(r.width, 180) + 'px';
 }
 
-export function attach(root, dotnetRef, placement) {
+function getMenuById(root) {
+    const menuId = root._sgCascaderMenuId;
+    if (menuId) {
+        return document.getElementById(menuId);
+    }
+    return root.querySelector('.sgc-cascader-menu');
+}
+
+export function attach(root, dotnetRef, placement, menuId) {
     detach(root);
 
     let isDisposed = false;
     let hoverTimer = null;
 
+    root._sgCascaderMenuId = menuId;
+
     // ── Click outside ──
     const onPointerDown = (event) => {
         if (isDisposed) return;
         if (!root || root.contains(event.target)) return;
+        const menu = getMenuById(root);
+        if (menu && menu.contains(event.target)) return;
         try {
             dotnetRef?.invokeMethodAsync("CloseFromJsAsync")?.catch(() => {});
         } catch { }
@@ -77,7 +89,7 @@ export function attach(root, dotnetRef, placement) {
     // ── Reposition on scroll/resize ──
     const reposition = () => {
         if (isDisposed) return;
-        const menu = root.querySelector('.sgc-cascader-menu');
+        const menu = getMenuById(root);
         if (!menu) return;
         positionMenu(root, menu, placement || 'BottomStart');
     };
@@ -111,6 +123,7 @@ export function attach(root, dotnetRef, placement) {
             dotnetRef = null;
             if (hoverTimer) clearTimeout(hoverTimer);
             root._sgCascaderReposition = null;
+            root._sgCascaderMenuId = null;
         }
     });
 }
@@ -131,7 +144,7 @@ export function detach(root) {
  * Called from .NET after menu opens to position it.
  */
 export function repositionMenu(root) {
-    const menu = root.querySelector('.sgc-cascader-menu');
+    const menu = getMenuById(root);
     if (!menu) return;
     const placement = root._sgCascaderPlacement || 'BottomStart';
     menu.style.opacity = '0';

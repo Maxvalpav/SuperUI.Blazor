@@ -172,11 +172,11 @@ internal sealed class BuiltTheme : ThemeBase
     public override string Version => "custom";
     public override string? AdditionalCss => _css;
 
-    protected override IThemePrimitives CreatePrimitives() => new DefaultPrimitives();
+    protected override IThemePrimitives CreatePrimitives() => new BasePrimitives();
 
     protected override IThemeSemantic CreateLight()
     {
-        var base_ = new DefaultSemanticLight();
+        var base_ = new BaseSemanticLight();
         return new OverrideSemanticLight(base_,
             primary: _primary,
             success: _success,
@@ -190,7 +190,7 @@ internal sealed class BuiltTheme : ThemeBase
 
     protected override IThemeSemantic? CreateDark()
     {
-        var base_ = new DefaultSemanticDark();
+        var base_ = new BaseSemanticDark();
         return new OverrideSemanticDark(base_,
             primary: _primaryDark,
             success: _success,
@@ -202,14 +202,14 @@ internal sealed class BuiltTheme : ThemeBase
             rSm: _rSm, rMd: _rMd, rLg: _rLg, rFull: _rFull);
     }
 
-    protected override IThemeComponents? CreateComponents() => new DefaultComponents();
+    protected override IThemeComponents? CreateComponents() => new BaseComponents();
 }
 
-internal sealed class OverrideSemanticLight : DefaultSemanticLight
+internal sealed class OverrideSemanticLight : BaseSemanticLight
 {
     private readonly string? _p, _s, _d, _w, _i, _f, _fm, _rSm, _rMd, _rLg, _rFull;
 
-    public OverrideSemanticLight(DefaultSemanticLight _, string? primary,
+    public OverrideSemanticLight(BaseSemanticLight _, string? primary,
         string? success, string? danger, string? warning, string? info,
         string? font, string? fontMono,
         string? rSm, string? rMd, string? rLg, string? rFull)
@@ -232,11 +232,11 @@ internal sealed class OverrideSemanticLight : DefaultSemanticLight
     public new string RadiusFull => _rFull ?? base.RadiusFull;
 }
 
-internal sealed class OverrideSemanticDark : DefaultSemanticDark
+internal sealed class OverrideSemanticDark : BaseSemanticDark
 {
     private readonly string? _p, _s, _d, _w, _i, _f, _fm, _rSm, _rMd, _rLg, _rFull;
 
-    public OverrideSemanticDark(DefaultSemanticDark _, string? primary,
+    public OverrideSemanticDark(BaseSemanticDark _, string? primary,
         string? success, string? danger, string? warning, string? info,
         string? font, string? fontMono,
         string? rSm, string? rMd, string? rLg, string? rFull)

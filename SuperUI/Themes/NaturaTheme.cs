@@ -85,6 +85,94 @@ public sealed class NaturaTheme : ThemeBase
     protected override IThemeComponents? CreateComponents() => new NaturaComponents();
 
     public override string? AdditionalCss => $$"""
+        /* ── Global fallback aliases (backward compat with --sui-*) ── */
+        :root,
+        [data-theme="light"],
+        [data-theme="dark"] {
+            --sui-bg-primary:   var(--sg-bg);
+            --sui-bg-secondary: var(--sg-bg-subtle);
+            --sui-bg-tertiary:  var(--sg-bg-muted);
+
+            --sui-text-primary:   var(--sg-fg);
+            --sui-text-secondary: var(--sg-fg-subtle);
+            --sui-text-muted:     var(--sg-fg-muted);
+            --sui-text-disabled:  var(--sg-fg-disabled);
+
+            --sui-border:       var(--sg-border);
+            --sui-divider:      var(--sg-divider);
+            --sui-border-hover: var(--sg-border-strong);
+            --sui-border-focus: var(--sg-border-focus);
+
+            --sui-accent:        var(--sg-color-primary);
+            --sui-primary:       var(--sg-color-primary);
+            --sui-accent-hover:  var(--sg-color-primary-hover);
+            --sui-accent-active: var(--sg-color-primary-active);
+
+            --sui-success:        var(--sg-color-success);
+            --sui-success-bg:     var(--sg-color-success-subtle);
+            --sui-success-border: var(--sg-border-subtle);
+
+            --sui-danger:        var(--sg-color-danger);
+            --sui-danger-bg:     var(--sg-color-danger-subtle);
+            --sui-danger-border: var(--sg-border-subtle);
+
+            --sui-warn:        var(--sg-color-warning);
+            --sui-warn-bg:     var(--sg-color-warning-subtle);
+            --sui-warn-border: var(--sg-border-subtle);
+
+            --sui-info:        var(--sg-color-info);
+            --sui-info-bg:     var(--sg-color-info-subtle);
+            --sui-info-border: var(--sg-border-subtle);
+
+            --sui-shadow-sm: var(--sg-shadow-sm);
+            --sui-shadow-md: var(--sg-shadow-md);
+            --sui-shadow-lg: var(--sg-shadow-lg);
+
+            --sui-overlay-bg: var(--sg-bg-overlay);
+            --sui-glass-bg:     var(--sg-bg-glass);
+            --sui-glass-border: var(--sg-border-glass);
+            --sui-glass-blur:   var(--sg-blur-glass);
+
+            --sui-hover-bg:    rgba(15, 23, 42, 0.04);
+            --sui-active-bg:   rgba(15, 23, 42, 0.08);
+            --sui-selected-bg: var(--sg-color-primary-muted);
+
+            --sui-font-family:    var(--sg-font);
+            --sui-font-size-xs:   var(--sg-text-xs);
+            --sui-font-size-sm:   var(--sg-text-sm);
+            --sui-font-size-base: var(--sg-text-base);
+            --sui-font-size-lg:   var(--sg-text-lg);
+
+            --sg-text-xs: 0.75rem;
+
+            --sui-radius-sm:   var(--sg-radius-sm);
+            --sui-radius-md:   var(--sg-radius-md);
+            --sui-radius-lg:   var(--sg-radius-lg);
+            --sui-radius-full: var(--sg-radius-full);
+
+            /* φ constants & Fibonacci spacing */
+            --natura-phi: 1.618033988749895;
+            --natura-phi-inv: 0.618033988749895;
+
+            /* Fibonacci spacing scale (compact) */
+            --natura-fib-1: 3px;
+            --natura-fib-2: 5px;
+            --natura-fib-3: 8px;
+            --natura-fib-4: 13px;
+            --natura-fib-5: 21px;
+            --natura-fib-6: 34px;
+            --natura-fib-7: 55px;
+            --natura-fib-8: 89px;
+            --natura-fib-9: 144px;
+
+            /* φ natural easing curves */
+            --natura-ease-growth: cubic-bezier(0.19, 1, 0.22, 1);
+            --natura-ease-breath: cubic-bezier(0.37, 0, 0.63, 1);
+            --natura-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --natura-ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+            --natura-ease-fall:   cubic-bezier(0.68, 0, 0.36, 1);
+        }
+
         /* ═══════════════════════════════════════════════════════════════
            NATURA UI — φ-proportioned design system
            Brand: Royal Cornflower / green #00A86B / red #E11D48
@@ -146,6 +234,21 @@ public sealed class NaturaTheme : ThemeBase
             -moz-osx-font-smoothing: grayscale;
             font-feature-settings: "cv02", "cv03", "cv04", "cv11";
             font-optical-sizing: auto;
+        }
+
+        /* ── Labels, titles — tight tracking ── */
+        [data-theme-id="natura-ui"] .sgc-label,
+        [data-theme-id="natura-ui"] .sgc-title,
+        [data-theme-id="natura-ui"] .sgc-card-title,
+        [data-theme-id="natura-ui"] .sgc-modal-title {
+            letter-spacing: -0.005em;
+        }
+        [data-theme-id="natura-ui"] .sgc-nav-section,
+        [data-theme-id="natura-ui"] .sgc-thead,
+        [data-theme-id="natura-ui"] .sgc-table thead th {
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            font-size: 11px;
         }
 
         /* ── φ-proportioned headings ── */

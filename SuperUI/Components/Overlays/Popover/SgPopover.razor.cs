@@ -247,7 +247,6 @@ public partial class SgPopover : SgJsComponentBase
             RootRef, _popoverRef, _triggerRef, SelfRef,
             CloseOnOutsideClick, CloseOnEscape, Offset, Interactive && Trigger == SgTrigger.Hover);
         _attached = true;
-        StateHasChanged();
     }
 
     private async Task DetachAsync()

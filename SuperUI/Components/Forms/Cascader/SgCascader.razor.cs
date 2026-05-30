@@ -19,6 +19,7 @@ public sealed partial class SgCascader : IAsyncDisposable
     private IJSObjectReference? _jsModule;
     private ElementReference _rootRef;
     private ElementReference _searchInputRef;
+    private readonly string _menuId = $"sgc-cascader-menu-{Guid.NewGuid():N}";
 
     // ── State ────────────────────────────────────────────────────────────
     private bool _open;
@@ -284,7 +285,7 @@ public sealed partial class SgCascader : IAsyncDisposable
                     "./_content/SuperUI/superui-cascader.js");
                 _dotNetRef = DotNetObjectReference.Create(this);
                 var placementStr = GetPlacementString();
-                await _jsModule.InvokeVoidAsync("attach", _rootRef, _dotNetRef, placementStr);
+                await _jsModule.InvokeVoidAsync("attach", _rootRef, _dotNetRef, placementStr, _menuId);
             }
             catch
             {
