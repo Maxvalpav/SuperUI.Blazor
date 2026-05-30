@@ -33,7 +33,7 @@ export async function exportToPdf(htmlContent, fileName) {
     const element = document.createElement('div');
     element.innerHTML = htmlContent;
     element.style.padding = '20px';
-    element.style.fontFamily = 'Arial, sans-serif';
+    element.style.fontFamily = "'Inter', Arial, sans-serif";
     
     return html2pdf().set(options).from(element).save();
 }

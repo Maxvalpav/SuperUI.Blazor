@@ -284,10 +284,10 @@ export function measureColumnWidths(columns, gridId) {
     const sampleTh = root?.querySelector('.sg-table thead th') || document.querySelector('.sg-table thead th');
     const bodyFont = sampleTd
         ? getComputedStyle(sampleTd).font
-        : '12px "Segoe UI", Tahoma, Arial, sans-serif';
+        : '12px Inter, "Segoe UI", Tahoma, Arial, sans-serif';
     const headFont = sampleTh
         ? getComputedStyle(sampleTh).font
-        : 'bold 12px "Segoe UI", Tahoma, Arial, sans-serif';
+        : 'bold 12px Inter, "Segoe UI", Tahoma, Arial, sans-serif';
 
     const PAD = 28; // left + right padding + some breathing room
     const MIN = 50;

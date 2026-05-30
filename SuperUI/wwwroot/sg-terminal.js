@@ -8,7 +8,7 @@ export async function initTerminal(container, options, dotNetHelper) {
     const termOptions = {
         cursorBlink: true,
         fontSize: options.fontSize || 14,
-        fontFamily: options.fontFamily || 'Consolas, "Courier New", monospace',
+        fontFamily: options.fontFamily || getComputedStyle(document.documentElement).getPropertyValue('--sg-font-mono').trim() || 'Consolas, "Courier New", monospace',
         convertEol: true
     };
 
