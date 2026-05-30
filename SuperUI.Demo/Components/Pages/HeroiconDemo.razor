@@ -3,183 +3,113 @@
 @using SuperUI.Enums
 @inject SgThemeService ThemeService
 
-<PageTitle>Heroicons - SUI</PageTitle>
+<PageTitle>Heroicons — SuperUI</PageTitle>
 
-<div class="heroicon-page">
-    <div class="heroicon-header">
-        <div class="heroicon-header-left">
-            <div class="heroicon-title">Heroicons</div>
-            <div class="heroicon-subtitle">324 icons in 4 variants by Tailwind Labs</div>
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
+        <div class="demo-section">
+            <div class="demo-controls-bar">
+                <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                    <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.End" Wrap="true">
+                        <div style="flex: 1; min-width: 250px;">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">Search Icons</SgTypography>
+                            <SgTextBox @bind-Value="SearchText" @bind-Value:event="oninput" Placeholder="Type to filter..." PrefixIcon="@SgIcons.Search" Block />
+                        </div>
+                        <div style="width: 160px;">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">Variant</SgTypography>
+                            <SgSelect TValue="string" @bind-Value="_selectedVariant" Items="@_variantOptions" Block />
+                        </div>
+                        <div class="status-pill">
+                            <span class="pill-value">@(_filteredIcons.Count)</span>
+                            <span class="pill-label">Icons</span>
+                        </div>
+                    </SgStack>
+                </SgCard>
+            </div>
+
+            <div class="icon-grid">
+                @foreach (var icon in _filteredIcons)
+                {
+                    <div class="icon-card" @onclick="() => CopyIconName(icon.Name)" title="Click to copy name">
+                        <div class="icon-preview">
+                            <SgHeroicon Name="@icon.Name" Variant="@_selectedVariant" Size="24px" />
+                        </div>
+                        <div class="icon-info">
+                            <span class="icon-name">@icon.Name</span>
+                            <span class="icon-pascal">@icon.PascalName</span>
+                        </div>
+                    </div>
+                }
+            </div>
         </div>
-        <div class="heroicon-header-right">
-            <input type="text" @bind="SearchText" @bind:event="oninput" placeholder="Search icons..." class="heroicon-search" />
-            <SgSelect TValue="string" @bind-Value="_selectedVariant" Items="@_variantOptions" />
-        </div>
-    </div>
 
-    <div class="heroicon-count">@(_filteredIcons.Count) icons@(string.IsNullOrEmpty(SearchText) ? "" : $" matching \"{SearchText}\"")</div>
-
-    <div class="heroicon-grid">
-        @foreach (var icon in _filteredIcons)
+        @if (_copiedIcon is not null)
         {
-            <div class="heroicon-item" @onclick="() => CopyIconName(icon.Name)" title="Click to copy name">
-                <div class="heroicon-preview">
-                    <SgHeroicon Name="@icon.Name" Variant="@_selectedVariant" Size="24px" />
-                </div>
-                <div class="heroicon-label">@icon.Name</div>
-                <div class="heroicon-pascal">@icon.PascalName</div>
+            <div class="copy-toast">
+                <SgIcon Icon="@SgIcons.Check" Size="14px" />
+                <span>Copied: @_copiedIcon</span>
             </div>
         }
-    </div>
-
-    @if (_copiedIcon is not null)
-    {
-        <div class="heroicon-toast">Copied: @_copiedIcon</div>
-    }
-</div>
+    </ChildContent>
+</SgCard>
 
 <style>
-    .heroicon-page {
-        padding: 0;
-        width: 100%;
+    .demo-controls-bar { margin-bottom: 24px; }
+    
+    .status-pill {
+        display: flex; align-items: center; gap: 6px; padding: 6px 16px;
+        background: var(--sg-bg-subtle); border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-full); height: 32px; margin-bottom: 4px;
     }
-    .heroicon-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 16px 0;
-        flex-wrap: wrap;
-    }
-    .heroicon-header-left {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-    .heroicon-title {
-        font-size: 22px;
-        font-weight: 700;
-        color: var(--sg-text);
-    }
-    .heroicon-subtitle {
-        font-size: 13px;
-        color: var(--sg-text-muted);
-    }
-    .heroicon-header-right {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-    .heroicon-search {
-        padding: 8px 12px;
-        border: 1px solid var(--sg-border);
-        border-radius: 6px;
-        background: var(--sg-bg);
-        color: var(--sg-text);
-        font-size: 14px;
-        width: 220px;
-        outline: none;
-        transition: border-color .15s;
-    }
-    .heroicon-search:focus {
-        border-color: var(--sg-primary);
-    }
-    .heroicon-count {
-        font-size: 13px;
-        color: var(--sg-text-muted);
-        margin-bottom: 8px;
-    }
-    .heroicon-grid {
+    .pill-label { font-size: 11px; font-weight: 600; color: var(--sg-fg-muted); text-transform: uppercase; }
+    .pill-value { font-size: 14px; font-weight: 700; color: var(--sg-color-primary); }
+
+    .icon-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-        gap: 6px;
-        width: 100%;
+        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+        gap: 12px;
     }
-    .heroicon-item {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 4px;
-        padding: 10px 6px 8px;
-        border: 1px solid var(--sg-border);
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.15s ease;
-        background: var(--sg-bg);
+
+    .icon-card {
+        display: flex; flex-direction: column; align-items: center; gap: 10px;
+        padding: 16px 8px; background: var(--sg-bg); border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-md); cursor: pointer; transition: all 0.2s;
     }
-    .heroicon-item:hover {
-        border-color: var(--sg-primary);
-        background: color-mix(in srgb, var(--sg-primary) 5%, var(--sg-bg));
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    .icon-card:hover {
+        border-color: var(--sg-color-primary);
+        background: var(--sg-color-primary-subtle);
+        transform: translateY(-2px);
+        box-shadow: var(--sg-shadow-sm);
     }
-    .heroicon-item:active {
-        transform: translateY(0);
+    .icon-card:active { transform: translateY(0); }
+
+    .icon-preview { color: var(--sg-fg); transition: transform 0.2s; }
+    .icon-card:hover .icon-preview { transform: scale(1.2); color: var(--sg-color-primary); }
+
+    .icon-info { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; overflow: hidden; }
+    .icon-name { font-size: 11px; font-weight: 500; color: var(--sg-fg-subtle); text-align: center; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .icon-pascal { font-size: 9px; color: var(--sg-fg-muted); opacity: 0.7; }
+
+    .copy-toast {
+        position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+        background: var(--sg-fg); color: var(--sg-bg); padding: 10px 24px;
+        border-radius: var(--sg-radius-full); font-size: 13px; font-weight: 500;
+        display: flex; align-items: center; gap: 8px; z-index: 1000;
+        box-shadow: var(--sg-shadow-lg); animation: slideUp 0.3s ease-out;
     }
-    .heroicon-preview {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 36px;
-        height: 36px;
-        color: var(--sg-text);
-    }
-    .heroicon-label {
-        font-size: 10px;
-        color: var(--sg-text-muted);
-        text-align: center;
-        word-break: break-all;
-        line-height: 1.3;
-        max-width: 100%;
-    }
-    .heroicon-pascal {
-        font-size: 9px;
-        color: var(--sg-text-muted);
-        opacity: 0.6;
-        text-align: center;
-        word-break: break-all;
-        line-height: 1.2;
-        max-width: 100%;
-    }
-    .heroicon-toast {
-        position: fixed;
-        bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--sg-primary);
-        color: #fff;
-        padding: 10px 24px;
-        border-radius: 8px;
-        font-size: 14px;
-        z-index: 9999;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
+    @@keyframes slideUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 </style>
 
 @code {
     private string _searchText = "";
-    private string SearchText
-    {
-        get => _searchText;
-        set
-        {
-            _searchText = value;
-            UpdateFilteredIcons();
-        }
-    }
+    private string SearchText { get => _searchText; set { _searchText = value; UpdateFilteredIcons(); } }
 
     private string _selectedVariant = "Outline";
     private string? _copiedIcon;
 
-    private readonly List<string> _variantOptions = new()
-    {
-        "Outline",
-        "Solid",
-        "Mini",
-        "Micro",
-    };
-
+    private readonly List<string> _variantOptions = new() { "Outline", "Solid", "Mini", "Micro" };
     private List<IconInfo> _allIcons = new();
     private List<IconInfo> _filteredIcons = new();
 
@@ -194,11 +124,7 @@
         _allIcons = namesType
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Where(f => f.FieldType == typeof(string))
-            .Select(f => new IconInfo
-            {
-                Name = (string)f.GetValue(null)!,
-                PascalName = f.Name
-            })
+            .Select(f => new IconInfo { Name = (string)f.GetValue(null)!, PascalName = f.Name })
             .OrderBy(i => i.Name)
             .ToList();
 
@@ -207,17 +133,10 @@
 
     private void UpdateFilteredIcons()
     {
-        if (string.IsNullOrWhiteSpace(_searchText))
-        {
-            _filteredIcons = _allIcons;
-        }
-        else
-        {
+        if (string.IsNullOrWhiteSpace(_searchText)) { _filteredIcons = _allIcons; }
+        else {
             var st = _searchText.ToLowerInvariant();
-            _filteredIcons = _allIcons
-                .Where(i => i.Name.Contains(st, StringComparison.OrdinalIgnoreCase)
-                         || i.PascalName.Contains(st, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+            _filteredIcons = _allIcons.Where(i => i.Name.Contains(st) || i.PascalName.Contains(st, StringComparison.OrdinalIgnoreCase)).ToList();
         }
     }
 
@@ -230,9 +149,18 @@
         StateHasChanged();
     }
 
-    private class IconInfo
+    private RenderFragment _mainHeader => __builder =>
     {
-        public string Name { get; set; } = "";
-        public string PascalName { get; set; } = "";
-    }
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="padding:10px;border-radius:10px;background:var(--sg-color-primary-subtle);color:var(--sg-color-primary);display:flex;">
+                <SgIcon Icon="@SgIcons.Layers" Size="24px" />
+            </div>
+            <div>
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Heroicons Library</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Over 300 beautiful hand-crafted SVG icons in 4 distinct styles.</SgTypography>
+            </div>
+        </SgStack>
+    };
+
+    private class IconInfo { public string Name { get; set; } = ""; public string PascalName { get; set; } = ""; }
 }

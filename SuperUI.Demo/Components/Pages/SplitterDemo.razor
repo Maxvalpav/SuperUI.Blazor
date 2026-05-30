@@ -1,792 +1,262 @@
 @page "/splitter-demo"
 @using SuperUI.Components
 @using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<SgCard>
-    <HeaderContent>
-        <div style="display:flex;align-items:center;gap:12px;">
-            <div style="padding:8px;border-radius:8px;background:var(--sg-color-primary-subtle);display:flex;">
-                <SgIcon Icon="@SgIcons.Layout" Size="20px" style="color:var(--sg-color-primary);" />
-            </div>
-            <div>
-                <SgTypography As="SgTypographyElement.H2" Weight="SgTypographyWeight.Bold" Size="SgTypographySize.Xxl" Tracking="SgTypographyTracking.Tight">
-                    Splitter
-                </SgTypography>
-                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                    Resizable panel layouts for Blazor
-                </SgTypography>
-            </div>
-        </div>
-    </HeaderContent>
+<PageTitle>Splitter — SuperUI</PageTitle>
 
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
     <ChildContent>
-    <div style="margin-bottom:16px;">
-        <SgTypography Color="var(--sg-text-muted)" Leading="SgTypographyLeading.Relaxed">
-            Drag splitter bars to resize panels. Supports any number of panes, keyboard navigation, collapse, snap-to-grid, and in-memory session persistence.
-        </SgTypography>
-    </div>
+        <div class="demo-section">
+            <SgTypography Color="var(--sg-text-muted)" Leading="SgTypographyLeading.Relaxed">
+                Drag splitter bars to resize panels. Supports any number of panes, keyboard navigation, collapse, snap-to-grid, and in-memory session persistence.
+            </SgTypography>
+        </div>
 
-    @* ── Section 1: Simple 2-pane modes ── *@
-    <div class="sgc-demo-section">
-        <SgTypography As="SgTypographyElement.H3" Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Xl" Tracking="SgTypographyTracking.Tight">
-            Two-pane mode
-        </SgTypography>
-        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Leading="SgTypographyLeading.Relaxed">
-            Horizontal and vertical layouts. Drag the bar, use collapse buttons, or double-click to reset. Keyboard: <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">Arrow keys</SgTypography> when focused on the bar.
-        </SgTypography>
+        <!-- Section 1: Simple 2-pane modes -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Two-pane mode</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Horizontal and vertical layouts. Drag the bar, use collapse buttons, or double-click to reset.
+                </SgTypography>
+            </div>
 
-        <SgRow Space="SgSize.Lg" Style="margin-top:12px;">
-            <SgCol Xs="24" Lg="12">
-                <SgCard NoPadding="true" Shadow="SgShadow.Sm">
-                    <div style="display:flex;flex-direction:column;height:380px;border-radius:inherit;overflow:hidden;">
-                        <div style="flex:1;overflow:hidden;">
-                            <SgSplitter Orientation="SgOrientation.Vertical" Size="@_vSize" Collapsible="@_vCollapsible" ShowHandle="@_vHandle"
-                                        Min="60" Max="500" PersistKey="demo-vertical" OnResizeEnd="@(v => { if(v.Length>0) _vSize=v[0]; })">
-                                <First>
-                                    <div class="pane-content pane-content--toolbar">
-                                        <div class="pane-label">
-                                            <SgIcon Icon="@SgIcons.Layers" Size="14px" />
-                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Toolbar</SgTypography>
-                                        </div>
-                                        <SgStack Horizontal Space="SgSize.Sm" Wrap="true">
-                                            <div class="nav-chip active">
-                                                <SgIcon Icon="@SgIcons.LayoutDashboard" Size="14px" />
-                                                <span>Dashboard</span>
+            <SgRow Space="SgSize.Lg">
+                <SgCol Xs="12" Lg="6">
+                    <SgCard NoPadding="true" Shadow="SgShadow.Sm" Style="overflow:hidden;">
+                        <div class="splitter-demo-box">
+                            <div class="splitter-wrapper">
+                                <SgSplitter Orientation="SgOrientation.Vertical" Size="_vSize" Collapsible="@_vCollapsible" ShowHandle="@_vHandle"
+                                            Min="60" Max="500" PersistKey="demo-vertical" OnResizeEnd="HandleVResize">
+                                    <First>
+                                        <div class="pane-content pane-content--toolbar">
+                                            <div class="pane-label">
+                                                <SgIcon Icon="@SgIcons.Layers" Size="14px" />
+                                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)">Toolbar</SgTypography>
                                             </div>
-                                            <div class="nav-chip">
-                                                <SgIcon Icon="@SgIcons.Settings" Size="14px" />
-                                                <span>Settings</span>
-                                            </div>
-                                            <div class="nav-chip">
-                                                <SgIcon Icon="@SgIcons.Users" Size="14px" />
-                                                <span>Users</span>
-                                            </div>
-                                            <div class="nav-chip">
-                                                <SgIcon Icon="@SgIcons.FileText" Size="14px" />
-                                                <span>Reports</span>
-                                            </div>
-                                        </SgStack>
-                                    </div>
-                                </First>
-                                <Second>
-                                    <div class="pane-content pane-content--main">
-                                        <div class="pane-label">
-                                            <SgIcon Icon="@SgIcons.Terminal" Size="14px" />
-                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Content Area</SgTypography>
-                                        </div>
-                                        <div class="status-card">
-                                            <div class="status-card-header">
-                                                <SgIcon Icon="@SgIcons.Cpu" Size="16px" />
-                                                <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">System Status</SgTypography>
-                                            </div>
-                                            <SgStack Vertical Space="SgSize.Sm">
-                                                <div>
-                                                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
-                                                        <span style="color:var(--sg-text-muted);">CPU Load</span>
-                                                        <span style="font-weight:600;">65%</span>
-                                                    </div>
-                                                    <SgProgress Value="65" Size="SgSize.Sm" />
-                                                </div>
-                                                <div>
-                                                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
-                                                        <span style="color:var(--sg-text-muted);">Memory</span>
-                                                        <span style="font-weight:600;">42%</span>
-                                                    </div>
-                                                    <SgProgress Value="42" Size="SgSize.Sm" Color="--sg-color-success" />
-                                                </div>
-                                                <div>
-                                                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
-                                                        <span style="color:var(--sg-text-muted);">Disk I/O</span>
-                                                        <span style="font-weight:600;">88%</span>
-                                                    </div>
-                                                    <SgProgress Value="88" Size="SgSize.Sm" Color="--sg-color-warning" />
-                                                </div>
+                                            <SgStack Horizontal Space="SgSize.Sm" Wrap="true">
+                                                <div class="nav-chip active"><SgIcon Icon="@SgIcons.LayoutDashboard" Size="14px" /><span>Dash</span></div>
+                                                <div class="nav-chip"><SgIcon Icon="@SgIcons.Settings" Size="14px" /><span>Set</span></div>
                                             </SgStack>
                                         </div>
-                                    </div>
-                                </Second>
-                            </SgSplitter>
-                        </div>
-                        <div class="demo-controls">
-                            <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-                                <SgSwitch @bind-Value="_vCollapsible" Label="Collapsible" Size="SgSize.Sm" />
-                                <SgSwitch @bind-Value="_vHandle" Label="Handle" Size="SgSize.Sm" />
-                                <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:180px;">
-                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Weight="SgTypographyWeight.Medium">Size</SgTypography>
-                                    <SgSlider @bind-Value="_vSize" Min="60" Max="500" Step="10" Suffix="px" ShowValue="true" />
-                                </div>
-                            </SgStack>
-                        </div>
-                    </div>
-                </SgCard>
-            </SgCol>
-            <SgCol Xs="24" Lg="12">
-                <SgCard NoPadding="true" Shadow="SgShadow.Sm">
-                    <div style="display:flex;flex-direction:column;height:380px;border-radius:inherit;overflow:hidden;">
-                        <div style="flex:1;overflow:hidden;">
-                            <SgSplitter Orientation="SgOrientation.Horizontal" Size="@_hSize" Collapsible="@_hCollapsible" ShowHandle="@_hHandle"
-                                        Min="120" Max="700" KeyboardResize="true" Step="20" PersistKey="demo-horizontal">
-                                <First>
-                                    <div class="pane-content pane-content--sidebar">
-                                        <div class="pane-label">
-                                            <SgIcon Icon="@SgIcons.Box" Size="14px" />
-                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Sidebar</SgTypography>
+                                    </First>
+                                    <Second>
+                                        <div class="pane-content pane-content--main">
+                                            <div class="pane-label">
+                                                <SgIcon Icon="@SgIcons.Terminal" Size="14px" />
+                                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)">Content Area</SgTypography>
+                                            </div>
+                                            <SgStack Vertical Space="SgSize.Sm">
+                                                <SgProgress Value="65" Size="SgSize.Sm" Label="CPU" ShowValue="true" />
+                                                <SgProgress Value="42" Size="SgSize.Sm" Color="var(--sg-color-success)" Label="RAM" ShowValue="true" />
+                                            </SgStack>
                                         </div>
-                                        <div class="sidebar-icons">
-                                            <SgIcon Icon="@SgIcons.LayoutDashboard" Size="22px" />
-                                            <SgIcon Icon="@SgIcons.Users" Size="22px" />
-                                            <SgIcon Icon="@SgIcons.Settings" Size="22px" />
-                                            <SgIcon Icon="@SgIcons.FileText" Size="22px" />
-                                            <SgIcon Icon="@SgIcons.BarChart" Size="22px" />
-                                            <SgIcon Icon="@SgIcons.Bell" Size="22px" />
-                                        </div>
-                                    </div>
-                                </First>
-                                <Second>
-                                    <div class="pane-content pane-content--main">
-                                        <div class="pane-label">
-                                            <SgIcon Icon="@SgIcons.Code" Size="14px" />
-                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Editor</SgTypography>
-                                        </div>
-                                        <div class="code-editor-sim">
-                                            <span style="color:#569cd6;">public class</span> <span style="color:#4ec9b0;">SuperComponent</span>
-                                            <span style="color:#dcdcaa;">&lt;T&gt;</span>
-                                            <br/>
-                                            <span style="color:#c586c0;">where</span> T : <span style="color:#4ec9b0;">class</span>
-                                            <br/>
-                                            <span style="color:#d4d4d4;">{</span>
-                                            <br/>
-                                            <span style="padding-left:20px;color:#569cd6;">private</span> <span style="color:#4ec9b0;">T</span> <span style="color:#dcdcaa;">_value</span> <span style="color:#d4d4d4;">=</span> <span style="color:#569cd6;">default</span><span style="color:#d4d4d4;">!</span><span style="color:#d4d4d4;">;</span>
-                                            <br/>
-                                            <br/>
-                                            <span style="padding-left:20px;color:#569cd6;">public</span> <span style="color:#4ec9b0;">T</span> <span style="color:#dcdcaa;">Value</span>
-                                            <br/>
-                                            <span style="padding-left:20px;">{</span>
-                                            <br/>
-                                            <span style="padding-left:40px;color:#569cd6;">get</span> <span style="color:#d4d4d4;">=></span> <span style="color:#dcdcaa;">_value</span><span style="color:#d4d4d4;">;</span>
-                                            <br/>
-                                            <span style="padding-left:40px;color:#569cd6;">set</span> <span style="color:#d4d4d4;">=></span> <span style="color:#dcdcaa;">_value</span> <span style="color:#d4d4d4;">=</span> <span style="color:#dcdcaa;">value</span><span style="color:#d4d4d4;">;</span>
-                                            <br/>
-                                            <span style="padding-left:20px;">}</span>
-                                            <br/>
-                                            <span style="color:#d4d4d4;">}</span>
-                                        </div>
-                                    </div>
-                                </Second>
-                            </SgSplitter>
-                        </div>
-                        <div class="demo-controls">
-                            <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-                                <SgSwitch @bind-Value="_hCollapsible" Label="Collapsible" Size="SgSize.Sm" />
-                                <SgSwitch @bind-Value="_hHandle" Label="Handle" Size="SgSize.Sm" />
-                                <div style="display:flex;align-items:center;gap:8px;flex:1;max-width:180px;">
-                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Weight="SgTypographyWeight.Medium">Size</SgTypography>
-                                    <SgSlider @bind-Value="_hSize" Min="120" Max="700" Step="10" Suffix="px" ShowValue="true" />
-                                </div>
-                            </SgStack>
-                        </div>
-                    </div>
-                </SgCard>
-            </SgCol>
-        </SgRow>
-
-        <div class="demo-code-block">
-            <SgStack Horizontal Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
-                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                    <SgIcon Icon="@SgIcons.Code" Size="14px" /> Example
-                </SgTypography>
-                <button type="button" class="demo-copy-btn" @onclick="() => CopyCode(_simpleCode)">
-                    <SgIcon Icon="@SgIcons.Copy" Size="14px" /> Copy
-                </button>
-            </SgStack>
-            <pre class="code-block">@_simpleCode</pre>
-        </div>
-    </div>
-
-    @* ── Section 2: Multi-pane with SgSplitterPane ── *@
-    <div class="sgc-demo-section">
-        <SgTypography As="SgTypographyElement.H3" Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Xl" Tracking="SgTypographyTracking.Tight">
-            Multi-pane mode
-        </SgTypography>
-        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Leading="SgTypographyLeading.Relaxed">
-            Create layouts with 3+ panes using <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">SgSplitterPane</SgTypography> children. Each pane gets its own <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">Size</SgTypography>, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">Min</SgTypography>, and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">Max</SgTypography>. The last pane always fills remaining space.
-        </SgTypography>
-
-        <SgCard NoPadding="true" Shadow="SgShadow.Sm" Style="margin-top:12px;">
-            <div style="height:400px;border-radius:inherit;overflow:hidden;">
-                <SgSplitter Orientation="SgOrientation.Horizontal" Collapsible="true" ShowHandle="true" PersistKey="demo-multipane">
-                    <SgSplitterPane Size="200" Min="120" Max="400">
-                        <div class="pane-content pane-content--sidebar">
-                            <div class="pane-label">
-                                <SgIcon Icon="@SgIcons.Menu" Size="14px" />
-                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Navigation</SgTypography>
+                                    </Second>
+                                </SgSplitter>
                             </div>
-                            <SgStack Vertical Space="SgSize.Sm">
-                                <div class="nav-chip active" @onclick="() => _selectedNav = _navItems[0]">
-                                    <SgIcon Icon="@SgIcons.LayoutDashboard" Size="14px" />
-                                    <span>@_navItems[0]</span>
-                                </div>
-                                <div class="nav-chip" @onclick="() => _selectedNav = _navItems[1]">
-                                    <SgIcon Icon="@SgIcons.TrendingUp" Size="14px" />
-                                    <span>@_navItems[1]</span>
-                                </div>
-                                <div class="nav-chip" @onclick="() => _selectedNav = _navItems[2]">
-                                    <SgIcon Icon="@SgIcons.Settings" Size="14px" />
-                                    <span>@_navItems[2]</span>
-                                </div>
-                                <div class="nav-chip" @onclick="() => _selectedNav = _navItems[3]">
-                                    <SgIcon Icon="@SgIcons.Users" Size="14px" />
-                                    <span>@_navItems[3]</span>
-                                </div>
-                                <div class="nav-chip" @onclick="() => _selectedNav = _navItems[4]">
-                                    <SgIcon Icon="@SgIcons.FileText" Size="14px" />
-                                    <span>@_navItems[4]</span>
-                                </div>
-                            </SgStack>
-                        </div>
-                    </SgSplitterPane>
-                    <SgSplitterPane Size="400" Min="200" Max="800">
-                        <div class="pane-content pane-content--main">
-                            <div class="pane-label">
-                                <SgIcon Icon="@SgIcons.Monitor" Size="14px" />
-                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Main Content: @_selectedNav</SgTypography>
-                            </div>
-                            <div class="content-grid">
-                                <div class="content-card" style="grid-column:1/-1;">
-                                    <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Base">Welcome to @_selectedNav</SgTypography>
-                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">This panel demonstrates multi-pane splitter with three independent sections. Resize any bar to see the layout adapt.</SgTypography>
-                                </div>
-                                <div class="content-card">
-                                    <SgTypography Weight="SgTypographyWeight.Medium" Size="SgTypographySize.Sm">Active Users</SgTypography>
-                                    <SgTypography As="SgTypographyElement.H2" Weight="SgTypographyWeight.Bold" Color="var(--sg-color-success)" Size="SgTypographySize.Xxxl" Style="margin-top:4px;">1,284</SgTypography>
-                                </div>
-                                <div class="content-card">
-                                    <SgTypography Weight="SgTypographyWeight.Medium" Size="SgTypographySize.Sm">Revenue</SgTypography>
-                                    <SgTypography As="SgTypographyElement.H2" Weight="SgTypographyWeight.Bold" Color="var(--sg-color-primary)" Size="SgTypographySize.Xxxl" Style="margin-top:4px;">$48.2K</SgTypography>
-                                </div>
-                                <div class="content-card">
-                                    <SgTypography Weight="SgTypographyWeight.Medium" Size="SgTypographySize.Sm">Tasks</SgTypography>
-                                    <SgTypography As="SgTypographyElement.H2" Weight="SgTypographyWeight.Bold" Color="var(--sg-color-warning)" Size="SgTypographySize.Xxxl" Style="margin-top:4px;">87%</SgTypography>
-                                </div>
-                            </div>
-                        </div>
-                    </SgSplitterPane>
-                    <SgSplitterPane Size="200" Min="100" Max="400">
-                        <div class="pane-content pane-content--alt">
-                            <div class="pane-label">
-                                <SgIcon Icon="@SgIcons.MessageSquare" Size="14px" />
-                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Activity</SgTypography>
-                            </div>
-                            <SgStack Vertical Space="SgSize.Sm">
-                                @foreach (var activity in _activities)
-                                {
-                                    <div class="activity-item">
-                                        <div class="activity-dot"></div>
-                                        <div>
-                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Medium">@activity.Text</SgTypography>
-                                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@activity.Time</SgTypography>
-                                        </div>
-                                    </div>
-                                }
-                            </SgStack>
-                        </div>
-                    </SgSplitterPane>
-                </SgSplitter>
-            </div>
-        </SgCard>
-
-        <div class="demo-code-block">
-            <SgStack Horizontal Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
-                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                    <SgIcon Icon="@SgIcons.Code" Size="14px" /> Example
-                </SgTypography>
-                <button type="button" class="demo-copy-btn" @onclick="() => CopyCode(_multiCode)">
-                    <SgIcon Icon="@SgIcons.Copy" Size="14px" /> Copy
-                </button>
-            </SgStack>
-            <pre class="code-block">@_multiCode</pre>
-        </div>
-    </div>
-
-    @* ── Section 3: Nested / IDE layout ── *@
-    <div class="sgc-demo-section">
-        <SgTypography As="SgTypographyElement.H3" Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Xl" Tracking="SgTypographyTracking.Tight">
-            Nested layout
-        </SgTypography>
-        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Leading="SgTypographyLeading.Relaxed">
-            Combine horizontal and vertical splitters for IDE-like workspaces. Each splitter manages its own state independently.
-        </SgTypography>
-
-        <SgCard NoPadding="true" Shadow="SgShadow.Md" Radius="SgSize.Lg" Style="margin-top:12px;">
-            <div style="height:550px;overflow:hidden;border-radius:inherit;">
-                <SgSplitter Orientation="SgOrientation.Vertical" Size="48" Min="36" Max="120" Collapsible="true" ShowHandle="true">
-                    <First>
-                        <div class="pane-content pane-content--toolbar" style="padding:6px 16px;display:flex;align-items:center;">
-                            <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center" FullWidth="true" Justify="SgJustifyContent.SpaceBetween">
+                            <div class="demo-controls">
                                 <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-                                    <SgIcon Icon="@SgIcons.Sparkles" Size="18px" style="color:var(--sg-color-primary);" />
-                                    <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">SuperStudio</SgTypography>
-                                    <SgStack Horizontal Space="SgSize.Sm">
-                                        <div class="nav-chip active">File</div>
-                                        <div class="nav-chip">Edit</div>
-                                        <div class="nav-chip">View</div>
-                                        <div class="nav-chip">Help</div>
-                                    </SgStack>
+                                    <SgSwitch @bind-Value="_vCollapsible" Label="Collapse" Size="SgSize.Sm" />
+                                    <SgSwitch @bind-Value="_vHandle" Label="Handle" Size="SgSize.Sm" />
+                                    <div style="flex:1;"></div>
+                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@(_vSize)px</SgTypography>
                                 </SgStack>
-                                <SgStack Horizontal Space="SgSize.Sm">
-                                    <SgIcon Icon="@SgIcons.Search" Size="16px" style="opacity:0.4;" />
-                                    <SgIcon Icon="@SgIcons.Bell" Size="16px" style="opacity:0.4;" />
-                                    <SgIcon Icon="@SgIcons.Settings" Size="16px" style="opacity:0.4;" />
-                                </SgStack>
-                            </SgStack>
+                            </div>
                         </div>
-                    </First>
-                    <Second>
-                        <SgSplitter Orientation="SgOrientation.Horizontal" Size="240" Min="160" Max="400" PersistKey="demo-nested-h">
-                            <First>
-                                <SgSplitter Orientation="SgOrientation.Vertical" Size="200" Min="100" Max="500" Collapsible="true" PersistKey="demo-nested-v1">
+                    </SgCard>
+                </SgCol>
+
+                <SgCol Xs="12" Lg="6">
+                    <SgCard NoPadding="true" Shadow="SgShadow.Sm" Style="overflow:hidden;">
+                        <div class="splitter-demo-box">
+                            <div class="splitter-wrapper">
+                                <SgSplitter Orientation="SgOrientation.Horizontal" Size="_hSize" Collapsible="@_hCollapsible" ShowHandle="@_hHandle"
+                                            Min="120" Max="700" KeyboardResize="true" Step="20" PersistKey="demo-horizontal" OnResizeEnd="HandleHResize">
                                     <First>
                                         <div class="pane-content pane-content--sidebar">
                                             <div class="pane-label">
-                                                <SgIcon Icon="@SgIcons.FileText" Size="13px" />
-                                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Explorer</SgTypography>
+                                                <SgIcon Icon="@SgIcons.Box" Size="14px" />
+                                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)">Sidebar</SgTypography>
                                             </div>
-                                            <div class="file-tree">
-                                                <div class="tree-item depth-0 active">
-                                                    <SgIcon Icon="@SgIcons.ChevronDown" Size="12px" /> src/
-                                                </div>
-                                                <div class="tree-item depth-1">
-                                                    <SgIcon Icon="@SgIcons.FileText" Size="12px" /> Program.cs
-                                                </div>
-                                                <div class="tree-item depth-1">
-                                                    <SgIcon Icon="@SgIcons.FileText" Size="12px" /> Startup.cs
-                                                </div>
-                                                <div class="tree-item depth-0">
-                                                    <SgIcon Icon="@SgIcons.ChevronRight" Size="12px" /> Components/
-                                                </div>
-                                                <div class="tree-item depth-0">
-                                                    <SgIcon Icon="@SgIcons.ChevronRight" Size="12px" /> Pages/
-                                                </div>
+                                            <div class="sidebar-icons">
+                                                <SgIcon Icon="@SgIcons.LayoutDashboard" Size="20px" />
+                                                <SgIcon Icon="@SgIcons.Users" Size="20px" />
+                                                <SgIcon Icon="@SgIcons.Settings" Size="20px" />
                                             </div>
                                         </div>
                                     </First>
                                     <Second>
-                                        <div class="pane-content pane-content--alt">
-                                            <div class="pane-label">
-                                                <SgIcon Icon="@SgIcons.Code" Size="13px" />
-                                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Git</SgTypography>
-                                            </div>
-                                            <SgStack Vertical Space="SgSize.Sm">
-                                                <div class="git-item" style="color:var(--sg-color-success);">+ 3 files changed</div>
-                                                <div class="git-item">M src/Program.cs</div>
-                                                <div class="git-item">M src/Startup.cs</div>
-                                                <div class="git-item" style="color:var(--sg-color-warning);">?? new-file.cs</div>
-                                            </SgStack>
-                                        </div>
-                                    </Second>
-                                </SgSplitter>
-                            </First>
-                            <Second>
-                                <SgSplitter Orientation="SgOrientation.Vertical" Size="350" Min="150" Max="1000" Collapsible="true" PersistKey="demo-nested-v2">
-                                    <First>
                                         <div class="pane-content pane-content--main">
-                                            <div class="code-editor-sim" style="height:100%;">
-                                                <span style="color:#608b4e;">// Program.cs</span>
-                                                <br/>
-                                                <span style="color:#569cd6;">using</span> Microsoft.AspNetCore.Components<span style="color:#d4d4d4;">;</span>
-                                                <br/>
-                                                <br/>
-                                                <span style="color:#569cd6;">var</span> builder <span style="color:#d4d4d4;">=</span> WebApplication.CreateBuilder(args);
-                                                <br/>
-                                                <br/>
-                                                builder.Services.AddRazorComponents();
-                                                <br/>
-                                                <br/>
-                                                <span style="color:#569cd6;">var</span> app <span style="color:#d4d4d4;">=</span> builder.Build();
-                                                <br/>
-                                                <br/>
-                                                app.UseHttpsRedirection();
-                                                <br/>
-                                                app.UseStaticFiles();
-                                                <br/>
-                                                app.UseAntiforgery();
-                                                <br/>
-                                                <br/>
-                                                app.MapRazorComponents&lt;App&gt;();
-                                                <br/>
-                                                <br/>
-                                                app.Run();
-                                            </div>
-                                        </div>
-                                    </First>
-                                    <Second>
-                                        <div class="pane-content pane-content--alt">
                                             <div class="pane-label">
-                                                <SgIcon Icon="@SgIcons.Terminal" Size="13px" />
-                                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Terminal</SgTypography>
+                                                <SgIcon Icon="@SgIcons.Code" Size="14px" />
+                                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)">Editor</SgTypography>
                                             </div>
-                                            <div class="terminal-sim">
-                                                <div>> dotnet build</div>
-                                                <div style="color:var(--sg-color-success);">Build succeeded. 0 warnings, 0 errors</div>
-                                                <div>> dotnet run</div>
-                                                <div style="color:#569cd6;">Now listening on: https://localhost:5001</div>
-                                                <div class="cursor-blink">_</div>
+                                            <div class="code-sim">
+                                                <span style="color:var(--sg-color-primary);">public class</span> <span style="color:var(--sg-color-success);">SuperUI</span> { ... }
                                             </div>
                                         </div>
                                     </Second>
                                 </SgSplitter>
-                            </Second>
-                        </SgSplitter>
-                    </Second>
-                </SgSplitter>
-            </div>
-        </SgCard>
-    </div>
+                            </div>
+                            <div class="demo-controls">
+                                <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+                                    <SgSwitch @bind-Value="_hCollapsible" Label="Collapse" Size="SgSize.Sm" />
+                                    <SgSwitch @bind-Value="_hHandle" Label="Handle" Size="SgSize.Sm" />
+                                    <div style="flex:1;"></div>
+                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@(_hSize)px</SgTypography>
+                                </SgStack>
+                            </div>
+                        </div>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
 
-    @* ── Section 4: Properties + Features ── *@
-    <SgRow Space="SgSize.Lg" Style="margin-top:48px;">
-        <SgCol Xs="24" Lg="14">
-            <SgCard Title="Splitter parameters" Shadow="SgShadow.Sm">
-                <PropertyTable Items="_splitterProps" />
+        <!-- Section 2: Multi-pane -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Multi-pane mode</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Create layouts with 3+ panes using SgSplitterPane. The last pane fills remaining space.
+                </SgTypography>
+            </div>
+
+            <SgCard NoPadding="true" Shadow="SgShadow.Sm" Style="overflow:hidden;">
+                <div style="height:400px;">
+                    <SgSplitter Orientation="SgOrientation.Horizontal" Collapsible="true" ShowHandle="true" PersistKey="demo-multipane">
+                        <SgSplitterPane Size="180" Min="100" Max="300">
+                            <div class="pane-content pane-content--sidebar">
+                                <div class="pane-label">
+                                    <SgIcon Icon="@SgIcons.Menu" Size="14px" />
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)">Nav</SgTypography>
+                                </div>
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    @foreach (var item in _navItems)
+                                    {
+                                        <div class="nav-chip @(_selectedNav == item ? "active" : "")" @onclick="() => _selectedNav = item">
+                                            <span>@item</span>
+                                        </div>
+                                    }
+                                </SgStack>
+                            </div>
+                        </SgSplitterPane>
+                        <SgSplitterPane Size="400" Min="200" Max="800">
+                            <div class="pane-content pane-content--main">
+                                <div class="pane-label">
+                                    <SgIcon Icon="@SgIcons.Monitor" Size="14px" />
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)">@_selectedNav</SgTypography>
+                                </div>
+                                <div class="demo-grid">
+                                    @for (int i = 1; i <= 3; i++)
+                                    {
+                                        <SgCard Size="SgSize.Sm" Shadow="SgShadow.None" Bordered="true">
+                                            <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Metric #@i</SgTypography>
+                                            <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold" Color="var(--sg-color-primary)">@(i * 124)</SgTypography>
+                                        </SgCard>
+                                    }
+                                </div>
+                            </div>
+                        </SgSplitterPane>
+                        <SgSplitterPane Size="200" Min="100" Max="400">
+                            <div class="pane-content pane-content--alt">
+                                <div class="pane-label">
+                                    <SgIcon Icon="@SgIcons.MessageSquare" Size="14px" />
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)">Activity</SgTypography>
+                                </div>
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    @foreach (var activity in _activities)
+                                    {
+                                        <div class="activity-row">
+                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Medium">@activity.Text</SgTypography>
+                                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">@activity.Time</SgTypography>
+                                        </div>
+                                    }
+                                </SgStack>
+                            </div>
+                        </SgSplitterPane>
+                    </SgSplitter>
+                </div>
             </SgCard>
-        </SgCol>
-        <SgCol Xs="24" Lg="10">
-            <SgCard Title="Features" Shadow="SgShadow.Sm">
-                <SgStack Vertical Space="SgSize.Md">
-                    <div class="feature-item">
-                        <div class="feature-icon" style="background:var(--sg-color-primary-subtle);color:var(--sg-color-primary);">
-                            <SgIcon Icon="@SgIcons.GripVertical" Size="14px" />
-                        </div>
-                        <div>
-                            <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">N-pane support</SgTypography>
-                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Any number of panes via <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">SgSplitterPane</SgTypography> children</SgTypography>
-                        </div>
-                    </div>
-                    <div class="feature-item">
-                        <div class="feature-icon" style="background:var(--sg-color-success-subtle);color:var(--sg-color-success);">
-                            <SgIcon Icon="@SgIcons.ArrowsUpDown" Size="14px" />
-                        </div>
-                        <div>
-                            <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">Keyboard resize</SgTypography>
-                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Arrow keys when focused on the divider bar</SgTypography>
-                        </div>
-                    </div>
-                    <div class="feature-item">
-                        <div class="feature-icon" style="background:var(--sg-color-warning-subtle);color:var(--sg-color-warning);">
-                            <SgIcon Icon="@SgIcons.History" Size="14px" />
-                        </div>
-                        <div>
-                            <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">Session persistence</SgTypography>
-                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">In-memory via <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">PersistKey</SgTypography> — no local storage needed</SgTypography>
-                        </div>
-                    </div>
-                    <div class="feature-item">
-                        <div class="feature-icon" style="background:var(--sg-color-danger-subtle);color:var(--sg-color-danger);">
-                            <SgIcon Icon="@SgIcons.Table" Size="14px" />
-                        </div>
-                        <div>
-                            <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">Snap-to-grid</SgTypography>
-                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)"><SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">SnapToGrid</SgTypography> parameter for precise alignment</SgTypography>
-                        </div>
-                    </div>
-                    <div class="feature-item">
-                        <div class="feature-icon" style="background:var(--sg-color-info-subtle);color:var(--sg-color-info);">
-                            <SgIcon Icon="@SgIcons.Maximize" Size="14px" />
-                        </div>
-                        <div>
-                            <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">Collapse & double-click</SgTypography>
-                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Built-in collapse buttons and double-click to reset</SgTypography>
-                        </div>
-                    </div>
-                </SgStack>
-            </SgCard>
-        </SgCol>
-    </SgRow>
-</ChildContent>
+        </div>
+    </ChildContent>
 </SgCard>
 
 <style>
-    .sgc-demo-section {
-        padding: 32px 0;
-        border-bottom: 1px solid var(--sg-border);
-    }
-    .sgc-demo-section:last-of-type {
-        border-bottom: none;
-    }
+    .demo-section { margin-bottom: 32px; }
+    .demo-section:last-child { margin-bottom: 0; }
+    .demo-section-header { margin-bottom: 16px; }
 
-    .pane-content {
-        padding: 16px;
-        height: 100%;
-        box-sizing: border-box;
-        overflow: auto;
-        background: var(--sg-surface);
-    }
-    .pane-content--main {
-        background: var(--sg-surface);
-    }
-    .pane-content--sidebar {
-        background: var(--sg-surface-alt);
-    }
-    .pane-content--alt {
-        background: var(--sg-surface-alt);
-    }
-    .pane-content--toolbar {
-        background: var(--sg-surface);
-        border-bottom: 1px solid var(--sg-border);
-    }
+    .splitter-demo-box { display: flex; flex-direction: column; height: 350px; }
+    .splitter-wrapper { flex: 1; overflow: hidden; }
+    .demo-controls { padding: 12px; background: var(--sg-bg-subtle); border-top: 1px solid var(--sg-border); }
 
-    .pane-label {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-bottom: 12px;
-        padding-bottom: 6px;
-        border-bottom: 1px solid var(--sg-border);
-    }
+    .pane-content { height: 100%; padding: 16px; background: var(--sg-bg); }
+    .pane-content--toolbar { background: var(--sg-bg-subtle); }
+    .pane-content--sidebar { background: var(--sg-bg-subtle); border-right: 1px solid var(--sg-border-subtle); }
+    .pane-content--alt { background: var(--sg-bg-subtle); border-left: 1px solid var(--sg-border-subtle); }
 
-    .nav-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 5px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 500;
-        color: var(--sg-text-muted);
-        cursor: pointer;
-        transition: all .15s ease;
-        white-space: nowrap;
+    .pane-label { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; opacity: 0.8; }
+    
+    .nav-chip { 
+        display: flex; align-items: center; gap: 8px; padding: 6px 12px; 
+        border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--sg-fg-subtle);
+        transition: all 0.2s;
     }
-    .nav-chip:hover { background: color-mix(in srgb, var(--sg-text) 6%, transparent); color: var(--sg-text); }
-    .nav-chip.active { background: var(--sg-color-primary-subtle); color: var(--sg-color-primary); font-weight: 600; }
+    .nav-chip:hover { background: var(--sg-bg-hover); }
+    .nav-chip.active { background: var(--sg-color-primary-subtle); color: var(--sg-color-primary); font-weight: 500; }
 
-    .status-card {
-        padding: 12px;
-        border: 1px solid var(--sg-border);
-        border-radius: 8px;
-        background: var(--sg-surface-alt);
-    }
-    .status-card-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 12px;
-    }
+    .sidebar-icons { display: flex; flex-direction: column; gap: 16px; align-items: center; padding-top: 12px; color: var(--sg-fg-muted); }
+    .code-sim { font-family: var(--sg-font-mono); font-size: 12px; padding: 12px; background: var(--sg-bg-subtle); border-radius: 6px; }
 
-    .sidebar-icons {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 12px;
-        padding: 8px 0;
-        opacity: 0.35;
-    }
-
-    .code-editor-sim {
-        font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-        font-size: 12px;
-        line-height: 1.7;
-        color: #d4d4d4;
-    }
-
-    .demo-controls {
-        padding: 8px 16px;
-        border-top: 1px solid var(--sg-border);
-        background: var(--sg-surface);
-        min-height: 38px;
-        display: flex;
-        align-items: center;
-    }
-
-    .content-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        gap: 12px;
-    }
-    .content-card {
-        padding: 14px;
-        border: 1px solid var(--sg-border);
-        border-radius: 8px;
-        background: var(--sg-surface-alt);
-    }
-
-    .activity-item {
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
-    }
-    .activity-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--sg-color-primary);
-        margin-top: 5px;
-        flex-shrink: 0;
-    }
-
-    .demo-code-block {
-        margin-top: 12px;
-        padding: 10px 12px;
-        background: color-mix(in srgb, var(--sg-text) 4%, transparent);
-        border: 1px solid var(--sg-border);
-        border-radius: 8px;
-    }
-    .code-block {
-        margin: 6px 0 0 0;
-        font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        font-size: 11px;
-        line-height: 1.7;
-        white-space: pre-wrap;
-        overflow-x: auto;
-        color: var(--sg-text-muted);
-    }
-    .demo-copy-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 3px 8px;
-        border: 1px solid var(--sg-border);
-        border-radius: 4px;
-        background: var(--sg-surface);
-        color: var(--sg-text-muted);
-        font-size: 11px;
-        cursor: pointer;
-        transition: all .15s;
-    }
-    .demo-copy-btn:hover {
-        background: var(--sg-color-primary-subtle);
-        border-color: var(--sg-color-primary);
-        color: var(--sg-color-primary);
-    }
-
-    .file-tree {
-        font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        font-size: 12px;
-        line-height: 1.8;
-    }
-    .tree-item {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 2px 4px;
-        border-radius: 3px;
-        cursor: default;
-        color: var(--sg-text-muted);
-    }
-    .tree-item:hover { background: color-mix(in srgb, var(--sg-text) 4%, transparent); }
-    .tree-item.active { color: var(--sg-text); font-weight: 500; }
-    .tree-item.depth-0 { padding-left: 4px; }
-    .tree-item.depth-1 { padding-left: 24px; }
-
-    .terminal-sim {
-        font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        font-size: 12px;
-        line-height: 1.8;
-        color: var(--sg-text-muted);
-    }
-    .cursor-blink {
-        animation: blink 1s step-end infinite;
-        color: var(--sg-color-primary);
-    }
-    @@keyframes blink {
-        50% { opacity: 0; }
-    }
-
-    .git-item {
-        font-family: 'JetBrains Mono', 'Fira Code', monospace;
-        font-size: 12px;
-        color: var(--sg-text-muted);
-        padding: 2px 4px;
-    }
-
-    .feature-item {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-    }
-    .feature-icon {
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-    }
+    .demo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+    .activity-row { padding-bottom: 8px; border-bottom: 1px solid var(--sg-border-subtle); }
 </style>
 
 @code {
-    private double _vSize = 100;
+    private double _vSize = 120;
     private bool _vCollapsible = true;
     private bool _vHandle = true;
 
-    private double _hSize = 220;
-    private bool _hCollapsible;
+    private double _hSize = 160;
+    private bool _hCollapsible = true;
     private bool _hHandle = true;
 
     private string _selectedNav = "Dashboard";
+    private readonly List<string> _navItems = new() { "Dashboard", "Analytics", "Users", "Settings" };
 
-    private List<string> _navItems = new()
+    private readonly List<Activity> _activities = new()
     {
-        "Dashboard",
-        "Analytics",
-        "Settings",
-        "Team",
-        "Files",
+        new("System updated", "2m ago"),
+        new("User login: admin", "15m ago"),
+        new("Backup completed", "1h ago")
     };
 
-    private List<(string Text, string Time)> _activities = new()
+    private void HandleHResize(double[] v)
     {
-        ("User logged in", "2 min ago"),
-        ("File uploaded", "5 min ago"),
-        ("Settings updated", "12 min ago"),
-        ("New comment", "18 min ago"),
-        ("Build completed", "25 min ago"),
-    };
-
-    private string _simpleCode = @"@* Horizontal with collapse, handle, and keyboard resize *@
-<SgSplitter Orientation=""SgOrientation.Horizontal"" Size=""240""
-            Collapsible=""true"" ShowHandle=""true"" PersistKey=""my-splitter"">
-    <First>
-        <div>Sidebar content</div>
-    </First>
-    <Second>
-        <div>Main content</div>
-    </Second>
-</SgSplitter>";
-
-    private string _multiCode = @"@* Three-pane layout with individual constraints *@
-<SgSplitter Orientation=""SgOrientation.Horizontal"" PersistKey=""workspace"">
-    <SgSplitterPane Size=""200"" Min=""120"" Max=""400"">
-        <div>Navigation</div>
-    </SgSplitterPane>
-    <SgSplitterPane Size=""400"" Min=""200"" Max=""800"">
-        <div>Editor</div>
-    </SgSplitterPane>
-    <SgSplitterPane Size=""200"" Min=""100"" Max=""400"">
-        <div>Activity panel</div>
-    </SgSplitterPane>
-</SgSplitter>";
-
-    private List<PropertyPanelItem> _splitterProps = new()
-    {
-        new() { Label = "Orientation", Value = "SgOrientation", BadgeText = "Layout", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Size", Value = "double (240)", BadgeText = "Size", BadgeVariant = SgBadgeVariant.Success, Description = "Initial size of the first pane in simple mode" },
-        new() { Label = "Min / Max", Value = "double", BadgeText = "Bounds", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Collapsible", Value = "bool", BadgeText = "Collapse", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ShowHandle", Value = "bool (true)", BadgeText = "Visual", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Lock", BadgeVariant = SgBadgeVariant.Danger },
-        new() { Label = "KeyboardResize", Value = "bool (true)", BadgeText = "UX", BadgeVariant = SgBadgeVariant.Info, Description = "Arrow keys resize" },
-        new() { Label = "Step", Value = "double (10)", BadgeText = "Precision", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SnapToGrid", Value = "double?", BadgeText = "Snap", BadgeVariant = SgBadgeVariant.Success, Description = "Snap increment in px" },
-        new() { Label = "PersistKey", Value = "string?", BadgeText = "Memory", BadgeVariant = SgBadgeVariant.Info, Description = "Session persistence key" },
-        new() { Label = "SgSplitterPane", Value = "component", BadgeText = "Multi", BadgeVariant = SgBadgeVariant.Default, Description = "Use child panes for 3+ panels" },
-    };
-
-    private async Task CopyCode(string code)
-    {
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+        if (v.Length > 0) _hSize = v[0];
     }
 
-    [Inject] private IJSRuntime JS { get; set; } = default!;
+    private void HandleVResize(double[] v)
+    {
+        if (v.Length > 0) _vSize = v[0];
+    }
+
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="padding:10px;border-radius:10px;background:var(--sg-color-primary-subtle);color:var(--sg-color-primary);display:flex;">
+                <SgIcon Icon="@SgIcons.Layout" Size="24px" />
+            </div>
+            <div>
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Splitter Layouts</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Flexible resizable panels with collapse support and state persistence.</SgTypography>
+            </div>
+        </SgStack>
+    };
+
+    private record Activity(string Text, string Time);
 }

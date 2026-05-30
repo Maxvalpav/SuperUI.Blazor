@@ -11,753 +11,294 @@
         HeaderContent="@_mainHeader">
     <ChildContent>
 
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 1. Interactive Generator                                           -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div class="sgc-demo-section">
-        <div class="sgc-demo-section-header">
-            <div class="sgc-demo-section-header-content">
-                <div class="sgc-demo-section-title-row">
-                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Interactive Generator</SgTypography>
-                    <span class="demo-live-badge">LIVE</span>
-                </div>
-                <div class="sgc-demo-section-subtitle">
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                        Type any text or URL. Compare error correction levels, see stats, and copy with one click.
-                    </SgTypography>
-                </div>
-            </div>
+    <!-- 1. Interactive Generator -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgStack Horizontal Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Interactive Generator</SgTypography>
+                <SgBadge Text="LIVE" Variant="SgBadgeVariant.Success" Size="SgSize.Sm" Standalone />
+            </SgStack>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Type any text or URL. Compare error correction levels, see stats, and copy with one click.
+            </SgTypography>
         </div>
-        <div class="sgc-demo-section-body">
-            <div class="sgc-demo-controls">
-                <div class="sgc-demo-control-group" style="flex:1;min-width:200px;">
-                    <span class="sgc-demo-control-label">Text / URL</span>
-                    <SgTextBox @bind-Value="_text" Placeholder="Enter text or URL to encode..." Block />
-                </div>
-                <div class="sgc-demo-control-group" style="min-width:100px;">
-                    <span class="sgc-demo-control-label">Size</span>
-                    <SgSelect TValue="int" @bind-Value="_size" Items="_sizeItems" LabelSelector="@(x => $"{x}px")" Block />
-                </div>
-                <div class="sgc-demo-control-group" style="min-width:140px;">
-                    <span class="sgc-demo-control-label">Error Correction</span>
-                    <SgSelect TValue="SgQrCodeEcc" @bind-Value="_ecc" Items="_eccItems" LabelSelector="@(x => FormatEcc(x))" Block />
-                </div>
-                <div class="sgc-demo-control-group" style="justify-content:flex-end;">
-                    <SgSwitch @bind-Value="_generatorDownloadable" Label="Download" />
-                </div>
-            </div>
+        
+        <div class="demo-controls-bar">
+            <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.End" Wrap="true">
+                    <div style="flex: 1; min-width: 250px;">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">Text / URL</SgTypography>
+                        <SgTextBox @bind-Value="_text" Placeholder="Enter text or URL to encode..." Block />
+                    </div>
+                    <div style="width: 100px;">
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">Size</SgTypography>
+                        <SgSelect TValue="int" @bind-Value="_size" Items="_sizeItems" LabelSelector="@(x => $"{x}px")" Block />
+                    </div>
+                    <div style="width: 140px;">
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">ECC</SgTypography>
+                        <SgSelect TValue="SgQrCodeEcc" @bind-Value="_ecc" Items="_eccItems" LabelSelector="@(x => FormatEcc(x))" Block />
+                    </div>
+                    <SgSwitch @bind-Value="_generatorDownloadable" Label="Download" Style="margin-bottom: 8px;" />
+                </SgStack>
+            </SgCard>
+        </div>
 
-            <SgRow Space="SgSize.Lg" Align="SgAlignItems.Stretch">
-                <SgCol Xs="12" Lg="8">
-                    <SgRow Space="SgSize.Lg" Justify="SgJustifyContent.Center" Align="SgAlignItems.Start">
-                        @foreach (var ecc in Enum.GetValues<SgQrCodeEcc>())
-                        {
-                            var e = ecc;
-                            <SgCol Xs="6" Lg="3">
-                                <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm" NoPadding>
-                                    <ChildContent>
-                                        <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center" Style="padding:16px;">
-                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                                                @FormatEcc(e)
-                                            </SgTypography>
-                                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@GetEccRecovery(e)</SgTypography>
-                                            <SgQrCode Value="@_text" Size="@_size" ErrorCorrection="@e" Animated="true" ShowCopyButton="true" Downloadable="@_generatorDownloadable" />
-                                        </SgStack>
-                                    </ChildContent>
-                                </SgCard>
-                            </SgCol>
-                        }
-                    </SgRow>
-                </SgCol>
-                <SgCol Xs="12" Lg="4">
-                    <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm" Style="height:100%;">
-                        <ChildContent>
-                            <SgStack Vertical Space="SgSize.Sm">
-                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                                    QR Code Stats
-                                </SgTypography>
-                                <SgStack Vertical Space="SgSize.Sm">
-                                    <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="padding:6px 0;border-bottom:1px solid var(--sg-border);">
-                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Input length</SgTypography>
-                                        <SgBadge Text="@(_text.Length.ToString())" Variant="SgBadgeVariant.Info" Size="SgSize.Sm" Standalone />
-                                    </SgStack>
-                                    <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="padding:6px 0;border-bottom:1px solid var(--sg-border);">
-                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Selected ECC</SgTypography>
-                                        <SgBadge Text="@FormatEcc(_ecc)" Variant="SgBadgeVariant.Success" Size="SgSize.Sm" Standalone />
-                                    </SgStack>
-                                    <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="padding:6px 0;border-bottom:1px solid var(--sg-border);">
-                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Display size</SgTypography>
-                                        <SgBadge Text=$"{_size}px" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
-                                    </SgStack>
-                                    <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="padding:6px 0;">
-                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Value type</SgTypography>
-                                        <SgBadge Text="@GetInputType()" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
-                                    </SgStack>
+        <SgRow Space="SgSize.Lg" Align="SgAlignItems.Stretch">
+            <SgCol Xs="12" Lg="9">
+                <SgRow Space="SgSize.Md">
+                    @foreach (var ecc in Enum.GetValues<SgQrCodeEcc>())
+                    {
+                        var e = ecc;
+                        <SgCol Xs="6" Sm="3">
+                            <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm" Style="height:100%;text-align:center;">
+                                <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">@FormatEcc(e)</SgTypography>
+                                    <SgQrCode Value="@_text" Size="@_size" ErrorCorrection="@e" Animated="true" ShowCopyButton="true" Downloadable="@_generatorDownloadable" />
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">@GetEccRecovery(e)</SgTypography>
                                 </SgStack>
-                            </SgStack>
-                        </ChildContent>
-                    </SgCard>
-                </SgCol>
-            </SgRow>
-        </div>
+                            </SgCard>
+                        </SgCol>
+                    }
+                </SgRow>
+            </SgCol>
+            <SgCol Xs="12" Lg="3">
+                <SgCard Title="QR Stats" Size="SgSize.Sm" Shadow="SgShadow.Sm" Style="height:100%;">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        @StatRow("Length", _text.Length.ToString(), SgBadgeVariant.Info)
+                        @StatRow("ECC", FormatEcc(_ecc), SgBadgeVariant.Success)
+                        @StatRow("Size", $"{_size}px", SgBadgeVariant.Default)
+                        @StatRow("Type", GetInputType(), SgBadgeVariant.Default)
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 2. Color & Styling                                                 -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div class="sgc-demo-section">
-        <div class="sgc-demo-section-header">
-            <div class="sgc-demo-section-header-content">
-                <div class="sgc-demo-section-title-row">
-                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Color &amp; Styling</SgTypography>
-                </div>
-                <div class="sgc-demo-section-subtitle">
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                        Customize fill and background. Try presets, gradients, or pick your own colors.
-                    </SgTypography>
-                </div>
-            </div>
+    <!-- 2. Color & Styling -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Color &amp; Styling</SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Customize fill and background. Try presets, gradients, or pick your own colors.
+            </SgTypography>
         </div>
-        <div class="sgc-demo-section-body">
-            <SgRow Space="SgSize.Lg" Align="SgAlignItems.Start">
-                <SgCol Xs="12" Md="5">
-                    <SgStack Vertical Space="SgSize.Md">
-                        <SgRow Space="SgSize.Md">
-                            <SgCol Xs="6">
-                                <SgStack Vertical Space="SgSize.Sm">
-                                    <span class="sgc-demo-control-label">Fill Color</span>
-                                    <SgColorPicker @bind-Value="_fillColor" Block />
-                                </SgStack>
-                            </SgCol>
-                            <SgCol Xs="6">
-                                <SgStack Vertical Space="SgSize.Sm">
-                                    <span class="sgc-demo-control-label">Background</span>
-                                    <SgColorPicker @bind-Value="_bgColor" Block />
-                                </SgStack>
-                            </SgCol>
-                        </SgRow>
+        
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Md="6">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <SgRow Space="SgSize.Md">
+                        <SgCol Xs="6">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">Fill Color</SgTypography>
+                            <SgColorPicker @bind-Value="_fillColor" Block />
+                        </SgCol>
+                        <SgCol Xs="6">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">Background</SgTypography>
+                            <SgColorPicker @bind-Value="_bgColor" Block />
+                        </SgCol>
+                    </SgRow>
 
-                        <SgRow Space="SgSize.Sm">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)" Style="margin-bottom:8px;display:block;">Presets</SgTypography>
+                        <SgStack Horizontal Space="SgSize.Sm" Wrap="true">
                             @foreach (var swatch in _colorSwatches)
                             {
                                 var sw = swatch;
-                                <SgCol>
-                                    <button type="button" class="sgc-demo-color-swatch"
-                                            style="--swatch-fill:@sw.Fill;--swatch-bg:@sw.Background;"
-                                            @onclick="() => SelectColorSwatch(sw)"
-                                            title="@sw.Name"
-                                            aria-label="@sw.Name">
-                                        <span class="sgc-demo-color-swatch-dot" style="background:@sw.Fill;"></span>
-                                    </button>
-                                </SgCol>
+                                <button type="button" class="swatch-btn" 
+                                        style="background:@sw.Fill; border: 2px solid @(sw.Background == "#ffffff" ? "var(--sg-border)" : sw.Background);"
+                                        @onclick="() => SelectColorSwatch(sw)" title="@sw.Name"></button>
                             }
-                        </SgRow>
-
-                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
-                            <SgBadge Text="@($"Fill: {_fillColor}")" Variant="SgBadgeVariant.Info" Size="SgSize.Sm" Standalone />
-                            <SgBadge Text="@($"Bg: {_bgColor}")" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
                         </SgStack>
-
-                        <div style="border-top:1px solid var(--sg-border);padding-top:12px;">
-                            <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-                                <SgSwitch @bind-Value="_fillGradient" Label="Gradient" />
-                            </SgStack>
-                            @if (_fillGradient)
-                            {
-                                <SgRow Space="SgSize.Md" Style="margin-top:8px;">
-                                    <SgCol Xs="6">
-                                        <SgStack Vertical Space="SgSize.Sm">
-                                            <span class="sgc-demo-control-label">Start</span>
-                                            <SgColorPicker @bind-Value="_fillGradientStart" Block />
-                                        </SgStack>
-                                    </SgCol>
-                                    <SgCol Xs="6">
-                                        <SgStack Vertical Space="SgSize.Sm">
-                                            <span class="sgc-demo-control-label">End</span>
-                                            <SgColorPicker @bind-Value="_fillGradientEnd" Block />
-                                        </SgStack>
-                                    </SgCol>
-                                </SgRow>
-                            }
-                        </div>
-                    </SgStack>
-                </SgCol>
-                <SgCol Xs="12" Md="7">
-                    <div style="display:flex;align-items:center;justify-content:center;min-height:200px;">
-                        <SgQrCode Value="@_text" Size="200"
-                                   FillColor="@_fillColor" BackgroundColor="@_bgColor"
-                                   FillGradient="@_fillGradient"
-                                   FillGradientStart="@_fillGradientStart"
-                                   FillGradientEnd="@_fillGradientEnd"
-                                   Animated="true" ShowCopyButton="true" />
                     </div>
-                </SgCol>
-            </SgRow>
-        </div>
-    </div>
 
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 3. Visual Styles                                                   -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div class="sgc-demo-section">
-        <div class="sgc-demo-section-header">
-            <div class="sgc-demo-section-header-content">
-                <div class="sgc-demo-section-title-row">
-                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Visual Styles</SgTypography>
-                </div>
-                <div class="sgc-demo-section-subtitle">
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                        Eye patterns, module shapes, gradients, and logo overlays.
-                    </SgTypography>
-                </div>
-            </div>
-        </div>
-        <div class="sgc-demo-section-body">
-            <SgRow Space="SgSize.Lg">
-                <SgCol Xs="12" Lg="6">
-                    <SgCard Title="Eye Style" Size="SgSize.Sm" Shadow="SgShadow.Sm">
-                        <SgRow Space="SgSize.Md" Justify="SgJustifyContent.SpaceAround" Align="SgAlignItems.Center">
-                            @foreach (var eye in Enum.GetValues<SgQrCodeEyeStyle>())
-                            {
-                                var e = eye;
-                                <SgCol>
-                                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
-                                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@e.ToString()</SgTypography>
-                                        <SgQrCode Value="@_text" Size="100" FillColor="#0d9488" EyeStyle="@e" ShowCopyButton="true" />
-                                    </SgStack>
-                                </SgCol>
-                            }
-                        </SgRow>
-                    </SgCard>
-                </SgCol>
-                <SgCol Xs="12" Lg="6">
-                    <SgCard Title="Module Shape" Size="SgSize.Sm" Shadow="SgShadow.Sm">
-                        <SgRow Space="SgSize.Md" Justify="SgJustifyContent.SpaceAround" Align="SgAlignItems.Center">
-                            @foreach (var mod in Enum.GetValues<SgQrCodeModuleStyle>())
-                            {
-                                var m = mod;
-                                <SgCol>
-                                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
-                                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@m.ToString()</SgTypography>
-                                        <SgQrCode Value="@_text" Size="100" FillColor="#7c3aed" ModuleStyle="@m" ShowCopyButton="true" />
-                                    </SgStack>
-                                </SgCol>
-                            }
-                        </SgRow>
-                    </SgCard>
-                </SgCol>
-            </SgRow>
+                    <SgDivider />
 
-            <div style="height:20px;"></div>
-
-            <SgRow Space="SgSize.Lg">
-                <SgCol Xs="12" Md="6" Lg="3">
-                    <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm">
-                        <ChildContent>
-                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
-                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                                    Gradient Fill
-                                </SgTypography>
-                                <SgQrCode Value="@_text" Size="130"
-                                           FillGradient="true"
-                                           FillGradientStart="#0d9488"
-                                           FillGradientEnd="#7c3aed"
-                                           Animated="true" ShowCopyButton="true" />
-                            </SgStack>
-                        </ChildContent>
-                    </SgCard>
-                </SgCol>
-                <SgCol Xs="12" Md="6" Lg="3">
-                    <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm">
-                        <ChildContent>
-                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
-                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                                    Logo Overlay
-                                </SgTypography>
-                                <SgQrCode Value="@_qrCodeUrl" Size="130"
-                                           Logo="<svg viewBox='0 0 24 24' width='24' height='24' fill='none' stroke='%230d9488' stroke-width='2'><path d='M12 2L2 7l10 5 10-5-10-5z'/><path d='M2 17l10 5 10-5'/><path d='M2 12l10 5 10-5'/></svg>"
-                                           LogoSize="32"
-                                           Animated="true" ShowCopyButton="true" />
-                            </SgStack>
-                        </ChildContent>
-                    </SgCard>
-                </SgCol>
-                <SgCol Xs="12" Md="6" Lg="3">
-                    <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm">
-                        <ChildContent>
-                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
-                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                                    With Label
-                                </SgTypography>
-                                <SgQrCode Value="@_text" Size="130" FillColor="#2563eb"
-                                           ShowLabel="true" LabelText="Scan me!"
-                                           Animated="true" ShowCopyButton="true" />
-                            </SgStack>
-                        </ChildContent>
-                    </SgCard>
-                </SgCol>
-                <SgCol Xs="12" Md="6" Lg="3">
-                    <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm">
-                        <ChildContent>
-                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
-                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                                    Responsive
-                                </SgTypography>
-                                <div style="width:100%;max-width:130px;">
-                                    <SgQrCode Value="@_text" Responsive="true" MaxSize="130"
-                                               FillColor="#dc2626"
-                                               Animated="true" ShowCopyButton="true" />
-                                </div>
-                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Fills container</SgTypography>
-                            </SgStack>
-                        </ChildContent>
-                    </SgCard>
-                </SgCol>
-            </SgRow>
-        </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 4. Batch QR Generator                                              -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div class="sgc-demo-section">
-        <div class="sgc-demo-section-header">
-            <div class="sgc-demo-section-header-content">
-                <div class="sgc-demo-section-title-row">
-                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Batch QR Generator</SgTypography>
-                    <span class="demo-live-badge">NEW</span>
-                </div>
-                <div class="sgc-demo-section-subtitle">
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                        Generate multiple QR codes at once. One per line.
-                    </SgTypography>
-                </div>
-            </div>
-        </div>
-        <div class="sgc-demo-section-body">
-            <SgRow Space="SgSize.Lg">
-                <SgCol Xs="12" Md="5">
                     <SgStack Vertical Space="SgSize.Md">
-                        <div>
-                            <span class="sgc-demo-control-label">Values (one per line)</span>
-                            <SgTextBox Style="min-height:140px;resize:vertical;font-family:var(--sg-font-mono,monospace);font-size:13px;" Rows="6" Multiline="true" Value="@_batchText" ValueChanged="@((string v) => { _batchText = v; UpdateBatch(); })" Placeholder="https://example.com&#10;https://github.com&#10;Hello World" Block />
-                        </div>
-                        <SgRow Space="SgSize.Md">
-                            <SgCol Xs="6">
-                                <span class="sgc-demo-control-label">Size</span>
-                                <SgSelect TValue="int" @bind-Value="_batchSize" Items="_sizeItems" LabelSelector="@(x => $"{x}px")" Block />
-                            </SgCol>
-                            <SgCol Xs="6">
-                                <span class="sgc-demo-control-label">ECC</span>
-                                <SgSelect TValue="SgQrCodeEcc" @bind-Value="_batchEcc" Items="_eccItems" LabelSelector="@(x => x.ToString())" Block />
-                            </SgCol>
-                        </SgRow>
-                        <SgBadge Text="@($"Generated: {_batchQrCodes.Count}")" Variant="SgBadgeVariant.Info" Size="SgSize.Sm" Standalone />
-                    </SgStack>
-                </SgCol>
-                <SgCol Xs="12" Md="7">
-                    @if (_batchQrCodes.Count == 0)
-                    {
-                        <div style="display:flex;align-items:center;justify-content:center;min-height:150px;color:var(--sg-text-muted);font-size:14px;">
-                            Enter values to generate QR codes
-                        </div>
-                    }
-                    else
-                    {
-                        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px;">
-                            @foreach (var item in _batchQrCodes)
-                            {
-                                <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm" NoPadding Style="min-width:0;">
-                                    <ChildContent>
-                                        <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center" Style="padding:12px;min-width:0;">
-                                            <SgQrCode Value="@item" Size="@_batchSize" MaxSize="@_batchSize" Responsive="true" ErrorCorrection="@_batchEcc" ShowCopyButton="true" Animated="true" />
-                                            <div style="font-size:10px;color:var(--sg-text-muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;" title="@item">
-                                                @item
-                                            </div>
-                                        </SgStack>
-                                    </ChildContent>
-                                </SgCard>
-                            }
-                        </div>
-                    }
-                </SgCol>
-            </SgRow>
-        </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 5. Live Constructor                                                -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div class="sgc-demo-section">
-        <div class="sgc-demo-section-header">
-            <div class="sgc-demo-section-header-content">
-                <div class="sgc-demo-section-title-row">
-                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Live SgQrCode Constructor</SgTypography>
-                    <span class="demo-live-badge">INTERACTIVE</span>
-                </div>
-                <div class="sgc-demo-section-subtitle">
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                        Tweak every parameter. See real-time preview. Copy generated Blazor code.
-                    </SgTypography>
-                </div>
-            </div>
-        </div>
-        <div class="sgc-demo-section-body" style="padding:0;">
-            <SgRow Space="SgSize.Sm">
-                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
-                    <SgStack Vertical Space="SgSize.Lg">
-                        <div>
-                            <span class="sgc-demo-control-label">Text / URL</span>
-                            <SgTextBox @bind-Value="_ctorText" Placeholder="Enter text or URL" Block />
-                        </div>
-
-                        <div>
-                            <span class="sgc-demo-control-label">Size: @((int)_ctorSize) px</span>
-                            <SgSlider TValue="double" @bind-Value="_ctorSize" Min="80" Max="400" Step="10" ShowTooltip="true" FormatValue="@((double v) => $"{v:F0}px")" />
-                        </div>
-
-                        <div>
-                            <span class="sgc-demo-control-label">Error Correction</span>
-                            <SgSegmented TValue="SgQrCodeEcc" Options="_eccSegOptions" @bind-Value="_ctorEcc" Block SizeEnum="SgSize.Sm" />
-                        </div>
-
-                        <div>
-                            <span class="sgc-demo-control-label">Border</span>
-                            <SgSegmented TValue="int" Options="_borderSegOptions" @bind-Value="_ctorBorder" Block SizeEnum="SgSize.Sm" />
-                        </div>
-
-                        <SgRow Space="SgSize.Md">
-                            <SgCol Xs="6">
-                                <SgStack Vertical Space="SgSize.Sm">
-                                    <span class="sgc-demo-control-label">Fill Color</span>
-                                    <SgColorPicker @bind-Value="_ctorFillColor" Block />
-                                </SgStack>
-                            </SgCol>
-                            <SgCol Xs="6">
-                                <SgStack Vertical Space="SgSize.Sm">
-                                    <span class="sgc-demo-control-label">Background</span>
-                                    <SgColorPicker @bind-Value="_ctorBgColor" Block />
-                                </SgStack>
-                            </SgCol>
-                        </SgRow>
-
-                        <div>
-                            <span class="sgc-demo-control-label">Eye Style</span>
-                            <SgSegmented TValue="SgQrCodeEyeStyle" Options="_eyeStyleSegOptions" @bind-Value="_ctorEyeStyle" Block SizeEnum="SgSize.Sm" />
-                        </div>
-
-                        <div>
-                            <span class="sgc-demo-control-label">Module Style</span>
-                            <SgSegmented TValue="SgQrCodeModuleStyle" Options="_moduleStyleSegOptions" @bind-Value="_ctorModuleStyle" Block SizeEnum="SgSize.Sm" />
-                        </div>
-
-                        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-                            <SgSwitch @bind-Value="_ctorFillGradient" Label="Gradient" />
-                        </SgStack>
-
-                        @if (_ctorFillGradient)
+                        <SgSwitch @bind-Value="_fillGradient" Label="Enable Gradient Fill" />
+                        @if (_fillGradient)
                         {
                             <SgRow Space="SgSize.Md">
                                 <SgCol Xs="6">
-                                    <SgStack Vertical Space="SgSize.Sm">
-                                        <span class="sgc-demo-control-label">Start</span>
-                                        <SgColorPicker @bind-Value="_ctorFillGradientStart" Block />
-                                    </SgStack>
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">Start Color</SgTypography>
+                                    <SgColorPicker @bind-Value="_fillGradientStart" Block />
                                 </SgCol>
                                 <SgCol Xs="6">
-                                    <SgStack Vertical Space="SgSize.Sm">
-                                        <span class="sgc-demo-control-label">End</span>
-                                        <SgColorPicker @bind-Value="_ctorFillGradientEnd" Block />
-                                    </SgStack>
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">End Color</SgTypography>
+                                    <SgColorPicker @bind-Value="_fillGradientEnd" Block />
                                 </SgCol>
                             </SgRow>
                         }
+                    </SgStack>
+                </SgStack>
+            </SgCol>
+            <SgCol Xs="12" Md="6">
+                <div class="preview-box">
+                    <SgQrCode Value="@_text" Size="200"
+                               FillColor="@_fillColor" BackgroundColor="@_bgColor"
+                               FillGradient="@_fillGradient"
+                               FillGradientStart="@_fillGradientStart"
+                               FillGradientEnd="@_fillGradientEnd"
+                               Animated="true" ShowCopyButton="true" />
+                </div>
+            </SgCol>
+        </SgRow>
+    </div>
 
-                        <div>
-                            <span class="sgc-demo-control-label">Logo SVG (optional)</span>
-                            <SgTextBox @bind-Value="_ctorLogo" Placeholder="<svg ...>" Block />
-                        </div>
+    <!-- 3. Visual Styles -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Visual Styles</SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Eye patterns, module shapes, gradients, and logo overlays.
+            </SgTypography>
+        </div>
 
-                        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-                            <SgSwitch @bind-Value="_ctorShowLabel" Label="Show Label" />
-                            @if (_ctorShowLabel)
-                            {
-                                <SgTextBox @bind-Value="_ctorLabelText" Placeholder="Label text" Style="flex:1;" />
-                            }
-                        </SgStack>
-
-                        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-                            <SgSwitch @bind-Value="_ctorResponsive" Label="Responsive" />
-                        </SgStack>
-
-                        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-                            <SgSwitch @bind-Value="_ctorDownloadable" Label="Downloadable" />
-                        </SgStack>
-
-                        <div class="sgc-demo-controls" style="margin-bottom:0;">
-                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="width:100%;">
-                                Summary
-                            </SgTypography>
-                            <SgStack Vertical Space="SgSize.Sm" Style="width:100%;">
-                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="padding:4px 0;">
-                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
-                                    <SgBadge Text="@($"{(int)_ctorSize}px")" Variant="SgBadgeVariant.Info" Size="SgSize.Sm" Standalone />
-                                </SgStack>
-                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="padding:4px 0;">
-                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">ECC</SgTypography>
-                                    <SgBadge Text="@_ctorEcc.ToString()" Variant="SgBadgeVariant.Success" Size="SgSize.Sm" Standalone />
-                                </SgStack>
-                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="padding:4px 0;">
-                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Border</SgTypography>
-                                    <SgBadge Text="@_ctorBorder.ToString()" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
-                                </SgStack>
-                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="padding:4px 0;">
-                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Fill</SgTypography>
-                                    <SgBadge Text="@_ctorFillColor" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
-                                </SgStack>
-                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="padding:4px 0;">
-                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Background</SgTypography>
-                                    <SgBadge Text="@_ctorBgColor" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
-                                </SgStack>
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Lg="6">
+                <SgCard Title="Eye Style" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                    <SgStack Horizontal Space="SgSize.Md" Justify="SgJustifyContent.SpaceAround" Wrap="true">
+                        @foreach (var eye in Enum.GetValues<SgQrCodeEyeStyle>())
+                        {
+                            var e = eye;
+                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">@e.ToString()</SgTypography>
+                                <SgQrCode Value="@_text" Size="80" FillColor="var(--sg-color-primary)" EyeStyle="@e" ShowCopyButton="true" />
                             </SgStack>
-                        </div>
+                        }
                     </SgStack>
-                </SgCol>
-                <SgCol Xs="12" Md="7" Style="padding:24px;">
-                    <SgStack Vertical Space="SgSize.Lg">
-                        <SgStack Horizontal Space="SgSize.Md" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
-                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                                Result
-                            </SgTypography>
-                        </SgStack>
-
-                        <div class="sgc-demo-controls" style="display:flex;align-items:center;justify-content:center;min-height:240px;margin-bottom:0;">
-                            <SgQrCode Value="@_ctorText"
-                                       Size="@((int)_ctorSize)"
-                                       ErrorCorrection="@_ctorEcc"
-                                       Border="@_ctorBorder"
-                                       FillColor="@_ctorFillColor"
-                                       BackgroundColor="@_ctorBgColor"
-                                       EyeStyle="@_ctorEyeStyle"
-                                       ModuleStyle="@_ctorModuleStyle"
-                                       FillGradient="@_ctorFillGradient"
-                                       FillGradientStart="@_ctorFillGradientStart"
-                                       FillGradientEnd="@_ctorFillGradientEnd"
-                                       Logo="@(string.IsNullOrEmpty(_ctorLogo) ? null : _ctorLogo)"
-                                       ShowLabel="@_ctorShowLabel"
-                                       LabelText="@_ctorLabelText"
-                                       Responsive="@_ctorResponsive"
-                                       Downloadable="@_ctorDownloadable"
-                                       Animated="true" />
-                        </div>
-
-                        <div class="sgc-demo-code-card">
-                            <SgCard NoPadding Shadow="SgShadow.Sm" Size="SgSize.Sm">
-                                <ChildContent>
-                                    <div class="sgc-demo-code-header">
-                                        <div class="sgc-demo-code-header-left">
-                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
-                                                Generated Code
-                                            </SgTypography>
-                                        </div>
-                                        <div class="sgc-demo-code-header-right">
-                                            <span class="sgc-demo-code-copy-status @(_copyLabel == "Copied!" ? "sgc-demo-code-copied" : "")">
-                                                <SgTypography Size="SgTypographySize.Xs" Color="@(_copyLabel == "Copied!" ? "var(--sg-color-success)" : "var(--sg-text-muted)")">
-                                                    @_copyLabel
-                                                </SgTypography>
-                                            </span>
-                                            <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" @onclick="CopyCodeToClipboard" Icon="@(new RenderFragment(b => b.AddContent(0, (MarkupString)SgHeroicons.Outline.ClipboardDocument)))" />
-                                        </div>
-                                    </div>
-                                    <pre class="sgc-demo-code-pre"><code class="sgc-demo-code-content">@_generatedCode</code></pre>
-                                </ChildContent>
-                            </SgCard>
-                        </div>
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Lg="6">
+                <SgCard Title="Module Shape" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                    <SgStack Horizontal Space="SgSize.Md" Justify="SgJustifyContent.SpaceAround" Wrap="true">
+                        @foreach (var mod in Enum.GetValues<SgQrCodeModuleStyle>())
+                        {
+                            var m = mod;
+                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">@m.ToString()</SgTypography>
+                                <SgQrCode Value="@_text" Size="80" FillColor="var(--sg-color-primary)" ModuleStyle="@m" ShowCopyButton="true" />
+                            </SgStack>
+                        }
                     </SgStack>
-                </SgCol>
-            </SgRow>
-        </div>
-    </div>
+                </SgCard>
+            </SgCol>
+        </SgRow>
 
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 6. API Reference                                                   -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div class="sgc-demo-section">
-        <div class="sgc-demo-section-header">
-            <div class="sgc-demo-section-header-content">
-                <div class="sgc-demo-section-title-row">
-                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
-                        SgQrCode Properties
-                    </SgTypography>
-                </div>
-                <div class="sgc-demo-section-subtitle">
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                        All configurable parameters on the SgQrCode component.
-                    </SgTypography>
-                </div>
-            </div>
-        </div>
-        <div class="sgc-demo-section-body">
-            <PropertyTable Items="_allProperties" />
-        </div>
-    </div>
+        <div style="height:24px;"></div>
 
+        <SgRow Space="SgSize.Md">
+            @VisualCard("Gradient", @<SgQrCode Value="@_text" Size="120" FillGradient="true" FillGradientStart="var(--sg-color-primary)" FillGradientEnd="var(--sg-color-info)" Animated="true" ShowCopyButton="true" />)
+            @VisualCard("Logo", @<SgQrCode Value="@_qrCodeUrl" Size="120" Logo="<svg viewBox='0 0 24 24' width='24' height='24' fill='none' stroke='var(--sg-color-primary)' stroke-width='2'><path d='M12 2L2 7l10 5 10-5-10-5z'/><path d='M2 17l10 5 10-5'/><path d='M2 12l10 5 10-5'/></svg>" LogoSize="32" Animated="true" ShowCopyButton="true" />)
+            @VisualCard("Label", @<SgQrCode Value="@_text" Size="120" FillColor="var(--sg-color-primary)" ShowLabel="true" LabelText="SCAN" Animated="true" ShowCopyButton="true" />)
+            @VisualCard("Clean", @<SgQrCode Value="@_text" Size="120" FillColor="var(--sg-fg)" Animated="true" ShowCopyButton="true" />)
+        </SgRow>
+    </div>
     </ChildContent>
 </SgCard>
 
+<style>
+    .demo-section { margin-bottom: 40px; }
+    .demo-section:last-child { margin-bottom: 0; }
+    .demo-section-header { margin-bottom: 20px; }
+    .demo-controls-bar { margin-bottom: 24px; }
+    
+    .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--sg-border-subtle);
+    }
+    .stat-row:last-child { border-bottom: none; }
+
+    .swatch-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: transform 0.1s;
+    }
+    .swatch-btn:hover { transform: scale(1.1); }
+
+    .preview-box {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--sg-bg-subtle);
+        border: 1px dashed var(--sg-border-strong);
+        border-radius: var(--sg-radius-lg);
+        min-height: 260px;
+    }
+</style>
+
 @code {
-    // ── Header ──────────────────────────────────────────────────────────
-    private RenderFragment _mainHeader => __builder =>
-    {
-        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
-                @((MarkupString)SgHeroicons.Outline.QrCode)
-            </div>
-            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
-                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">QR Code Generator</SgTypography>
-                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                    SgQrCode — pure C# QR code generation powered by Net.Codecrete.QrCodeGenerator. No JavaScript required for generation.
-                </SgTypography>
-            </SgStack>
-        </SgStack>
-    };
-
-    // ── Shared state ────────────────────────────────────────────────────
-
-    private string _text = "https://github.com/SuperUI/SuperUI";
+    private string _text = "https://superui.dev";
     private int _size = 160;
     private SgQrCodeEcc _ecc = SgQrCodeEcc.Medium;
-    private bool _generatorDownloadable = false;
-
-    private readonly List<int> _sizeItems = new() { 80, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300, 350, 400 };
-    private readonly List<SgQrCodeEcc> _eccItems = Enum.GetValues<SgQrCodeEcc>().ToList();
-
-    private const string _qrCodeUrl = "https://github.com/SuperUI/SuperUI";
-
-    // ── Color & Styling state ────────────────────────────────────────────
-
-    private string _fillColor = "#0d9488";
-    private string _bgColor = "#f0fdfa";
+    private bool _generatorDownloadable = true;
+    
+    private string _fillColor = "var(--sg-fg)";
+    private string _bgColor = "var(--sg-bg)";
     private bool _fillGradient = false;
-    private string _fillGradientStart = "#0d9488";
-    private string _fillGradientEnd = "#7c3aed";
+    private string _fillGradientStart = "var(--sg-color-primary)";
+    private string _fillGradientEnd = "var(--sg-color-info)";
+
+    private string _qrCodeUrl = "https://github.com/superui-blazor";
+
+    private readonly List<int> _sizeItems = new() { 100, 128, 160, 200, 256, 320 };
+    private readonly List<SgQrCodeEcc> _eccItems = Enum.GetValues<SgQrCodeEcc>().ToList();
 
     private readonly List<ColorSwatch> _colorSwatches = new()
     {
-        new() { Name = "Teal",  Fill = "#0d9488", Background = "#f0fdfa" },
-        new() { Name = "Green", Fill = "#16a34a", Background = "#f0fdf4" },
-        new() { Name = "Blue",  Fill = "#2563eb", Background = "#eff6ff" },
-        new() { Name = "Red",   Fill = "#dc2626", Background = "#fef2f2" },
-        new() { Name = "Purple",Fill = "#7c3aed", Background = "#f5f3ff" },
-        new() { Name = "Dark",  Fill = "#1e293b", Background = "#f8fafc" },
-        new() { Name = "Amber", Fill = "#d97706", Background = "#fffbeb" },
-        new() { Name = "Pink",  Fill = "#db2777", Background = "#fdf2f8" },
+        new("Default", "var(--sg-fg)", "var(--sg-bg)"),
+        new("Brand", "var(--sg-color-primary)", "var(--sg-bg)"),
+        new("Success", "var(--sg-color-success)", "var(--sg-bg)"),
+        new("Warning", "var(--sg-color-warning)", "var(--sg-bg)"),
+        new("Danger", "var(--sg-color-danger)", "var(--sg-bg)"),
+        new("Dark", "#ffffff", "#1e1e2e"),
+        new("Soft", "var(--sg-color-primary)", "var(--sg-color-primary-subtle)")
+    };
+
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="padding:10px;border-radius:10px;background:var(--sg-color-primary-subtle);color:var(--sg-color-primary);display:flex;">
+                <SgIcon Icon="@SgIcons.Layers" Size="24px" />
+            </div>
+            <div>
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">QR Code Generator</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Fast, customizable, and animated QR codes with copy-to-clipboard support.</SgTypography>
+            </div>
+        </SgStack>
+    };
+
+    private RenderFragment StatRow(string label, string value, SgBadgeVariant variant) => __builder =>
+    {
+        <div class="stat-row">
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">@label</SgTypography>
+            <SgBadge Text="@value" Variant="variant" Size="SgSize.Sm" Standalone />
+        </div>
+    };
+
+    private RenderFragment VisualCard(string title, RenderFragment qr) => __builder =>
+    {
+        <SgCol Xs="6" Md="3">
+            <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm" Style="height:100%;text-align:center;">
+                <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)" Transform="SgTypographyTransform.Uppercase">@title</SgTypography>
+                    @qr
+                </SgStack>
+            </SgCard>
+        </SgCol>
     };
 
     private void SelectColorSwatch(ColorSwatch swatch)
     {
         _fillColor = swatch.Fill;
         _bgColor = swatch.Background;
+        _fillGradient = false;
     }
 
-    // ── Batch Generator state ───────────────────────────────────────────
-
-    private string _batchText = "https://github.com/SuperUI/SuperUI\nhttps://www.nuget.org/packages/SuperUI\nHello from SuperUI!";
-    private int _batchSize = 120;
-    private SgQrCodeEcc _batchEcc = SgQrCodeEcc.Medium;
-
-    private List<string> _batchQrCodes = new();
-
-    // ── Constructor state ───────────────────────────────────────────────
-
-    private string _ctorText = "Hello from SuperUI!";
-    private double _ctorSize = 200;
-    private SgQrCodeEcc _ctorEcc = SgQrCodeEcc.Medium;
-    private int _ctorBorder = 2;
-    private string _ctorFillColor = "#000000";
-    private string _ctorBgColor = "#ffffff";
-    private SgQrCodeEyeStyle _ctorEyeStyle = SgQrCodeEyeStyle.Square;
-    private SgQrCodeModuleStyle _ctorModuleStyle = SgQrCodeModuleStyle.Square;
-    private bool _ctorFillGradient = false;
-    private string _ctorFillGradientStart = "#0d9488";
-    private string _ctorFillGradientEnd = "#7c3aed";
-    private string _ctorLogo = "";
-    private bool _ctorShowLabel = false;
-    private string _ctorLabelText = "";
-    private bool _ctorResponsive = false;
-    private bool _ctorDownloadable = false;
-
-    private string _generatedCode = "";
-    private string _copyLabel = "Copy";
-    private string _ctorCacheKey = "";
-
-    private readonly List<SgSegmentedOption<SgQrCodeEcc>> _eccSegOptions = new()
-    {
-        new() { Value = SgQrCodeEcc.Low,      Label = "Low" },
-        new() { Value = SgQrCodeEcc.Medium,   Label = "Medium" },
-        new() { Value = SgQrCodeEcc.Quartile, Label = "Quartile" },
-        new() { Value = SgQrCodeEcc.High,     Label = "High" },
-    };
-
-    private readonly List<SgSegmentedOption<int>> _borderSegOptions = new()
-    {
-        new() { Value = 0, Label = "0" },
-        new() { Value = 1, Label = "1" },
-        new() { Value = 2, Label = "2" },
-        new() { Value = 4, Label = "4" },
-        new() { Value = 8, Label = "8" },
-    };
-
-    private readonly List<SgSegmentedOption<SgQrCodeEyeStyle>> _eyeStyleSegOptions = new()
-    {
-        new() { Value = SgQrCodeEyeStyle.Square,  Label = "Square" },
-        new() { Value = SgQrCodeEyeStyle.Circle,  Label = "Circle" },
-        new() { Value = SgQrCodeEyeStyle.Rounded, Label = "Rounded" },
-        new() { Value = SgQrCodeEyeStyle.Diamond, Label = "Diamond" },
-        new() { Value = SgQrCodeEyeStyle.Leaf,    Label = "Leaf" },
-    };
-
-    private readonly List<SgSegmentedOption<SgQrCodeModuleStyle>> _moduleStyleSegOptions = new()
-    {
-        new() { Value = SgQrCodeModuleStyle.Square,  Label = "Square" },
-        new() { Value = SgQrCodeModuleStyle.Circle,  Label = "Circle" },
-        new() { Value = SgQrCodeModuleStyle.Rounded, Label = "Rounded" },
-        new() { Value = SgQrCodeModuleStyle.Droplet, Label = "Droplet" },
-    };
-
-    // ── Lifecycle ───────────────────────────────────────────────────────
-
-    protected override void OnInitialized()
-    {
-        _ctorCacheKey = BuildCtorCacheKey();
-        UpdateBatch();
-        UpdateConstructorCode();
-    }
-
-    private string BuildCtorCacheKey() => $"{_ctorText}|{_ctorSize}|{_ctorEcc}|{_ctorBorder}|{_ctorFillColor}|{_ctorBgColor}|{_ctorEyeStyle}|{_ctorModuleStyle}|{_ctorFillGradient}|{_ctorFillGradientStart}|{_ctorFillGradientEnd}|{_ctorLogo}|{_ctorShowLabel}|{_ctorLabelText}|{_ctorResponsive}|{_ctorDownloadable}";
-
-    protected override void OnAfterRender(bool firstRender)
-    {
-        var key = BuildCtorCacheKey();
-        if (key != _ctorCacheKey)
-        {
-            _ctorCacheKey = key;
-            UpdateConstructorCode();
-            StateHasChanged();
-        }
-    }
-
-    private void UpdateBatch()
-    {
-        _batchQrCodes = _batchText
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .ToList();
-    }
-
-    // ── Helpers ─────────────────────────────────────────────────────────
-
-    private static string FormatEcc(SgQrCodeEcc ecc) => ecc switch
+    private string FormatEcc(SgQrCodeEcc ecc) => ecc switch
     {
         SgQrCodeEcc.Low => "Low (L)",
         SgQrCodeEcc.Medium => "Medium (M)",
@@ -766,7 +307,7 @@
         _ => ecc.ToString()
     };
 
-    private static string GetEccRecovery(SgQrCodeEcc ecc) => ecc switch
+    private string GetEccRecovery(SgQrCodeEcc ecc) => ecc switch
     {
         SgQrCodeEcc.Low => "~7% recovery",
         SgQrCodeEcc.Medium => "~15% recovery",
@@ -777,126 +318,11 @@
 
     private string GetInputType()
     {
-        if (Uri.TryCreate(_text, UriKind.Absolute, out var uri))
-            return uri.Scheme == "https" ? "HTTPS URL" : uri.Scheme == "http" ? "HTTP URL" : "URL";
-        if (_text.Contains(".") && _text.Contains("/"))
-            return "Path";
-        return "Text";
+        if (string.IsNullOrWhiteSpace(_text)) return "Empty";
+        if (_text.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return "URL";
+        if (_text.All(char.IsDigit)) return "Numeric";
+        return "Alphanumeric";
     }
 
-    // ── Constructor code generation ─────────────────────────────────────
-
-    private void UpdateConstructorCode()
-    {
-        var lines = new List<string>();
-        var val = _ctorText.Replace("\"", "&quot;");
-        lines.Add("<SgQrCode");
-        lines.Add($"    Value=\"{val}\"");
-        lines.Add($"    Size=\"{(int)_ctorSize}\"");
-        lines.Add($"    ErrorCorrection=\"SgQrCodeEcc.{_ctorEcc}\"");
-        lines.Add($"    Border=\"{_ctorBorder}\"");
-        if (_ctorFillColor != "#000000")
-            lines.Add($"    FillColor=\"{_ctorFillColor}\"");
-        if (_ctorBgColor != "#ffffff")
-            lines.Add($"    BackgroundColor=\"{_ctorBgColor}\"");
-        if (_ctorEyeStyle != SgQrCodeEyeStyle.Square)
-            lines.Add($"    EyeStyle=\"SgQrCodeEyeStyle.{_ctorEyeStyle}\"");
-        if (_ctorModuleStyle != SgQrCodeModuleStyle.Square)
-            lines.Add($"    ModuleStyle=\"SgQrCodeModuleStyle.{_ctorModuleStyle}\"");
-        if (_ctorFillGradient)
-        {
-            lines.Add($"    FillGradient=\"true\"");
-            if (!string.IsNullOrEmpty(_ctorFillGradientStart))
-                lines.Add($"    FillGradientStart=\"{_ctorFillGradientStart}\"");
-            if (!string.IsNullOrEmpty(_ctorFillGradientEnd))
-                lines.Add($"    FillGradientEnd=\"{_ctorFillGradientEnd}\"");
-        }
-        if (!string.IsNullOrEmpty(_ctorLogo))
-            lines.Add($"    Logo=\"{_ctorLogo.Replace("\"", "&quot;")}\"");
-        if (_ctorShowLabel)
-        {
-            lines.Add($"    ShowLabel=\"true\"");
-            if (!string.IsNullOrEmpty(_ctorLabelText))
-                lines.Add($"    LabelText=\"{_ctorLabelText}\"");
-        }
-        if (_ctorResponsive)
-            lines.Add($"    Responsive=\"true\"");
-        if (_ctorDownloadable)
-            lines.Add($"    Downloadable=\"true\"");
-        lines.Add(" />");
-        _generatedCode = string.Join("\n", lines);
-    }
-
-    private async Task CopyCodeToClipboard()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedCode);
-            _copyLabel = "Copied!";
-            StateHasChanged();
-            await Task.Delay(2000);
-            _copyLabel = "Copy";
-            StateHasChanged();
-        }
-        catch
-        {
-            _copyLabel = "Failed";
-            StateHasChanged();
-            await Task.Delay(1500);
-            _copyLabel = "Copy";
-            StateHasChanged();
-        }
-    }
-
-    // ── API Reference ───────────────────────────────────────────────────
-
-    private List<PropertyPanelItem> _allProperties = new()
-    {
-        new() { Label = "Value",               Value = "string",                        BadgeText = "Text/URL to encode",       BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Size",                Value = "int (default: 200)",            BadgeText = "Display size in px",       BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Border",              Value = "int (default: 2)",              BadgeText = "Module border width",      BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ErrorCorrection",     Value = "SgQrCodeEcc",                   BadgeText = "Low/Medium/Quartile/High", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "FillColor",           Value = "string (#000000)",              BadgeText = "QR module fill color",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "BackgroundColor",     Value = "string (#ffffff)",              BadgeText = "QR background color",      BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "EyeStyle",            Value = "SgQrCodeEyeStyle",              BadgeText = "Corner eye pattern style", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "EyeColor",            Value = "string?",                       BadgeText = "Custom eye color",         BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "EyeInnerStyle",       Value = "SgQrCodeEyeStyle?",             BadgeText = "Inner eye style",          BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ModuleStyle",         Value = "SgQrCodeModuleStyle",           BadgeText = "Module dot shape",         BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FillGradient",        Value = "bool (false)",                  BadgeText = "Use gradient fill",        BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FillGradientStart",   Value = "string?",                       BadgeText = "Gradient start color",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FillGradientEnd",     Value = "string?",                       BadgeText = "Gradient end color",       BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FillGradientDirection", Value = "string",                      BadgeText = "Gradient direction",       BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Logo",                Value = "string?",                        BadgeText = "SVG/HTML logo overlay",    BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LogoContent",         Value = "RenderFragment?",                BadgeText = "Logo as component",        BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "LogoSize",            Value = "int (default: 40)",              BadgeText = "Logo size in px",          BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LogoBackground",      Value = "string (#ffffff)",               BadgeText = "Logo bg color",            BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LogoPadding",         Value = "int (default: 4)",               BadgeText = "Logo padding",             BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ShowLabel",           Value = "bool (false)",                   BadgeText = "Show label below QR",      BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LabelText",           Value = "string?",                        BadgeText = "Label text",               BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LabelFontSize",       Value = "string (12px)",                  BadgeText = "Label font size",          BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Responsive",          Value = "bool (false)",                   BadgeText = "Fill available width",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "MaxSize",             Value = "int (default: 400)",             BadgeText = "Max responsive size",      BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Downloadable",        Value = "bool (false)",                   BadgeText = "Show download button",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "DownloadButtonText",   Value = "string (Download PNG)",         BadgeText = "Download button text",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "DownloadFileName",    Value = "string (qrcode.png)",            BadgeText = "Download file name",       BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "OnGenerated",         Value = "EventCallback",                  BadgeText = "Fired on generation",      BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnClick",             Value = "EventCallback",                  BadgeText = "Click event",              BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnCopied",            Value = "EventCallback<string>",          BadgeText = "Copy event",               BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "ShowCopyButton",      Value = "bool (false)",                   BadgeText = "Show copy overlay",        BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Animated",            Value = "bool (false)",                   BadgeText = "Fade-in animation",        BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ContainerClass",      Value = "string?",                        BadgeText = "Container CSS class",      BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Title",               Value = "string?",                        BadgeText = "Tooltip text",             BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ErrorText",           Value = "string",                         BadgeText = "Error display text",       BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SvgContent",          Value = "string (public)",                BadgeText = "Read-only SVG output",     BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "HasError",            Value = "bool (public)",                  BadgeText = "Error state",              BadgeVariant = SgBadgeVariant.Default },
-    };
-
-    // ── Helper types ────────────────────────────────────────────────────
-
-    private class ColorSwatch
-    {
-        public string Name { get; set; } = string.Empty;
-        public string Fill { get; set; } = "#000000";
-        public string Background { get; set; } = "#ffffff";
-    }
+    private record ColorSwatch(string Name, string Fill, string Background);
 }

@@ -1,123 +1,93 @@
 @page "/affix-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
 <PageTitle>Affix — SuperUI</PageTitle>
 
-<SgCard Title="SgAffix"
-        Subtitle="Закрепляет элемент при прокрутке за заданный порог. Работает с окном и произвольным контейнером."
-        CssClass="sgc-card-flush">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
+        <div class="demo-section">
+            <SgTypography Color="var(--sg-text-muted)" Leading="SgTypographyLeading.Relaxed">
+                Sticky component that fixes an element when it scrolls past a threshold. Supports window scroll and custom scroll containers.
+            </SgTypography>
+        </div>
 
-    <SgSpace Orientation="SgOrientation.Vertical" Size="large" Style="margin-top: 24px;">
+        <!-- Section 1: Top Affix -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgStack Horizontal Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Sticky Top</SgTypography>
+                    <SgBadge Text="Interactive" Variant="SgBadgeVariant.Success" Size="SgSize.Sm" Standalone />
+                </SgStack>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Fixes the element at the top edge when scrolling down. Use the sliders to adjust threshold and Z-index.
+                </SgTypography>
+            </div>
 
-        @* -1;affix-demo-top *@
-        <DemoSection Title="Закрепление сверху"
-                     Subtitle="OffsetTop = 0 — элемент фиксируется у верхнего края окна при прокрутке вниз"
-                     BadgeText="Interactive"
-                     BadgeVariant="SgBadgeVariant.Success">
-            <div class="sgc-demo-flex-col">
-                <div class="sgc-demo-controls">
-                    <div class="sgc-demo-control-group">
-                        <span class="sgc-demo-control-label">OffsetTop (px)</span>
-                        <div class="sgc-demo-control-row">
-                            <input type="range" class="sgc-demo-slider"
-                                   min="0" max="200" step="1"
-                                   @bind="_topOffset"
-                                   @bind:after="() => _topAffix?.RefreshAsync()" />
-                            <span class="sgc-demo-slider-value">@_topOffset</span>
-                        </div>
+            <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" Style="background:var(--sg-bg-subtle);">
+                <SgStack Horizontal Space="SgSize.Xl" Align="SgAlignItems.End" Wrap="true">
+                    <div style="width: 150px;">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">OffsetTop (px)</SgTypography>
+                        <SgSlider @bind-Value="_topOffset" Min="0" Max="200" Step="1" OnChange="() => _topAffix?.RefreshAsync()" />
                     </div>
-                    <div class="sgc-demo-control-group">
-                        <span class="sgc-demo-control-label">Z-Index</span>
-                        <div class="sgc-demo-control-row">
-                            <input type="range" class="sgc-demo-slider"
-                                   min="1" max="999" step="1"
-                                   @bind="_topZIndex"
-                                   @bind:after="() => _topAffix?.RefreshAsync()" />
-                            <span class="sgc-demo-slider-value">@_topZIndex</span>
-                        </div>
+                    <div style="width: 150px;">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)" Style="margin-bottom:4px;display:block;">Z-Index</SgTypography>
+                        <SgSlider @bind-Value="_topZIndex" Min="1" Max="999" Step="1" OnChange="() => _topAffix?.RefreshAsync()" />
                     </div>
-                    <div class="sgc-demo-control-group">
-                        <span class="sgc-demo-control-label">Состояние</span>
-                        <div class="sgc-demo-status-indicator @(_topAffixed ? "sgc-demo-status-indicator-active" : "sgc-demo-status-indicator-inactive")">
-                            <span class="sgc-demo-status-dot"></span>
-                            @(_topAffixed ? "Pinned" : "Inline")
-                        </div>
-                    </div>
-                </div>
+                    <SgBadge Text="@(_topAffixed ? "📌 Pinned" : "Inline")" Variant="@(_topAffixed ? SgBadgeVariant.Info : SgBadgeVariant.Default)" Style="margin-bottom: 8px;" />
+                </SgStack>
+            </SgCard>
 
+            <div class="affix-demo-scroll-area">
                 <SgAffix OffsetTop="@_topOffset"
                          Target=".sui-content"
                          ZIndex="@_topZIndex"
                          AffixedChanged="@(b => { _topAffixed = b; StateHasChanged(); })"
                          @ref="_topAffix">
                     <Template>
-                        <div class="affix-bar @(context ? "affix-bar-pinned" : "")">
-                            <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">
-                                📌 Sticky Toolbar
-                            </SgTypography>
-                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" CssClass="affix-bar-hint">
-                                @(context ? "Закреплён сверху" : "Скролльте вниз, чтобы закрепить")
-                            </SgTypography>
-                            <div style="margin-left: auto; display: flex; gap: 6px;">
-                                <SgButton Text="Action" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
-                                <SgButton Text="More" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
-                            </div>
+                        <div class="sticky-toolbar @(context ? "pinned" : "")">
+                            <SgStack Horizontal Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="width:100%;">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                    <SgIcon Icon="@SgIcons.Star" Size="16px" />
+                                    <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">Sticky Toolbar</SgTypography>
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm">
+                                    <SgButton Text="Refresh" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="() => _topAffix?.RefreshAsync()" />
+                                    <SgButton Text="Action" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+                                </SgStack>
+                            </SgStack>
                         </div>
                     </Template>
                 </SgAffix>
 
-                <div class="scroll-filler">
+                <div class="filler-text">
                     <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                        Прокрутите эту страницу вниз, чтобы увидеть, как панель закрепляется сверху с отступом @_topOffset px.
-                        Используйте ползунок OffsetTop, чтобы изменить порог срабатывания в реальном времени.
+                        Scroll down to see the toolbar pin to the top.
                     </SgTypography>
-                    @for (var i = 1; i <= 12; i++)
-                    {
-                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
-                            ▸ Строка заполнителя #@i — продолжайте скроллить
-                        </SgTypography>
-                    }
+                    @for (int i = 1; i <= 10; i++) { <p>Placeholder content row #@i</p> }
                 </div>
-
-                <DemoCodeBlock Code="@_topCode" Title="Текущая конфигурация" />
             </div>
-        </DemoSection>
+        </div>
 
-        @* -2;affix-demo-bottom *@
-        <DemoSection Title="Закрепление снизу"
-                     Subtitle="OffsetBottom = 0 — панель фиксируется у нижнего края при прокрутке"
-                     BadgeText="Interactive"
-                     BadgeVariant="SgBadgeVariant.Success">
-            <div class="sgc-demo-flex-col">
-                <div class="sgc-demo-controls">
-                    <div class="sgc-demo-control-group">
-                        <span class="sgc-demo-control-label">OffsetBottom (px)</span>
-                        <div class="sgc-demo-control-row">
-                            <input type="range" class="sgc-demo-slider"
-                                   min="0" max="200" step="1"
-                                   @bind="_bottomOffset"
-                                   @bind:after="() => _bottomAffix?.RefreshAsync()" />
-                            <span class="sgc-demo-slider-value">@_bottomOffset</span>
-                        </div>
-                    </div>
-                    <div class="sgc-demo-control-group">
-                        <span class="sgc-demo-control-label">Состояние</span>
-                        <div class="sgc-demo-status-indicator @(_bottomAffixed ? "sgc-demo-status-indicator-active" : "sgc-demo-status-indicator-inactive")">
-                            <span class="sgc-demo-status-dot"></span>
-                            @(_bottomAffixed ? "Pinned Bottom" : "Inline")
-                        </div>
-                    </div>
-                </div>
+        <!-- Section 2: Bottom Affix -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Sticky Bottom</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Pins to the bottom edge. Useful for action bars or footers.
+                </SgTypography>
+            </div>
 
-                <div style="height: 320px;" class="scroll-filler">
+            <div class="affix-demo-scroll-area">
+                <div class="filler-text">
                     <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                        Доскролльте ниже — появится панель, закреплённая у нижнего края окна.
+                        Scroll further to trigger the bottom action bar.
                     </SgTypography>
-                    @for (var i = 1; i <= 10; i++)
-                    {
-                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
-                            ▸ Строка #@i
-                        </SgTypography>
-                    }
+                    @for (int i = 1; i <= 8; i++) { <p>More content row #@i</p> }
                 </div>
 
                 <SgAffix OffsetBottom="@_bottomOffset"
@@ -125,123 +95,91 @@
                          AffixedChanged="@(b => { _bottomAffixed = b; StateHasChanged(); })"
                          @ref="_bottomAffix">
                     <Template>
-                        <div class="affix-bar @(context ? "affix-bar-pinned-bottom" : "")"
-                             style="display: flex; align-items: center; gap: 12px;">
-                            <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">
-                                ⬇ Bottom Action Bar
-                            </SgTypography>
-                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
-                                @(context ? "Прижат к низу" : "Появится при скролле")
-                            </SgTypography>
-                            <div style="margin-left: auto; display: flex; gap: 6px;">
-                                <SgButton Text="Save" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
-                                <SgButton Text="Cancel" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
-                            </div>
+                        <div class="sticky-toolbar bottom @(context ? "pinned-bottom" : "")">
+                            <SgStack Horizontal Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center" Style="width:100%;">
+                                <SgTypography Weight="SgTypographyWeight.Medium" Size="SgTypographySize.Sm">Bottom Actions</SgTypography>
+                                <SgStack Horizontal Space="SgSize.Sm">
+                                    <SgButton Text="Cancel" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                                    <SgButton Text="Save Changes" Variant="SgButtonVariant.Success" Size="SgSize.Sm" />
+                                </SgStack>
+                            </SgStack>
                         </div>
                     </Template>
                 </SgAffix>
-
-                <DemoCodeBlock Code="@_bottomCode" Title="Текущая конфигурация" />
             </div>
-        </DemoSection>
+        </div>
 
-        @* -3;affix-demo-container *@
-        <DemoSection Title="В произвольном контейнере"
-                     Subtitle="Target = .affix-container — собственная область прокрутки"
-                     BadgeText="Demo"
-                     BadgeVariant="SgBadgeVariant.Info">
-            <div class="sgc-demo-flex-col">
-                <div class="affix-container">
-                    <SgAffix OffsetTop="0" Target=".affix-container">
-                        <div class="affix-bar" style="border-left: 3px solid var(--sg-color-primary);">
-                            <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">
-                                📦 Внутри контейнера
-                            </SgTypography>
-                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
-                                Скролл внутри этого блока
-                            </SgTypography>
-                        </div>
-                    </SgAffix>
-                    <div style="padding: 16px;">
-                        @for (var i = 1; i <= 30; i++)
-                        {
-                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
-                                Строка контейнера #@i
-                            </SgTypography>
-                        }
-                    </div>
-                </div>
-            </div>
-        </DemoSection>
-
-        @* -4;affix-demo-props *@
-        <DemoSection Title="Свойства SgAffix">
-            <PropertyTable Items="_props" />
-        </DemoSection>
-
-        @* -5;affix-demo-options *@
-        <DemoSection Title="Дополнительные параметры" BadgeText="New" BadgeVariant="SgBadgeVariant.Success">
-            <div class="sgc-demo-flex-col">
+        <!-- Section 3: Custom Container -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Custom Scroll Container</SgTypography>
                 <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                    SgAffix также поддерживает: <code>ZIndex</code> (z-индекс в закреплённом состоянии),
-                    <code>Animated</code> (анимация появления/исчезания),
-                    <code>Style</code> (inline-стили для контейнера),
-                    <code>AdditionalAttributes</code> (проброс любых HTML-атрибутов),
-                    а также метод <code>RefreshAsync()</code> для принудительного пересчёта.
+                    Works within any element with overflow: auto.
                 </SgTypography>
             </div>
-        </DemoSection>
 
-    </SgSpace>
-
+            <div class="custom-container">
+                <SgAffix OffsetTop="0" Target=".custom-container">
+                    <div class="container-header">
+                        <SgTypography Weight="SgTypographyWeight.Bold" Size="SgTypographySize.Xs" Transform="SgTypographyTransform.Uppercase">Pinned Header</SgTypography>
+                    </div>
+                </SgAffix>
+                <div style="padding: 16px;">
+                    @for (int i = 1; i <= 30; i++) { <p style="font-size:12px;color:var(--sg-text-muted);">Internal scroll item #@i</p> }
+                </div>
+            </div>
+        </div>
+    </ChildContent>
 </SgCard>
 
 <style>
-    .affix-bar {
-        background: var(--sg-surface);
+    .demo-section { margin-bottom: 40px; }
+    .demo-section:last-child { margin-bottom: 0; }
+    .demo-section-header { margin-bottom: 20px; }
+
+    .affix-demo-scroll-area { 
+        margin-top: 20px; 
+        border: 1px dashed var(--sg-border); 
+        border-radius: var(--sg-radius-lg);
+        padding: 20px;
+        background: linear-gradient(to bottom, var(--sg-bg), var(--sg-bg-subtle));
+    }
+
+    .sticky-toolbar {
+        padding: 12px 20px;
+        background: var(--sg-bg);
         border: 1px solid var(--sg-border);
-        border-radius: 10px;
-        padding: 12px 16px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        border-radius: var(--sg-radius-md);
+        box-shadow: var(--sg-shadow-sm);
+        transition: all 0.2s;
+        z-index: 10;
+    }
+    .sticky-toolbar.pinned { 
+        border-color: var(--sg-color-primary);
+        box-shadow: var(--sg-shadow-md);
+        background: var(--sg-bg-emphasized);
+    }
+    .sticky-toolbar.pinned-bottom {
+        border-color: var(--sg-color-success);
+        box-shadow: var(--sg-shadow-md);
+        background: var(--sg-bg-emphasized);
     }
 
-    .affix-bar-pinned {
-        background: color-mix(in srgb, var(--sg-surface) 92%, var(--sg-color-primary));
-        border-color: var(--sg-color-primary-border);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-    }
-
-    .affix-bar-pinned-bottom {
-        background: color-mix(in srgb, var(--sg-surface) 92%, var(--sg-color-success));
-        border-color: var(--sg-color-success-border);
-        box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
-    }
-
-    .affix-bar-hint {
-        flex: 1;
-    }
-
-    .scroll-filler {
-        padding: 16px;
-        border: 1px dashed var(--sg-border);
-        border-radius: 10px;
-        color: var(--sg-text-muted);
-        background: linear-gradient(180deg, transparent, var(--sg-bg-subtle));
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .affix-container {
-        position: relative;
-        height: 320px;
+    .filler-text { padding: 20px 0; color: var(--sg-fg-muted); line-height: 2; }
+    
+    .custom-container {
+        height: 300px;
         overflow-y: auto;
         border: 1px solid var(--sg-border);
-        border-radius: 10px;
+        border-radius: var(--sg-radius-md);
         background: var(--sg-bg-subtle);
+        position: relative;
+    }
+    .container-header {
+        padding: 10px 16px;
+        background: var(--sg-color-primary-subtle);
+        border-bottom: 1px solid var(--sg-color-primary-border);
+        color: var(--sg-color-primary);
     }
 </style>
 
@@ -254,44 +192,16 @@
     private int _bottomOffset = 0;
     private int _topZIndex = 100;
 
-    private string _topCode =>
-        $@"<SgAffix OffsetTop=""{_topOffset}""
-        Target="".sui-content""
-        ZIndex=""{_topZIndex}"">
-    <Template>
-        <div class=""affix-bar"">
-            <SgTypography Weight=""Semibold"">📌 Sticky Toolbar</SgTypography>
-            <SgButton Text=""Action"" Variant=""Primary"" />
-        </div>
-    </Template>
-</SgAffix>";
-
-    private string _bottomCode =>
-        $@"<SgAffix OffsetBottom=""{_bottomOffset}""
-        Target="".sui-content"">
-    <Template>
-        <div class=""affix-bar"">
-            <SgTypography Weight=""Semibold"">⬇ Bottom Bar</SgTypography>
-            <SgButton Text=""Save"" Variant=""Primary"" />
-            <SgButton Text=""Cancel"" Variant=""Ghost"" />
-        </div>
-    </Template>
-</SgAffix>";
-
-    private List<PropertyPanelItem> _props = new()
+    private RenderFragment _mainHeader => __builder =>
     {
-        new() { Label = "OffsetTop",       Value = "int? (default 0)",        BadgeText = "Порог сверху",           BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "OffsetBottom",    Value = "int?",                    BadgeText = "Порог снизу",            BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Target",          Value = "string?",                 BadgeText = "CSS-селектор контейнера", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ZIndex",          Value = "int (default 100)",       BadgeText = "z-index",                BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Animated",        Value = "bool (default true)",     BadgeText = "Анимация",               BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Style",           Value = "string?",                 BadgeText = "Inline-стили",           BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "AffixedChanged",  Value = "EventCallback<bool>",     BadgeText = "Событие",                BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnAffix",         Value = "EventCallback",           BadgeText = "При закреплении",        BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnUnaffix",       Value = "EventCallback",           BadgeText = "При откреплении",        BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "ChildContent",    Value = "RenderFragment",          BadgeText = "Содержимое",             BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Template",        Value = "RenderFragment<bool>",    BadgeText = "Зависит от состояния",   BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "CssClass",        Value = "string?",                 BadgeText = "CSS-класс",              BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "RefreshAsync()",  Value = "метод",                   BadgeText = "Принудительный пересчёт", BadgeVariant = SgBadgeVariant.Warn }
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="padding:10px;border-radius:10px;background:var(--sg-color-primary-subtle);color:var(--sg-color-primary);display:flex;">
+                <SgIcon Icon="@SgIcons.Star" Size="24px" />
+            </div>
+            <div>
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Affix</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Fix elements at a specific offset during scrolling.</SgTypography>
+            </div>
+        </SgStack>
     };
 }
