@@ -72,10 +72,10 @@
     border-radius: 50%;
     flex-shrink: 0;
 }
-.sgc-kpi-status-dot-online { background: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25); }
-.sgc-kpi-status-dot-offline { background: #9ca3af; }
-.sgc-kpi-status-dot-busy { background: #f43f5e; box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.25); }
-.sgc-kpi-status-dot-away { background: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25); }
+.sgc-kpi-status-dot-online { background: var(--sg-color-success); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sg-color-success) 25%, transparent); }
+.sgc-kpi-status-dot-offline { background: var(--sg-color-neutral); }
+.sgc-kpi-status-dot-busy { background: var(--sg-color-danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sg-color-danger) 25%, transparent); }
+.sgc-kpi-status-dot-away { background: var(--sg-color-warning); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sg-color-warning) 25%, transparent); }
 .sgc-kpi-status-dot-text {
     font-size: 10px;
     font-weight: 500;
@@ -110,13 +110,10 @@
 .sgc-kpi-compare-diff {
     font-weight: 700;
 }
-.sgc-kpi-compare-diff.sgc-kpi-up { color: #059669; }
-.sgc-kpi-compare-diff.sgc-kpi-down { color: #e11d48; }
-.sgc-kpi-compare-pct {
-    font-weight: 600;
-}
-.sgc-kpi-compare-pct.sgc-kpi-up { color: #10b981; }
-.sgc-kpi-compare-pct.sgc-kpi-down { color: #f43f5e; }
+.sgc-kpi-compare-diff.sgc-kpi-up { color: var(--sg-color-success); }
+.sgc-kpi-compare-diff.sgc-kpi-down { color: var(--sg-color-danger); }
+.sgc-kpi-compare-pct.sgc-kpi-up { color: var(--sg-color-success); }
+.sgc-kpi-compare-pct.sgc-kpi-down { color: var(--sg-color-danger); }
 
 /* ── Forecast row ───────────────────────────────────────────────────── */
 .sgc-kpi-forecast {
@@ -170,10 +167,10 @@
 .sgc-kpi-card .sgc-kpi-forecast-value {
     color: rgba(255, 255, 255, 0.8);
 }
-.sgc-kpi-card .sgc-kpi-compare-diff.sgc-kpi-up { color: #6ee7b7; }
-.sgc-kpi-card .sgc-kpi-compare-diff.sgc-kpi-down { color: #fda4af; }
-.sgc-kpi-card .sgc-kpi-compare-pct.sgc-kpi-up { color: #6ee7b7; }
-.sgc-kpi-card .sgc-kpi-compare-pct.sgc-kpi-down { color: #fda4af; }
+.sgc-kpi-card .sgc-kpi-compare-diff.sgc-kpi-up { color: color-mix(in srgb, var(--sg-color-success) 70%, white); }
+.sgc-kpi-card .sgc-kpi-compare-diff.sgc-kpi-down { color: color-mix(in srgb, var(--sg-color-danger) 70%, white); }
+.sgc-kpi-card .sgc-kpi-compare-pct.sgc-kpi-up { color: color-mix(in srgb, var(--sg-color-success) 70%, white); }
+.sgc-kpi-card .sgc-kpi-compare-pct.sgc-kpi-down { color: color-mix(in srgb, var(--sg-color-danger) 70%, white); }
 </style>
 
 <div class="@RootClass"
@@ -270,6 +267,16 @@
     // ── Appearance ────────────────────────────────────────────────────────────
     /// <summary>Color variant accent. Default <see cref="SgKPIVariant.Default"/>.</summary>
     [Parameter] public SgKPIVariant Variant { get; set; } = SgKPIVariant.Default;
+    /// <summary>
+    /// Overrides the accent color for <see cref="SgKPIVariant.Custom"/> mode.
+    /// Applied to the gradient, ring stroke, border accent, trend, and chart colors.
+    /// </summary>
+    [Parameter] public string? AccentColor { get; set; }
+    /// <summary>
+    /// Overrides the gradient background for <see cref="SgKPIVariant.Custom"/> mode in Card display mode.
+    /// Falls back to a semi-transparent version of <see cref="AccentColor"/> if not set.
+    /// </summary>
+    [Parameter] public string? AccentBackground { get; set; }
     /// <summary>Component size. Default <see cref="SgSize.Md"/>.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
 
@@ -493,7 +500,23 @@
         }
     }
 
-    private string? RootStyle => string.IsNullOrWhiteSpace(Style) ? null : Style;
+    private string? RootStyle
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder();
+            if (!string.IsNullOrWhiteSpace(Style))
+                sb.Append(Style);
+            if (Variant == SgKPIVariant.Custom)
+            {
+                if (!string.IsNullOrEmpty(AccentColor))
+                    sb.Append($";--sgc-kpi-accent:{AccentColor}");
+                if (!string.IsNullOrEmpty(AccentBackground))
+                    sb.Append($";--sgc-kpi-accent-bg:{AccentBackground}");
+            }
+            return sb.Length > 0 ? sb.ToString().TrimStart(';') : null;
+        }
+    }
 
     private string SizeKey => Size switch
     {
@@ -510,17 +533,19 @@
         SgKPIVariant.Warning => "warning",
         SgKPIVariant.Danger  => "danger",
         SgKPIVariant.Info    => "info",
+        SgKPIVariant.Custom  => "custom",
         _                    => "default"
     };
 
     private string RingColor => Variant switch
     {
-        SgKPIVariant.Success => "#10b981",
-        SgKPIVariant.Warning => "#f59e0b",
-        SgKPIVariant.Danger  => "#f43f5e",
-        SgKPIVariant.Info    => "#0ea5e9",
-        SgKPIVariant.Primary => "#006fee",
-        _                    => "#9ca3af"
+        SgKPIVariant.Success => "var(--sg-color-success)",
+        SgKPIVariant.Warning => "var(--sg-color-warning)",
+        SgKPIVariant.Danger  => "var(--sg-color-danger)",
+        SgKPIVariant.Info    => "var(--sg-color-info)",
+        SgKPIVariant.Primary => "var(--sg-color-primary)",
+        SgKPIVariant.Custom  => AccentColor ?? "var(--sg-color-primary)",
+        _                    => "var(--sg-color-neutral)"
     };
 
     // ── Status dot helpers ────────────────────────────────────────────────────
@@ -792,7 +817,7 @@
     {
         var color = !string.IsNullOrEmpty(ChartColor)
             ? ChartColor
-            : IsPositiveTrend ? "#10b981" : "#f43f5e";
+            : IsPositiveTrend ? "var(--sg-color-success)" : "var(--sg-color-danger)";
 
         <div class="sgc-kpi-inline-label">
             @if (StatusDot.HasValue && StatusDot.Value != SgAvatarStatus.None)
@@ -990,7 +1015,7 @@
                 var closeY = range < 1e-9 ? H / 2 : PT + (H - PT) * (1.0 - (close - min) / range);
                 var rectY  = Math.Min(openY, closeY);
                 var rectH  = Math.Max(1.0, Math.Abs(closeY - openY));
-                var candleColor = isUp ? "#10b981" : "#f43f5e";
+                var candleColor = isUp ? "var(--sg-color-success)" : "var(--sg-color-danger)";
 
                 // Wick
                 __builder.OpenElement(5 + i * 5, "line");
@@ -1163,7 +1188,7 @@
     {
         var sparkColor = !string.IsNullOrEmpty(ChartColor)
             ? ChartColor
-            : IsPositiveTrend ? "#10b981" : "#f43f5e";
+            : IsPositiveTrend ? "var(--sg-color-success)" : "var(--sg-color-danger)";
 
         @RenderCornerBadge()
         <div class="sgc-kpi-an-header">

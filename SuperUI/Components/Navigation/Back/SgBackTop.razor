@@ -2,45 +2,42 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-@if (_visible || _persist)
-{
-    <button type="button"
-            class="@GetClassNames()"
-            style="@PositionStyle"
-            title="@Title"
-            aria-label="@Title"
-            @onclick="OnClickAsync"
-            @onmouseenter="OnMouseEnter"
-            @onmouseleave="OnMouseLeave">
-        @if (ShowProgress && _progress >= 0)
+<button type="button"
+        class="@GetClassNames()"
+        style="@PositionStyle"
+        title="@Title"
+        aria-label="@Title"
+        @onclick="OnClickAsync"
+        @onmouseenter="OnMouseEnter"
+        @onmouseleave="OnMouseLeave">
+    @if (ShowProgress && _progress >= 0)
+    {
+        <svg class="sgc-backtop-progress-ring" viewBox="0 0 36 36" aria-hidden="true">
+            <circle class="sgc-backtop-progress-bg"
+                    cx="18" cy="18" r="15"
+                    fill="none"
+                    stroke-width="2.5" />
+            <circle class="sgc-backtop-progress-fill"
+                    cx="18" cy="18" r="15"
+                    fill="none"
+                    stroke-width="2.5"
+                    stroke-dasharray="@($"{Circumference} {Circumference}")"
+                    stroke-dashoffset="@GetProgressOffset()"
+                    stroke-linecap="round"
+                    transform="rotate(-90, 18, 18)" />
+        </svg>
+    }
+    <span class="sgc-backtop-icon">
+        @if (ChildContent is not null)
         {
-            <svg class="sgc-backtop-progress-ring" viewBox="0 0 36 36" aria-hidden="true">
-                <circle class="sgc-backtop-progress-bg"
-                        cx="18" cy="18" r="15"
-                        fill="none"
-                        stroke-width="2.5" />
-                <circle class="sgc-backtop-progress-fill"
-                        cx="18" cy="18" r="15"
-                        fill="none"
-                        stroke-width="2.5"
-                        stroke-dasharray="@($"{Circumference} {Circumference}")"
-                        stroke-dashoffset="@GetProgressOffset()"
-                        stroke-linecap="round"
-                        transform="rotate(-90, 18, 18)" />
-            </svg>
+            @ChildContent
         }
-        <span class="sgc-backtop-icon">
-            @if (ChildContent is not null)
-            {
-                @ChildContent
-            }
-            else
-            {
-                @((MarkupString)SgIcons.ArrowUp)
-            }
-        </span>
-    </button>
-}
+        else
+        {
+            @((MarkupString)SgIcons.ArrowUp)
+        }
+    </span>
+</button>
 
 @code {
     private const double Circumference = 2 * Math.PI * 15; // ~94.2478
@@ -148,7 +145,6 @@
     private bool _visible;
     private bool _hovered;
     private int _progress = -1;
-    private bool _persist;
 
     private string PositionStyle
     {
@@ -216,8 +212,6 @@
     {
         if (_isDisposed || _visible == visible) return;
         _visible = visible;
-        _persist = Persistent && (_visible || _persist);
-        if (!Persistent) _persist = _visible;
         Visible = _visible;
         await VisibleChanged.InvokeAsync(_visible);
         await InvokeAsync(StateHasChanged);

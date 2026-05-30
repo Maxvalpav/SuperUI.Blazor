@@ -7,5 +7,7 @@ public enum SgKPIVariant
     Success,
     Warning,
     Danger,
-    Info
+    Info,
+    /// <summary>Custom accent color via <c>AccentColor</c> / <c>AccentBackground</c> parameters.</summary>
+    Custom
 }
