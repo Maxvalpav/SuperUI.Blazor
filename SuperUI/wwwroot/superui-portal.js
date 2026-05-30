@@ -141,10 +141,19 @@ export function open(element, options) {
     });
 }
 
-// ── Update portal options without re-teleporting ──
+// ── Update portal options; re-teleports if Blazor recreated the element ──
 export function update(element, options) {
     const entry = portalConfigs.get(element);
     if (!entry) return;
+
+    // Resolve target (may change via renderAt)
+    const renderAt = options?.renderAt || entry.cfg.renderAt || null;
+    const target = getTarget(renderAt);
+
+    // Re-teleport if Blazor recreated element in its original position
+    if (element.parentElement !== target && document.contains(element)) {
+        target.appendChild(element);
+    }
 
     if (options?.zIndex != null && options.zIndex > 0) {
         element.style.zIndex = options.zIndex;
@@ -155,6 +164,9 @@ export function update(element, options) {
         else if (!options.preventScroll && entry.cfg.preventScroll) unlockScroll();
         entry.cfg.preventScroll = !!options.preventScroll;
     }
+
+    // Update config
+    entry.cfg.renderAt = renderAt;
 }
 
 // ── Close / remove portal ──

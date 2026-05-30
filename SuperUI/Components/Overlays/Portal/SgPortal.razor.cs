@@ -95,6 +95,7 @@ public partial class SgPortal : SgJsComponentBase
             {
                 zIndex = ResolvedZIndex,
                 preventScroll = PreventScroll,
+                renderAt = RenderAt,
             });
         }
 
