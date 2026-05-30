@@ -7,12 +7,12 @@
 @inject ISuperUILocalizer Localizer
 @implements IDisposable
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @SizeClass @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-combo @(Block ? "sgc-block" : "") sgc-size-@Size.ToString().ToLowerInvariant() @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(Dropup ? "sgc-dropup" : "")"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="listbox"
@@ -69,6 +69,8 @@
                     <input class="sgc-combo-input"
                            value="@_search"
                            placeholder="@(selCount == 0 ? EffectivePlaceholder : "")"
+                           aria-autocomplete="list"
+                           aria-controls="@_listboxId"
                            @oninput="OnSearchInput"
                            @onkeydown="OnKeyDownAsync"
                            @onclick:stopPropagation="true"
@@ -83,7 +85,9 @@
         </div>
         @if (_open)
         {
-            <div class="sgc-combo-menu sgc-combo-multiselect">
+            var maxH = DropdownMaxHeight;
+            var menuStyle = maxH is not null ? $"max-height:{maxH}" : null;
+            <div id="@_listboxId" class="sgc-combo-menu sgc-combo-multiselect" role="listbox" aria-multiselectable="true" style="@menuStyle" @ref="_menuRef">
                 @if (ColumnsSelector != null)
                 {
                     <div class="sgc-combo-header">
@@ -109,7 +113,7 @@
                     var allFilteredSelected = filtered.All(it => IsSelected(KeySelector(it)));
                     <div class="sgc-select-all" @onclick:stopPropagation="true" @onclick="ToggleSelectAllAsync">
                         <input type="checkbox" checked="@allFilteredSelected" readonly tabindex="-1" style="pointer-events:none;" />
-                        <span>@(allFilteredSelected ? Localizer["DeselectAll"] : Localizer["SelectAll"])</span>
+                        <span>@(allFilteredSelected ? Localizer["Common_DeselectAll"] : Localizer["Common_SelectAll"])</span>
                     </div>
                     @for (int idx = 0; idx < filtered.Count; idx++)
                     {
@@ -160,6 +164,7 @@
 
 @code {
     private readonly string _labelId = "sg-msex-label-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _listboxId = "sg-msex-listbox-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _hintId = "sg-msex-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sg-msex-err-" + Guid.NewGuid().ToString("N")[..8];
     private bool _open;
@@ -169,6 +174,7 @@
     private CancellationTokenSource? _blurCts;
     private CancellationTokenSource? _searchCts;
     private ElementReference _searchInput;
+    private ElementReference _menuRef;
 
     /// <summary>
     /// Gets or sets the collection of selected item keys.
@@ -269,6 +275,9 @@
     /// <summary>Size of the multi-select: Sm, Md (default), or Lg.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
 
+    /// <summary>When true, the dropdown opens upward instead of downward.</summary>
+    [Parameter] public bool Dropup { get; set; }
+
     /// <summary>When true, shows a clear-all button when values are selected.</summary>
     [Parameter] public bool AllowClear { get; set; }
 
@@ -277,6 +286,9 @@
 
     /// <summary>Whether to automatically focus the search input on first render.</summary>
     [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>Gets or sets the maximum height of the dropdown menu in CSS units.</summary>
+    [Parameter] public string? DropdownMaxHeight { get; set; }
 
     /// <summary>Debounce delay in milliseconds for search input. Default 300.</summary>
     [Parameter] public int SearchDebounceMs { get; set; } = 300;
@@ -299,6 +311,14 @@
     private string LabelFrom(TItem item) => LabelSelector(item);
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
     private bool HasSelectedValues => Values?.Any() == true;
+
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-field-sm",
+        SgSize.Lg => "sgc-field-lg",
+        SgSize.Xl => "sgc-field-xl",
+        _         => null
+    };
 
     protected override void OnInitialized()
     {

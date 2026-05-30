@@ -26,6 +26,8 @@
                 <input class="sgc-combo-input"
                        value="@_search"
                        placeholder="@EffectivePlaceholder"
+                       aria-autocomplete="list"
+                       aria-controls="@_listboxId"
                        @oninput="OnSearchInput"
                        @onkeydown="OnKeyDownAsync"
                        @onclick:stopPropagation="true" />
@@ -62,10 +64,12 @@
             }
             <span class="sgc-combo-caret">@((MarkupString)SgIcons.ChevronDown)</span>
         </div>
-        @if (_open)
-        {
-            <div class="sgc-combo-menu">
-                @if (ColumnsSelector != null)
+         @if (_open)
+         {
+             var maxH = DropdownMaxHeight;
+             var menuStyle = maxH is not null ? $"max-height:{maxH}" : null;
+             <div id="@_listboxId" class="sgc-combo-menu" role="listbox" style="@menuStyle">
+                 @if (ColumnsSelector != null)
                 {
                     <div class="sgc-combo-header">
                         <div class="sgc-combo-opt-columns">
@@ -136,17 +140,22 @@
 </div>
 
 @code {
+    private readonly string _listboxId = "sg-cbex-listbox-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _hintId = "sg-cbex-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sg-cbex-err-" + Guid.NewGuid().ToString("N")[..8];
     private bool _open;
     private string _search = string.Empty;
     private int _activeIndex = -1;
     private CancellationTokenSource? _blurCts;
+    private CancellationTokenSource? _searchCts;
 
     /// <summary>Gets or sets the currently selected value.</summary>
     [Parameter] public TKey Value { get; set; } = default!;
     /// <summary>Fires when the selected value changes.</summary>
     [Parameter] public EventCallback<TKey> ValueChanged { get; set; }
+    /// <summary>Gets or sets the maximum height of the dropdown menu in CSS units.</summary>
+    [Parameter] public string? DropdownMaxHeight { get; set; }
+
     /// <summary>Gets or sets the collection of items to choose from.</summary>
     [Parameter] public IEnumerable<TItem> Items { get; set; } = Array.Empty<TItem>();
     [Parameter, EditorRequired] public Func<TItem, TKey> KeySelector { get; set; } = default!;
@@ -235,11 +244,27 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private Task OnSearchInput(ChangeEventArgs e)
+    [Parameter] public int SearchDebounceMs { get; set; } = 200;
+
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
         _search = e.Value?.ToString() ?? string.Empty;
-        _activeIndex = 0;
-        return InvokeAsync(StateHasChanged);
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        var currentSearch = _search;
+        try
+        {
+            await Task.Delay(SearchDebounceMs, token);
+            if (!token.IsCancellationRequested)
+            {
+                _search = currentSearch;
+                _activeIndex = 0;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (TaskCanceledException) { }
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
@@ -268,5 +293,7 @@
     {
         _blurCts?.Cancel();
         _blurCts?.Dispose();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
     }
 }
