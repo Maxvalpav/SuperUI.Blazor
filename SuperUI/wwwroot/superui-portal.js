@@ -76,6 +76,7 @@ export function open(element, options) {
     }
 
     element.style.zIndex = zIndex;
+    element.style.visibility = 'visible';
 
     // Scroll lock
     if (cfg.preventScroll) lockScroll();
@@ -123,12 +124,17 @@ export function open(element, options) {
     // MutationObserver — re-teleport if Blazor snaps element back
     let mo = null;
     if (originalParents.has(element)) {
+        const origParent = originalParents.get(element);
         mo = new MutationObserver(() => {
             if (element.parentElement !== target && document.contains(element)) {
                 target.appendChild(element);
             }
         });
         mo.observe(target, { childList: true, subtree: false });
+        // Also watch original parent in case Blazor inserts a duplicate there
+        if (origParent && origParent !== target) {
+            mo.observe(origParent, { childList: true, subtree: false });
+        }
     }
 
     portalConfigs.set(element, {
@@ -154,6 +160,9 @@ export function update(element, options) {
     if (element.parentElement !== target && document.contains(element)) {
         target.appendChild(element);
     }
+
+    // C# always renders with visibility:hidden — show once we've confirmed teleport
+    element.style.visibility = 'visible';
 
     if (options?.zIndex != null && options.zIndex > 0) {
         element.style.zIndex = options.zIndex;
@@ -196,6 +205,8 @@ export function close(element) {
     // Unlock scroll
     if (entry.cfg.preventScroll) unlockScroll();
 
+    // Hide before moving back to prevent flash in original position
+    element.style.visibility = 'hidden';
     // Clear z-index
     element.style.zIndex = entry.prevZIndex || '';
 

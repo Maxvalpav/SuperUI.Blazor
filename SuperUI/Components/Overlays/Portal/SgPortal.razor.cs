@@ -50,9 +50,13 @@ public partial class SgPortal : SgJsComponentBase
 
     protected override string ModulePath => "./_content/SuperUI/superui-portal.js";
 
+    /// <summary>
+    /// Always hidden from C# side — JS sets visibility:visible after teleporting to target.
+    /// This prevents flicker when Blazor moves the element back on re-render (the element
+    /// stays hidden until update() re-teleports and makes it visible).
+    /// </summary>
     private string PortalWrapperStyle => Styles()
-        .AddStyle("display", "contents")
-        .AddStyle("visibility", "hidden", !(_isTeleported && Visible))
+        .AddStyle("visibility", "hidden")
         .Build();
 
     private int ResolvedZIndex
