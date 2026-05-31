@@ -221,7 +221,7 @@ public partial class SgTable<TItem> : SgComponentBase
         }
     }
 
-    internal string EffectiveEmptyText => string.IsNullOrWhiteSpace(EmptyText) ? "Нет данных" : EmptyText!;
+    internal string EffectiveEmptyText => string.IsNullOrWhiteSpace(EmptyText) ? Localizer["Common_NoData"] : EmptyText!;
 
     internal void RegisterColumn(SgTableColumn<TItem> column)
     {

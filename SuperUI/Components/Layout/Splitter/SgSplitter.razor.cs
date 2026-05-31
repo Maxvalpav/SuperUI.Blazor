@@ -252,7 +252,7 @@ public partial class SgSplitter
             builder.AddAttribute(seq++, "class", "sgc-split-collapse-btn sgc-btn-next");
             builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => _ = CollapseSecondPane()));
             builder.AddAttribute(seq++, "onclick:stopPropagation", true);
-            builder.AddAttribute(seq++, "title", "Reset size");
+            builder.AddAttribute(seq++, "title", Localizer["Common_Reset"]);
             builder.AddMarkupContent(seq++,
                 """<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg>""");
             builder.CloseElement();
@@ -261,7 +261,7 @@ public partial class SgSplitter
         builder.CloseElement();
     }
 
-    private string CollapseTooltip => IsVertical ? "Collapse pane" : "Collapse pane";
+    private string CollapseTooltip => Localizer["Common_Collapse"];
 
     protected override async ValueTask OnInteractiveAsync()
     {
