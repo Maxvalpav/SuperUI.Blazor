@@ -162,10 +162,26 @@
                         @if (Match(Localizer["Settings_SelectLanguage"]))
                         {
                             @SettingRow(Localizer["Settings_SelectLanguage"], null,
-                                @<SgSelect TValue="string"
-                                           Items="_languages"
-                                           @bind-Value="CurrentLanguage"
-                                           LabelSelector="GetLanguageLabel" />)
+                                @<div style="display:flex;gap:8px;align-items:center;flex:1">
+                                    <SgSelect TValue="string"
+                                               Items="_languages"
+                                               @bind-Value="CurrentLanguage"
+                                               LabelSelector="GetLanguageLabel"
+                                               Style="flex:1" />
+                                    <button type="button"
+                                            class="sgc-icon-btn"
+                                            title="@Localizer["Settings_EditTranslations"]"
+                                            aria-label="@Localizer["Settings_EditTranslations"]"
+                                            @onclick="() => _showLocaleEditor = !_showLocaleEditor">
+                                        @((MarkupString)SgIcons.Edit)
+                                    </button>
+                                </div>)
+                        }
+                        @if (_showLocaleEditor)
+                        {
+                            <div style="margin-top:16px;border-top:1px solid var(--sg-border-subtle,#e5e7eb);padding-top:16px;">
+                                <SgLocaleEditor />
+                            </div>
                         }
                     </ChildContent>
                 </SgTabPanel>
@@ -250,6 +266,7 @@
     private List<string> _languages = new() { "en-US", "ru-RU" };
     private List<string> _dateFormats = new() { "DD.MM.YYYY", "YYYY-MM-DD", "MM/DD/YYYY" };
     private SgLlmConfig _llmConfig = new();
+    private bool _showLocaleEditor;
 
     // ── Search filter ─────────────────────────────────────────────────────
     private string _searchText = string.Empty;
@@ -436,7 +453,16 @@
     protected override async Task OnInitializedAsync()
     {
         _themes = ThemeRegistry.GetAll().ToList();
-        _currentLanguage = await SettingsService.GetLanguageAsync();
+        var savedLang = await SettingsService.GetLanguageAsync();
+        if (_languages.Contains(savedLang))
+        {
+            _currentLanguage = savedLang;
+            await SettingsService.SetLanguageAsync(savedLang);
+        }
+        else
+        {
+            _currentLanguage = "en-US";
+        }
         _llmConfig = (await SettingsService.LoadDefaultLlmConfigAsync()) ?? SettingsService.GetDefaultLlmConfig();
 
         _modeOptions = new List<SgSegmentedOption<string>>
