@@ -114,10 +114,14 @@ public partial class SgRow : ComponentBase
 
     private string? ResolvedGutter => Space switch
     {
-        SgSize.Sm => "var(--sg-space-4)",
-        SgSize.Md => "var(--sg-space-8)",
-        SgSize.Lg => "var(--sg-space-16)",
-        SgSize.Xl => "var(--sg-space-24)",
+        SgSize.Sm     => "var(--sg-space-4)",
+        SgSize.Md     => "var(--sg-space-8)",
+        SgSize.Lg     => "var(--sg-space-16)",
+        SgSize.Xl     => "var(--sg-space-24)",
+        SgSize.FibMd  => "var(--sg-space-fib-4)",
+        SgSize.FibLg  => "var(--sg-space-fib-5)",
+        SgSize.FibXl  => "var(--sg-space-fib-6)",
+        SgSize.FibXxl => "var(--sg-space-fib-7)",
         _ => Gutter
     };
 

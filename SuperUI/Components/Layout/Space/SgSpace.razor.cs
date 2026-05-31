@@ -47,10 +47,14 @@ public partial class SgSpace : SgComponentBase
 
     private string ResolvedGap => Space switch
     {
-        SgSize.Sm => "var(--sg-space-4)",    // 8px
-        SgSize.Md => "var(--sg-space-8)",    // 16px
-        SgSize.Lg => "var(--sg-space-16)",   // 32px
-        SgSize.Xl => "var(--sg-space-24)",   // 48px
+        SgSize.Sm     => "var(--sg-space-4)",       // 8px
+        SgSize.Md     => "var(--sg-space-8)",       // 16px
+        SgSize.Lg     => "var(--sg-space-16)",      // 32px
+        SgSize.Xl     => "var(--sg-space-24)",      // 48px
+        SgSize.FibMd  => "var(--sg-space-fib-4)",   // 13px
+        SgSize.FibLg  => "var(--sg-space-fib-5)",   // 21px
+        SgSize.FibXl  => "var(--sg-space-fib-6)",   // 34px
+        SgSize.FibXxl => "var(--sg-space-fib-7)",   // 55px
         _ => Size.ToLower() switch
         {
             "small"  => "8px",

@@ -10,5 +10,13 @@ public enum SgSize
     /// <summary>Большой.</summary>
     Lg,
     /// <summary>Очень большой.</summary>
-    Xl
+    Xl,
+    /// <summary>Фибоначчи-отступ — 13px (F7).</summary>
+    FibMd,
+    /// <summary>Фибоначчи-отступ — 21px (F8).</summary>
+    FibLg,
+    /// <summary>Фибоначчи-отступ — 34px (F9).</summary>
+    FibXl,
+    /// <summary>Фибоначчи-отступ — 55px (F10).</summary>
+    FibXxl
 }
