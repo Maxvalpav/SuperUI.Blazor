@@ -948,7 +948,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
                 if (_disposing)
                 {
                     // Component was disposed while we awaited the import — clean up locally.
-                    try { await module.DisposeAsync(); } catch (Exception) { }
+                    try { await module.DisposeAsync(); } catch (JSDisconnectedException) { } catch (ObjectDisposedException) { }
                     return;
                 }
                 _module = module;
@@ -4884,7 +4884,8 @@ private static object? ConvertFromString(string? text, Type type)
                         return Convert.ToDecimal(raw, CultureInfo.InvariantCulture)
                             .ToString(CultureInfo.InvariantCulture);
                     }
-                    catch (Exception) { /* fall through */ }
+                    catch (OverflowException) { /* fall through */ }
+                    catch (InvalidCastException) { /* fall through */ }
                 }
                 return raw.ToString() ?? string.Empty;
 
@@ -5731,7 +5732,9 @@ private static object? ConvertFromString(string? text, Type type)
                 return; // can't set null on non-nullable value type
             prop.SetValue(_editModalItem, parsed);
         }
-        catch (Exception) { /* ignore conversion errors */ }
+        catch (FormatException) { /* ignore conversion errors */ }
+        catch (OverflowException) { /* ignore conversion errors */ }
+        catch (InvalidCastException) { /* ignore conversion errors */ }
     }
 
     /// <summary>Parses a string edit value to the column's target type.</summary>
