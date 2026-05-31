@@ -1,73 +1,51 @@
-using System.Diagnostics;
-using System.Globalization;
-using System.Resources;
+using Microsoft.Extensions.Options;
 
 namespace SuperUI.Localization;
 
 /// <summary>
-/// Default implementation of <see cref="ISuperUILocalizer"/> using .resx resource files.
+/// Default implementation of <see cref="ISuperUILocalizer"/> using JSON locale files
+/// embedded as assembly resources.
 /// </summary>
 public sealed class SuperUILocalizer : ISuperUILocalizer
 {
-    private readonly ResourceManager _resourceManager;
-    private readonly CultureInfo? _fixedCulture;
+    private readonly LocalizationService _inner;
 
     /// <summary>
-    /// Initializes a new instance of <see cref="SuperUILocalizer"/>. Reads
-    /// <see cref="CultureInfo.CurrentUICulture"/> on each lookup so language switches
-    /// take effect immediately without re-creating the service.
+    /// Initializes with default options.
     /// </summary>
-    public SuperUILocalizer()
-    {
-        _fixedCulture = new CultureInfo("ru-RU");
-        _resourceManager = new ResourceManager(
-            "SuperUI.Resources.SuperUIStrings",
-            typeof(SuperUILocalizer).Assembly);
-    }
+    public SuperUILocalizer() : this(null) { }
 
     /// <summary>
-    /// Initializes a new instance of <see cref="SuperUILocalizer"/> pinned to a specific culture.
+    /// Initializes with the supplied options.
     /// </summary>
-    /// <param name="culture">The culture to use for localization.</param>
-    public SuperUILocalizer(CultureInfo culture)
+    public SuperUILocalizer(IOptions<SuperUiOptions>? options)
     {
-        _fixedCulture = culture;
-        _resourceManager = new ResourceManager(
-            "SuperUI.Resources.SuperUIStrings",
-            typeof(SuperUILocalizer).Assembly);
-    }
-
-    private CultureInfo Culture => _fixedCulture ?? CultureInfo.CurrentUICulture;
-
-    /// <inheritdoc/>
-    public string this[string key]
-    {
-        get
-        {
-            try
-            {
-                return _resourceManager.GetString(key, Culture) ?? key;
-            }
-            catch (Exception ex)
-            {
-                Debug.Fail($"[SuperUI] Localization lookup failed for key '{key}': {ex.Message}");
-                return key;
-            }
-        }
+        _inner = new LocalizationService(options);
     }
 
     /// <inheritdoc/>
-    public string GetString(string key, params object[] args)
+    public event Action? OnLocaleChanged
     {
-        var format = this[key];
-        try
-        {
-            return string.Format(Culture, format, args);
-        }
-        catch (Exception ex)
-        {
-            Debug.Fail($"[SuperUI] string.Format failed for key '{key}': {ex.Message}");
-            return format;
-        }
+        add => _inner.OnLocaleChanged += value;
+        remove => _inner.OnLocaleChanged -= value;
     }
+
+    /// <inheritdoc/>
+    public string this[string key] => _inner[key];
+
+    /// <inheritdoc/>
+    public string GetString(string key, params object[] args) => _inner.GetString(key, args);
+
+    /// <summary>
+    /// Gets the current language code.
+    /// </summary>
+    public string CurrentLanguage => _inner.CurrentLanguage;
+
+    /// <summary>
+    /// Changes the current language and notifies subscribers.
+    /// </summary>
+    public void SetLanguage(string lang) => _inner.SetLanguage(lang);
+
+    /// <inheritdoc/>
+    public IEnumerable<string> SupportedLanguages => _inner.SupportedLanguages;
 }

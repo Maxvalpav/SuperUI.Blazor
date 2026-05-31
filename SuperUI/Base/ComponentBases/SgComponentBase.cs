@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SuperUI.Base.Builders;
 using SuperUI.Base.Utilities;
+using SuperUI.Localization;
 using SuperUI.Services;
 using SuperUI.Themes;
 
@@ -23,6 +24,7 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
 
     [Inject] protected ILoggerFactory? LoggerFactory { get; set; }
     [Inject] protected SgThemeService ThemeService { get; set; } = default!;
+    [Inject] protected ISuperUILocalizer Localizer { get; set; } = default!;
 
     protected string CurrentMode => ThemeService.CurrentMode;
     protected bool IsDark => ThemeService.IsDark;
@@ -32,9 +34,22 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
     {
         base.OnInitialized();
         ThemeService.ThemeChanged += HandleThemeChanged;
+        Localizer.OnLocaleChanged += HandleLocaleChanged;
     }
 
     private async void HandleThemeChanged(IThemeDefinition theme, string mode)
+    {
+        if (_disposed) return;
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    private async void HandleLocaleChanged()
     {
         if (_disposed) return;
         try
@@ -52,6 +67,8 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
         _disposed = true;
         if (ThemeService is not null)
             ThemeService.ThemeChanged -= HandleThemeChanged;
+        if (Localizer is not null)
+            Localizer.OnLocaleChanged -= HandleLocaleChanged;
         GC.SuppressFinalize(this);
     }
 

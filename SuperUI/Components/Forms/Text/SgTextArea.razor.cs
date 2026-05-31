@@ -34,7 +34,6 @@ public partial class SgTextArea : IDisposable
     private bool _focused;
     private string? _pasteValue;
 
-    [Inject] private ISuperUILocalizer Localizer { get; set; } = null!;
     [Inject] private IJSRuntime JS { get; set; } = null!;
 
     // ── Basic parameters ─────────────────────────────────────────────────

@@ -331,6 +331,8 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         _ => "If CORS blocks requests, check your local server CORS configuration."
     };
 
+    private Action? _localeChangedHandler;
+
     private bool _testingLocalPort;
     private bool _localPortOk;
     private string? _localPortStatus;
@@ -421,6 +423,8 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
 
     public void Dispose()
     {
+        if (_localeChangedHandler is not null)
+            Localizer.OnLocaleChanged -= _localeChangedHandler;
         LlmService.OnError -= OnServiceError;
     }
 
@@ -465,6 +469,9 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
 
     protected override async Task OnInitializedAsync()
     {
+        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+        Localizer.OnLocaleChanged += _localeChangedHandler;
+
         LlmService.OnError += OnServiceError;
 
         if (LlmService.CurrentConfig != null && string.IsNullOrEmpty(Config.ModelId))

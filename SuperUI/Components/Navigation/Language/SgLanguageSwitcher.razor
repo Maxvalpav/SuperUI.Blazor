@@ -1,4 +1,5 @@
 @namespace SuperUI.Components
+@implements IDisposable
 @inject IJSRuntime JS
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
@@ -12,39 +13,51 @@
 
 @code {
     private readonly List<string> _languages = new() { "en-US", "ru-RU" };
-    private string _currentLanguage = "ru-RU";
-    private bool _initialized;
+    private string _currentLanguage = "en-US";
 
     private string CurrentLanguage
     {
         get => _currentLanguage;
         set
         {
-            if (_currentLanguage != value && _initialized)
+            if (_currentLanguage != value)
             {
                 _currentLanguage = value;
-                _ = ApplyLanguageAsync(true);
-            }
-            else
-            {
-                _currentLanguage = value;
+                var locale = MapToLocale(value);
+                Localizer.SetLanguage(locale);
+                _ = PersistLanguageAsync(locale);
             }
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override void OnInitialized()
     {
-        if (firstRender && !_initialized)
+        _currentLanguage = Localizer.CurrentLanguage switch
         {
-            _initialized = true;
-            var savedLang = await JS.InvokeAsync<string>("localStorage.getItem", "sui-language");
-            if (!string.IsNullOrEmpty(savedLang) && _languages.Contains(savedLang))
-            {
-                _currentLanguage = savedLang;
-                await ApplyLanguageAsync(false);
-            }
-            StateHasChanged();
+            "en" => "en-US",
+            "ru" => "ru-RU",
+            _ => "en-US"
+        };
+        Localizer.OnLocaleChanged += HandleLocaleChanged;
+    }
+
+    private void HandleLocaleChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Localizer.OnLocaleChanged -= HandleLocaleChanged;
+    }
+
+    private async Task PersistLanguageAsync(string locale)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "sui-language", locale);
         }
+        catch { }
     }
 
     private string GetLanguageLabel(string lang)
@@ -57,17 +70,10 @@
         };
     }
 
-    private async Task ApplyLanguageAsync(bool reload)
+    private static string MapToLocale(string displayCode) => displayCode switch
     {
-        var culture = new System.Globalization.CultureInfo(_currentLanguage);
-        System.Globalization.CultureInfo.CurrentCulture = culture;
-        System.Globalization.CultureInfo.CurrentUICulture = culture;
-        
-        await JS.InvokeVoidAsync("localStorage.setItem", "sui-language", _currentLanguage);
-        
-        if (reload)
-        {
-            await JS.InvokeVoidAsync("location.reload");
-        }
-    }
+        "en-US" => "en",
+        "ru-RU" => "ru",
+        _ => "en"
+    };
 }

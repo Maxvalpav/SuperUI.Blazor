@@ -7,7 +7,7 @@ using System.Text;
 
 namespace SuperUI.Components
 {
-    public partial class SgCalendar : ComponentBase
+    public partial class SgCalendar : ComponentBase, IDisposable
     {
         // ── Public API ─────────────────────────────────────────────────────────
 
@@ -118,6 +118,8 @@ namespace SuperUI.Components
 
         [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
+        private Action? _localeChangedHandler;
+
         // ── Internal state ─────────────────────────────────────────────────────
 
         private DateTime _currentMonth = DateTime.Today;
@@ -148,7 +150,15 @@ namespace SuperUI.Components
 
         protected override void OnInitialized()
         {
+            _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+            Localizer.OnLocaleChanged += _localeChangedHandler;
             _currentMonth = new DateTime(Value.Year, Value.Month, 1);
+        }
+
+        public void Dispose()
+        {
+            if (_localeChangedHandler is not null)
+                Localizer.OnLocaleChanged -= _localeChangedHandler;
         }
 
         protected override void OnParametersSet()

@@ -87,6 +87,8 @@ public partial class SgCountdown : IDisposable
 
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
+    private Action? _localeChangedHandler;
+
     /// <summary>True when the countdown has reached zero.</summary>
     public bool IsFinished => _timeLeft <= TimeSpan.Zero;
 
@@ -182,6 +184,8 @@ public partial class SgCountdown : IDisposable
 
     protected override void OnInitialized()
     {
+        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+        Localizer.OnLocaleChanged += _localeChangedHandler;
         UpdateTimeLeft();
         _initialCaptured = _timeLeft;
         _initialized = true;
@@ -272,6 +276,8 @@ public partial class SgCountdown : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        if (_localeChangedHandler is not null)
+            Localizer.OnLocaleChanged -= _localeChangedHandler;
         Stop();
     }
 }

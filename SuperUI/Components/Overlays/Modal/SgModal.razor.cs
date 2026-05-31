@@ -161,8 +161,6 @@ public partial class SgModal : SgOverlayComponentBase
     /// <summary>Fired when the minimize button is clicked.</summary>
     [Parameter] public EventCallback OnMinimized { get; set; }
 
-    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
-
     protected override string ModulePath => "./_content/SuperUI/superui-modal.js";
     protected override int ZIndexBase => CustomZIndex ?? SgZIndexService.ModalBase;
     protected override string IdPrefix => "sg-modal";

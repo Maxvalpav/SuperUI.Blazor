@@ -289,6 +289,13 @@ namespace SuperUI.Components
         private bool _isLoading = true;
 
         private double _totalWidth => _effectiveColumns?.Sum(c => c.Width) ?? 0;
+        private Action? _localeChangedHandler;
+
+        protected override void OnInitialized()
+        {
+            _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+            Localizer.OnLocaleChanged += _localeChangedHandler;
+        }
 
         protected override async Task OnAfterRenderAsync(bool firstRender)
         {
@@ -1760,6 +1767,8 @@ var prefix = col.Aggregate switch
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            if (_localeChangedHandler is not null)
+                Localizer.OnLocaleChanged -= _localeChangedHandler;
             try { _searchDebounce?.Cancel(); } catch (ObjectDisposedException) { }
             _searchDebounce?.Dispose();
             try { _updateCts?.Cancel(); } catch (ObjectDisposedException) { }

@@ -38,17 +38,14 @@ public static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         
-        if (configure != null)
-        {
-            services.Configure(configure);
-        }
+        services.Configure(configure ?? (_ => { }));
 
         // Toast, Confirm, and Notification services are Scoped to ensure proper isolation
         // in Blazor Server (per-circuit) and Blazor WebAssembly (per-session)
         services.TryAddScoped<SgToastService>();
         services.TryAddScoped<SgConfirmService>();
         services.TryAddScoped<SgNotificationService>();
-        services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
+        services.TryAddScoped<ISuperUILocalizer, SuperUILocalizer>();
         services.TryAddScoped<SgZIndexService>();
         
         services.TryAddSingleton<ThemeRegistry>(sp =>

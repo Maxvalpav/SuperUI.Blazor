@@ -288,6 +288,8 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
     [Inject] private ILogger<SgDataGrid<TItem>> Logger { get; set; } = default!;
 
+    private Action? _localeChangedHandler;
+
     private ElementReference _gridRootRef;
     private ElementReference _chooserRef;
     private ElementReference _exportRef;
@@ -296,6 +298,13 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     /// <summary>
     /// Gets or sets the collection of items to display in the grid.
     /// </summary>
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+        Localizer.OnLocaleChanged += _localeChangedHandler;
+    }
+
     [Parameter, EditorRequired] public IEnumerable<TItem> Items { get; set; } = default!;
 
     /// <summary>
@@ -6022,6 +6031,9 @@ private static object? ConvertFromString(string? text, Type type)
     public async ValueTask DisposeAsync()
     {
         _disposing = true;
+
+        if (_localeChangedHandler is not null)
+            Localizer.OnLocaleChanged -= _localeChangedHandler;
 
         // Cancel any pending debounce timers so they don't fire after disposal.
         try

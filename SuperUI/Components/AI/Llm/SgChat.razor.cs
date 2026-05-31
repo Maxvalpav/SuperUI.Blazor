@@ -47,6 +47,9 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
 
     protected override async Task OnInitializedAsync()
     {
+        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+        Localizer.OnLocaleChanged += _localeChangedHandler;
+
         LlmService.OnTokenReceived += HandleToken;
         LlmService.OnChatComplete += HandleComplete;
         LlmService.OnError += HandleError;
@@ -416,12 +419,16 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
         }
     }
 
+    private Action? _localeChangedHandler;
     private bool _disposed;
 
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
+
+        if (_localeChangedHandler is not null)
+            Localizer.OnLocaleChanged -= _localeChangedHandler;
 
         LlmService.OnTokenReceived -= HandleToken;
         LlmService.OnChatComplete -= HandleComplete;

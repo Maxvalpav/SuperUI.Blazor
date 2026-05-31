@@ -136,6 +136,8 @@ public partial class SgAlert : IDisposable
 
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
+    private Action? _localeChangedHandler;
+
     private string VariantClass => Variant switch
     {
         SgAlertVariant.Success => "sgc-success",
@@ -163,6 +165,8 @@ public partial class SgAlert : IDisposable
 
     protected override void OnInitialized()
     {
+        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+        Localizer.OnLocaleChanged += _localeChangedHandler;
         _collapsed = Collapsed;
         StartTimeout();
     }
@@ -289,6 +293,8 @@ public partial class SgAlert : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        if (_localeChangedHandler is not null)
+            Localizer.OnLocaleChanged -= _localeChangedHandler;
         _timeoutCts?.Cancel();
         _timeoutCts?.Dispose();
     }

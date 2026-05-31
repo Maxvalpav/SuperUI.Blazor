@@ -55,6 +55,9 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
 
     protected override async Task OnInitializedAsync()
     {
+        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+        Localizer.OnLocaleChanged += _localeChangedHandler;
+
         PuterService.OnTokenReceived += HandleToken;
         PuterService.OnChatComplete += HandleComplete;
         PuterService.OnError += HandleError;
@@ -353,12 +356,16 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
         StateHasChanged();
     }
 
+    private Action? _localeChangedHandler;
     private bool _disposed;
 
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
+
+        if (_localeChangedHandler is not null)
+            Localizer.OnLocaleChanged -= _localeChangedHandler;
 
         PuterService.OnTokenReceived -= HandleToken;
         PuterService.OnChatComplete -= HandleComplete;

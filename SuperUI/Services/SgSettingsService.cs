@@ -72,16 +72,13 @@ public class SgSettingsService
 
     public async Task SetLanguageAsync(string culture, bool reload = true)
     {
+        _localizer.SetLanguage(culture);
         await _js.InvokeVoidAsync("localStorage.setItem", "sui-language", culture);
-        if (reload)
-        {
-            await _js.InvokeVoidAsync("location.reload");
-        }
     }
 
     public async Task<string> GetLanguageAsync()
     {
-        return await _js.InvokeAsync<string>("localStorage.getItem", "sui-language") ?? "ru-RU";
+        return await _js.InvokeAsync<string>("localStorage.getItem", "sui-language") ?? "en";
     }
 
     public SgLlmConfig GetDefaultLlmConfig()
