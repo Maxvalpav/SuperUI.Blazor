@@ -88,17 +88,202 @@ export function vibrate(pattern) {
         navigator.vibrate(pattern);
         return true;
     }
-    return false;
+        return false;
+    }
 }
 
-export async function requestWakeLock() {
-    if (!('wakeLock' in navigator)) return null;
-    try {
-        const wakeLock = await navigator.wakeLock.request('screen');
-        return wakeLock;
-    } catch (err) {
-        return null;
+// ── MediaQuery ──────────────────────────────────────────────────────────
+let mqObserverRef = null;
+let mqQueryList = null;
+
+export function observeMediaQuery(query, dotNetRef) {
+    mqObserverRef = dotNetRef;
+    mqQueryList = window.matchMedia(query);
+    const handler = (e) => dotNetRef.invokeMethodAsync('OnMatchChanged', e.matches);
+    mqQueryList.addEventListener('change', handler);
+    mqQueryList._handler = handler;
+    dotNetRef.invokeMethodAsync('OnMatchChanged', mqQueryList.matches);
+}
+
+export function unobserveMediaQuery() {
+    if (mqQueryList && mqQueryList._handler) {
+        mqQueryList.removeEventListener('change', mqQueryList._handler);
+        delete mqQueryList._handler;
     }
+    mqQueryList = null;
+    mqObserverRef = null;
+}
+
+// ── KeyboardShortcut ────────────────────────────────────────────────────
+let shortcutRef = null;
+let shortcutHandler = null;
+
+export function registerShortcut(keys, dotNetRef) {
+    unregisterShortcut();
+    shortcutRef = dotNetRef;
+    const parsed = keys.split('+').map(s => s.trim().toLowerCase());
+    shortcutHandler = (e) => {
+        const match = parsed.every(key => {
+            if (key === 'ctrl') return e.ctrlKey || e.metaKey;
+            if (key === 'shift') return e.shiftKey;
+            if (key === 'alt') return e.altKey;
+            if (key === 'meta') return e.metaKey;
+            return e.key.toLowerCase() === key;
+        });
+        if (match) {
+            e.preventDefault();
+            e.stopPropagation();
+            dotNetRef.invokeMethodAsync('OnShortcutExecuted');
+        }
+    };
+    document.addEventListener('keydown', shortcutHandler);
+}
+
+export function unregisterShortcut() {
+    if (shortcutHandler) {
+        document.removeEventListener('keydown', shortcutHandler);
+        shortcutHandler = null;
+    }
+    shortcutRef = null;
+}
+
+// ── BeforeUnload ────────────────────────────────────────────────────────
+export function setBeforeUnload(prevent, message) {
+    if (prevent) {
+        window.onbeforeunload = () => message || true;
+    } else {
+        window.onbeforeunload = null;
+    }
+}
+
+// ── VisibilitySensor (IntersectionObserver) ─────────────────────────────
+const intersectionObservers = new Map();
+
+export function observeIntersection(element, threshold, rootMargin, once, dotNetRef) {
+    const cb = (entries) => {
+        const entry = entries[0];
+        dotNetRef.invokeMethodAsync('OnVisibilityChanged', entry.isIntersecting, entry.intersectionRatio);
+        if (once && entry.isIntersecting) {
+            unobserveIntersection(element);
+        }
+    };
+    const observer = new IntersectionObserver(cb, {
+        threshold: threshold ?? 0,
+        rootMargin: rootMargin ?? '0px'
+    });
+    observer.observe(element);
+    intersectionObservers.set(element, observer);
+}
+
+export function unobserveIntersection(element) {
+    const observer = intersectionObservers.get(element);
+    if (observer) {
+        observer.disconnect();
+        intersectionObservers.delete(element);
+    }
+}
+
+// ── LocalStorage ────────────────────────────────────────────────────────
+let localStorageRef = null;
+let localStorageKey = null;
+let localStorageHandler = null;
+
+export function initLocalStorageWatcher(key, dotNetRef) {
+    stopLocalStorageWatcher();
+    localStorageRef = dotNetRef;
+    localStorageKey = key;
+    localStorageHandler = (e) => {
+        if (e.key === key) {
+            dotNetRef.invokeMethodAsync('OnStorageChanged', e.newValue || '');
+        }
+    };
+    window.addEventListener('storage', localStorageHandler);
+}
+
+export function stopLocalStorageWatcher() {
+    if (localStorageHandler) {
+        window.removeEventListener('storage', localStorageHandler);
+        localStorageHandler = null;
+    }
+    localStorageRef = null;
+    localStorageKey = null;
+}
+
+// ── Fullscreen ──────────────────────────────────────────────────────────
+let fullscreenRef = null;
+let fullscreenHandler = null;
+
+export function enterFullscreen(element) {
+    if (element) {
+        element.requestFullscreen();
+    } else {
+        document.documentElement.requestFullscreen();
+    }
+}
+
+export function exitFullscreen() {
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    }
+}
+
+export function listenFullscreenChange(dotNetRef) {
+    stopListeningFullscreen();
+    fullscreenRef = dotNetRef;
+    fullscreenHandler = () => {
+        dotNetRef.invokeMethodAsync('OnFullscreenChanged', !!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', fullscreenHandler);
+}
+
+export function stopListeningFullscreen() {
+    if (fullscreenHandler) {
+        document.removeEventListener('fullscreenchange', fullscreenHandler);
+        fullscreenHandler = null;
+    }
+    fullscreenRef = null;
+}
+
+// ── FocusTracker ────────────────────────────────────────────────────────
+let focusTrackerRef = null;
+let focusTrackerScope = null;
+let focusInHandler = null;
+let focusOutHandler = null;
+
+export function initFocusTracker(scope, dotNetRef) {
+    stopFocusTracker();
+    focusTrackerRef = dotNetRef;
+    focusTrackerScope = scope;
+    const root = scope ? document.querySelector(scope) : document;
+    if (!root) return;
+    focusInHandler = (e) => {
+        const target = e.target;
+        const selector = target.id ? '#' + target.id : target.tagName.toLowerCase() +
+            (target.className ? '.' + target.className.split(' ').filter(c => c).join('.') : '');
+        dotNetRef.invokeMethodAsync('OnFocusedIn', selector);
+    };
+    focusOutHandler = (e) => {
+        const related = e.relatedTarget;
+        if (!related || (scope && !related.closest(scope))) {
+            dotNetRef.invokeMethodAsync('OnFocusedOut');
+        }
+    };
+    root.addEventListener('focusin', focusInHandler);
+    root.addEventListener('focusout', focusOutHandler);
+}
+
+export function stopFocusTracker() {
+    const root = focusTrackerScope ? document.querySelector(focusTrackerScope) : document;
+    if (root && focusInHandler) {
+        root.removeEventListener('focusin', focusInHandler);
+        root.removeEventListener('focusout', focusOutHandler);
+    }
+    focusInHandler = null;
+    focusOutHandler = null;
+    focusTrackerRef = null;
+    focusTrackerScope = null;
+}
+
 }
 
 export async function showNotification(title, options) {
@@ -1075,4 +1260,362 @@ export async function requestMidiAccess(dotNetRef) {
     } catch (e) {
         return false;
     }
+}
+
+// ── ClickOutside ────────────────────────────────────────────────────────────
+let clickOutsideRef = null;
+let clickOutsideExclude = null;
+let clickOutsideTarget = null;
+let clickOutsideHandler = null;
+
+export function initClickOutside(element, dotNetRef, excludeSelector) {
+    disposeClickOutside();
+    clickOutsideRef = dotNetRef;
+    clickOutsideTarget = element;
+    clickOutsideExclude = excludeSelector;
+    clickOutsideHandler = (e) => {
+        if (!dotNetRef) return;
+        if (!element || element === e.target || element.contains(e.target)) return;
+        if (excludeSelector && e.target.closest(excludeSelector)) return;
+        dotNetRef.invokeMethodAsync('OnOutsideClick', e.clientX, e.clientY);
+    };
+    document.addEventListener('click', clickOutsideHandler, true);
+}
+
+export function setClickOutsideEnabled(enabled) {
+    // The handler is handled in C# anyway, no JS-side changes needed
+}
+
+export function disposeClickOutside() {
+    if (clickOutsideHandler) {
+        document.removeEventListener('click', clickOutsideHandler, true);
+        clickOutsideHandler = null;
+    }
+    clickOutsideRef = null;
+    clickOutsideTarget = null;
+    clickOutsideExclude = null;
+}
+
+// ── LongPress ────────────────────────────────────────────────────────────────
+let longPressRef = null;
+let longPressTarget = null;
+let longPressDuration = 500;
+let longPressTimer = null;
+let longPressHandlers = null;
+
+export function initLongPress(element, duration, dotNetRef) {
+    disposeLongPress();
+    longPressRef = dotNetRef;
+    longPressTarget = element;
+    longPressDuration = duration || 500;
+
+    const start = (e) => {
+        dotNetRef.invokeMethodAsync('OnPressStarted');
+        longPressTimer = setTimeout(() => {
+            dotNetRef.invokeMethodAsync('OnLongPressFired');
+            longPressTimer = null;
+        }, longPressDuration);
+    };
+    const end = () => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+        dotNetRef.invokeMethodAsync('OnPressEnded');
+    };
+
+    longPressHandlers = { start, end };
+    element.addEventListener('mousedown', start);
+    element.addEventListener('mouseup', end);
+    element.addEventListener('mouseleave', end);
+    element.addEventListener('touchstart', start, { passive: true });
+    element.addEventListener('touchend', end, { passive: true });
+    element.addEventListener('touchcancel', end, { passive: true });
+}
+
+export function disposeLongPress() {
+    if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+    }
+    if (longPressTarget && longPressHandlers) {
+        longPressTarget.removeEventListener('mousedown', longPressHandlers.start);
+        longPressTarget.removeEventListener('mouseup', longPressHandlers.end);
+        longPressTarget.removeEventListener('mouseleave', longPressHandlers.end);
+        longPressTarget.removeEventListener('touchstart', longPressHandlers.start);
+        longPressTarget.removeEventListener('touchend', longPressHandlers.end);
+        longPressTarget.removeEventListener('touchcancel', longPressHandlers.end);
+    }
+    longPressRef = null;
+    longPressTarget = null;
+    longPressHandlers = null;
+}
+
+// ── FileDrop ─────────────────────────────────────────────────────────────────
+let fileDropRef = null;
+let fileDropTarget = null;
+
+export function initFileDrop(element, dotNetRef) {
+    disposeFileDrop();
+    fileDropRef = dotNetRef;
+    fileDropTarget = element;
+
+    element.addEventListener('dragenter', onFileDragEnter);
+    element.addEventListener('dragover', onFileDragOver);
+    element.addEventListener('dragleave', onFileDragLeave);
+    element.addEventListener('drop', onFileDrop);
+}
+
+function onFileDragEnter(e) {
+    e.preventDefault();
+    if (fileDropRef) fileDropRef.invokeMethodAsync('OnDragEntered');
+}
+
+function onFileDragOver(e) {
+    e.preventDefault();
+}
+
+function onFileDragLeave(e) {
+    e.preventDefault();
+    if (fileDropRef) fileDropRef.invokeMethodAsync('OnDragLeft');
+}
+
+function onFileDrop(e) {
+    e.preventDefault();
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+        if (fileDropRef) {
+            fileDropRef.invokeMethodAsync('OnFileDropped', file.name, file.size, file.type, reader.result);
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+export function disposeFileDrop() {
+    if (fileDropTarget) {
+        fileDropTarget.removeEventListener('dragenter', onFileDragEnter);
+        fileDropTarget.removeEventListener('dragover', onFileDragOver);
+        fileDropTarget.removeEventListener('dragleave', onFileDragLeave);
+        fileDropTarget.removeEventListener('drop', onFileDrop);
+    }
+    fileDropRef = null;
+    fileDropTarget = null;
+}
+
+// ── ElementSize (ResizeObserver) ─────────────────────────────────────────────
+let elementSizeRef = null;
+let elementSizeTarget = null;
+let elementSizeObserver = null;
+
+export function initElementSize(element, dotNetRef) {
+    disposeElementSize();
+    elementSizeRef = dotNetRef;
+    elementSizeTarget = element;
+    elementSizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const { inlineSize, blockSize } = entry.borderBoxSize?.[0] || { inlineSize: entry.contentRect.width, blockSize: entry.contentRect.height };
+        dotNetRef.invokeMethodAsync('OnSizeChangedInternal', inlineSize, blockSize);
+    });
+    elementSizeObserver.observe(element);
+    // Fire initial size
+    const rect = element.getBoundingClientRect();
+    dotNetRef.invokeMethodAsync('OnSizeChangedInternal', rect.width, rect.height);
+}
+
+export function disposeElementSize() {
+    if (elementSizeObserver) {
+        elementSizeObserver.disconnect();
+        elementSizeObserver = null;
+    }
+    elementSizeRef = null;
+    elementSizeTarget = null;
+}
+
+// ── ScrollSpy (IntersectionObserver) ─────────────────────────────────────────
+let scrollSpyRef = null;
+let scrollSpyObserver = null;
+let scrollSpySelector = '';
+
+export function initScrollSpy(selector, rootMargin, dotNetRef) {
+    disposeScrollSpy();
+    scrollSpyRef = dotNetRef;
+    scrollSpySelector = selector;
+
+    const headings = document.querySelectorAll(selector);
+    if (!headings.length) return;
+
+    const cb = (entries) => {
+        // Find the first intersecting entry at the top
+        const visible = entries.filter(e => e.isIntersecting);
+        if (visible.length > 0) {
+            const top = visible.reduce((a, b) => a.boundingClientRect.top < b.boundingClientRect.top ? a : b);
+            dotNetRef.invokeMethodAsync('OnActiveChangedInternal', top.target.id || null);
+        }
+    };
+
+    scrollSpyObserver = new IntersectionObserver(cb, { rootMargin: rootMargin || '-80px 0px -80% 0px' });
+    headings.forEach(h => scrollSpyObserver.observe(h));
+}
+
+export function disposeScrollSpy() {
+    if (scrollSpyObserver) {
+        scrollSpyObserver.disconnect();
+        scrollSpyObserver = null;
+    }
+    scrollSpyRef = null;
+}
+
+// ── AutoFocus ────────────────────────────────────────────────────────────────
+let focusDelayTimer = null;
+
+export function focusElement(element) {
+    if (!element) return;
+    element.focus();
+    if (element.select) element.select();
+}
+
+export function focusElementWithDelay(element, delayMs) {
+    cancelFocusDelay();
+    focusDelayTimer = setTimeout(() => {
+        focusElement(element);
+        focusDelayTimer = null;
+    }, delayMs || 0);
+}
+
+export function cancelFocusDelay() {
+    if (focusDelayTimer) {
+        clearTimeout(focusDelayTimer);
+        focusDelayTimer = null;
+    }
+}
+
+// ── TextSelect ──────────────────────────────────────────────────────────────
+let textSelectRef = null;
+let textSelectScope = null;
+let textSelectHandler = null;
+
+export function initTextSelect(scope, dotNetRef) {
+    disposeTextSelect();
+    textSelectRef = dotNetRef;
+    textSelectScope = scope;
+
+    textSelectHandler = () => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+            dotNetRef.invokeMethodAsync('OnTextSelected', null);
+            return;
+        }
+        const text = sel.toString().trim();
+        // If scope is set, verify the selection is within the scope
+        if (scope) {
+            const scopeEl = document.querySelector(scope);
+            if (!scopeEl) return;
+            let node = sel.anchorNode;
+            while (node && node !== document) {
+                if (node === scopeEl) {
+                    dotNetRef.invokeMethodAsync('OnTextSelected', text);
+                    return;
+                }
+                node = node.parentNode;
+            }
+            dotNetRef.invokeMethodAsync('OnTextSelected', null);
+        } else {
+            dotNetRef.invokeMethodAsync('OnTextSelected', text);
+        }
+    };
+
+    document.addEventListener('mouseup', textSelectHandler);
+    document.addEventListener('keyup', textSelectHandler);
+}
+
+export function disposeTextSelect() {
+    if (textSelectHandler) {
+        document.removeEventListener('mouseup', textSelectHandler);
+        document.removeEventListener('keyup', textSelectHandler);
+        textSelectHandler = null;
+    }
+    textSelectRef = null;
+    textSelectScope = null;
+}
+
+// ── ScriptState (Load external scripts/stylesheets) ──────────────────────────
+export function loadScript(url, dotNetRef) {
+    // Check if already loaded
+    const existing = document.querySelector(`script[src="${url}"]`);
+    if (existing) {
+        if (dotNetRef) dotNetRef.invokeMethodAsync('OnScriptLoaded');
+        return;
+    }
+    const script = document.createElement('script');
+    script.src = url;
+    script.onload = () => {
+        if (dotNetRef) dotNetRef.invokeMethodAsync('OnScriptLoaded');
+    };
+    script.onerror = () => {
+        if (dotNetRef) dotNetRef.invokeMethodAsync('OnScriptError', url);
+    };
+    document.head.appendChild(script);
+}
+
+export function loadStylesheet(url) {
+    const existing = document.querySelector(`link[href="${url}"]`);
+    if (existing) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = url;
+    document.head.appendChild(link);
+}
+
+// ── Focus trap ───────────────────────────────────────────────────────────────
+const _focusTrapMap = new Map();
+
+function _getFocusable(el) {
+    return el.querySelectorAll(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), '
+        + 'select:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled]), [contenteditable]');
+}
+
+/** Activates a focus trap on the given element. Returns a unique trap id. */
+export function activateFocusTrap(element, dotNetRef, id) {
+    const trapId = id || crypto.randomUUID();
+    const handler = (e) => {
+        if (e.key !== 'Tab') return;
+        const focusable = _getFocusable(element);
+        if (focusable.length === 0) {
+            e.preventDefault();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey) {
+            if (active === first || !element.contains(active)) {
+                e.preventDefault();
+                last.focus();
+            }
+        } else {
+            if (active === last || !element.contains(active)) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+    };
+    element.addEventListener('keydown', handler);
+    _focusTrapMap.set(trapId, { element, handler });
+    // Auto-focus first focusable
+    const focusable = _getFocusable(element);
+    if (focusable.length > 0) focusable[0].focus();
+    return trapId;
+}
+
+/** Deactivates the focus trap for the given id. */
+export function deactivateFocusTrap(id) {
+    const entry = _focusTrapMap.get(id);
+    if (!entry) return;
+    entry.element.removeEventListener('keydown', entry.handler);
+    _focusTrapMap.delete(id);
 }

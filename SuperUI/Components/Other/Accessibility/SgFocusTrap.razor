@@ -1,0 +1,71 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+<div @ref="_target" style="display:contents">@ChildContent</div>
+
+@code {
+    private ElementReference _target;
+    private string? _trapId;
+
+    /// <summary>Content inside the focus trap.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Whether the focus trap is active.</summary>
+    [Parameter] public bool Active { get; set; } = true;
+    /// <summary>Fires when the active state changes.</summary>
+    [Parameter] public EventCallback<bool> ActiveChanged { get; set; }
+    /// <summary>Optional auto-focus selector for the initial focused element. If null, focuses the first focusable.</summary>
+    [Parameter] public string? AutoFocusSelector { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (Active)
+            await ActivateTrapAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsInteractive) return;
+        if (Active && _trapId is null)
+            await ActivateTrapAsync();
+        else if (!Active && _trapId is not null)
+            await DeactivateTrapAsync();
+    }
+
+    private async Task ActivateTrapAsync()
+    {
+        var id = await SafeInvokeAsync<string>("activateFocusTrap", _target, SelfRef);
+        _trapId = id;
+    }
+
+    private async Task DeactivateTrapAsync()
+    {
+        if (_trapId is null) return;
+        await SafeInvokeVoidAsync("deactivateFocusTrap", _trapId);
+        _trapId = null;
+    }
+
+    /// <summary>Activates the focus trap.</summary>
+    public async Task ActivateAsync()
+    {
+        Active = true;
+        await ActiveChanged.InvokeAsync(true);
+        StateHasChanged();
+    }
+
+    /// <summary>Deactivates the focus trap.</summary>
+    public async Task DeactivateAsync()
+    {
+        Active = false;
+        await ActiveChanged.InvokeAsync(false);
+        StateHasChanged();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        if (_trapId is not null)
+            await SafeInvokeVoidAsync("deactivateFocusTrap", _trapId);
+    }
+}
