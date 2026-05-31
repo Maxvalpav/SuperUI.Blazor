@@ -1,0 +1,274 @@
+@namespace SuperUI.Components
+@implements IDisposable
+@using System.Text.Json
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
+
+<div class="sgc-locale-editor" style="padding: 1rem; max-width: 1200px; margin: 0 auto;">
+    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+        <h3 style="margin: 0; flex-shrink: 0;">@Localizer["Settings_Language"]</h3>
+        <input type="search" @bind="_search" @bind:after="() => StateHasChanged()"
+               placeholder="@Localizer["Common_Search"]..."
+               style="flex: 1; min-width: 200px; padding: 0.5rem 0.75rem; border: 1px solid var(--sg-border-color, #d0d5dd); border-radius: 6px; background: var(--sg-bg-secondary, #fff); color: var(--sg-text-primary, #000);" />
+        <span style="font-size: 0.875rem; color: var(--sg-text-secondary, #666);">
+            @_catalog.Count keys · @_domains.Count domains
+        </span>
+        <button @onclick="SaveAllAsync" disabled="@(!_hasChanges)"
+                style="padding: 0.5rem 1rem; border: none; border-radius: 6px; background: var(--sg-primary, #4f46e5); color: #fff; cursor: pointer; opacity: @(_hasChanges ? 1 : 0.5);">
+            @Localizer["Common_Save"]
+        </button>
+        <button @onclick="DiscardAllAsync" disabled="@(!_hasChanges)"
+                style="padding: 0.5rem 1rem; border: 1px solid var(--sg-border-color, #d0d5dd); border-radius: 6px; background: transparent; color: var(--sg-text-primary, #000); cursor: pointer; opacity: @(_hasChanges ? 1 : 0.5);">
+            @Localizer["Common_Reset"]
+        </button>
+    </div>
+
+    @if (_savedIndicator)
+    {
+        <div style="padding: 0.5rem 1rem; margin-bottom: 1rem; border-radius: 6px; background: #d1fae5; color: #065f46;">
+            @Localizer["Common_Saved"]
+        </div>
+    }
+
+    @foreach (var domain in _filteredDomains)
+    {
+        var entries = _filteredEntries[domain];
+        var domainExpanded = _expandedDomains.Contains(domain);
+        <div style="margin-bottom: 0.5rem; border: 1px solid var(--sg-border-color, #e5e7eb); border-radius: 8px; overflow: hidden;">
+            <div @onclick="() => ToggleDomain(domain)"
+                 style="display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; background: var(--sg-bg-tertiary, #f9fafb); cursor: pointer; user-select: none; font-weight: 600;">
+                <span style="transition: transform 0.2s; display: inline-block; transform: @(domainExpanded ? "rotate(90deg)" : "none")">&#9654;</span>
+                <span>@domain</span>
+                <span style="font-size: 0.8rem; color: var(--sg-text-secondary, #666); font-weight: 400;">@entries.Count keys</span>
+                @{
+                    var domainKey = domain;
+                    var domainOverrides = _editedValues.Where(kv => kv.Key.StartsWith(domainKey + "_") || kv.Key == domainKey).Count();
+                }
+                @if (domainOverrides > 0)
+                {
+                    <span style="margin-left: auto; font-size: 0.75rem; color: #4f46e5;">@domainOverrides edited</span>
+                }
+            </div>
+            @if (domainExpanded)
+            {
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                        <thead>
+                            <tr style="background: var(--sg-bg-secondary, #fff); border-bottom: 1px solid var(--sg-border-color, #e5e7eb);">
+                                <th style="padding: 0.5rem 1rem; text-align: left; white-space: nowrap;">Key</th>
+                                <th style="padding: 0.5rem 1rem; text-align: left; width: 40%;">@Localizer["Common_Value"]</th>
+                                <th style="padding: 0.5rem 1rem; text-align: left; width: 40%;">Override</th>
+                                <th style="padding: 0.5rem 1rem; text-align: center; width: 60px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in entries)
+                            {
+                                var original = entry.OriginalValue;
+                                var currentVal = Localizer[entry.Key];
+                                var isOverridden = _overrides.ContainsKey(entry.Key);
+                                var editVal = _editedValues.GetValueOrDefault(entry.Key, original);
+                                var hasChanged = isOverridden && _editedValues.GetValueOrDefault(entry.Key) != _originalOverrides.GetValueOrDefault(entry.Key)
+                                    || !isOverridden && _editedValues.ContainsKey(entry.Key) && _editedValues[entry.Key] != original;
+                                <tr style="border-bottom: 1px solid var(--sg-border-color, #f3f4f6);">
+                                    <td style="padding: 0.5rem 1rem; white-space: nowrap; font-family: monospace; font-size: 0.8rem; color: var(--sg-text-secondary, #666); max-width: 250px; overflow: hidden; text-overflow: ellipsis;" title="@entry.Key">
+                                        @entry.Key
+                                    </td>
+                                    <td style="padding: 0.5rem 1rem; color: var(--sg-text-secondary, #666);">
+                                        @if (currentVal != original)
+                                        {
+                                            <span style="text-decoration: line-through; opacity: 0.6;">@original</span>
+                                            <br />
+                                            <span style="color: var(--sg-text-primary, #000);">@currentVal</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@original</span>
+                                        }
+                                    </td>
+                                    <td style="padding: 0.5rem 1rem;">
+                                        <input type="text" @bind="editVal" @bind:after="() => OnEditChanged(entry.Key, editVal)"
+                                               style="width: 100%; padding: 0.35rem 0.5rem; border: 1px solid @(hasChanged ? "var(--sg-primary, #4f46e5)" : "var(--sg-border-color, #d0d5dd)"); border-radius: 4px; background: var(--sg-bg-secondary, #fff); color: var(--sg-text-primary, #000); font-size: 0.875rem;" />
+                                    </td>
+                                    <td style="padding: 0.5rem 1rem; text-align: center;">
+                                        @if (hasChanged)
+                                        {
+                                            <button @onclick="() => RevertKey(entry.Key)"
+                                                    style="border: none; background: none; cursor: pointer; color: var(--sg-text-secondary, #666); font-size: 1.1rem; padding: 0.25rem;"
+                                                    title="@Localizer["Common_Undo"]">&#8634;</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private Dictionary<string, LocaleEntry> _catalog = new();
+    private List<string> _domains = new();
+    private Dictionary<string, string> _overrides = new();
+    private Dictionary<string, string> _originalOverrides = new();
+    private Dictionary<string, string> _editedValues = new();
+    private HashSet<string> _expandedDomains = new();
+    private string _search = "";
+    private bool _hasChanges;
+    private bool _savedIndicator;
+    private bool _initialized;
+    private LocalizationService? _svc;
+
+    private List<string> _filteredDomains => _domains
+        .Where(d => _filteredEntries.ContainsKey(d) && _filteredEntries[d].Count > 0)
+        .ToList();
+
+    private Dictionary<string, List<LocaleEntry>> _filteredEntries
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_search))
+                return _catalog.Values.GroupBy(e => e.Domain).ToDictionary(g => g.Key, g => g.ToList());
+
+            var q = _search.Trim().ToLowerInvariant();
+            return _catalog.Values
+                .Where(e => e.Key.ToLowerInvariant().Contains(q) || e.OriginalValue.ToLowerInvariant().Contains(q))
+                .GroupBy(e => e.Domain)
+                .ToDictionary(g => g.Key, g => g.ToList());
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        _svc = Localizer as LocalizationService;
+        if (_svc is null) return;
+
+        _catalog = _svc.GetCatalog().ToDictionary(kv => kv.Key, kv => kv.Value);
+        _domains = _catalog.Values.Select(e => e.Domain).Distinct().OrderBy(d => d).ToList();
+
+        if (_domains.Count > 0)
+            _expandedDomains.Add(_domains[0]);
+
+        Localizer.OnLocaleChanged += HandleLocaleChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_initialized && _svc is not null)
+        {
+            _initialized = true;
+            try
+            {
+                var json = await JS.InvokeAsync<string>("localStorage.getItem", "sui-locale-overrides");
+                if (!string.IsNullOrEmpty(json))
+                {
+                    _overrides = JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? new();
+                    _svc.LoadOverrides(_overrides);
+                    _originalOverrides = new Dictionary<string, string>(_overrides);
+                }
+            }
+            catch { }
+            StateHasChanged();
+        }
+    }
+
+    private void HandleLocaleChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        if (Localizer is not null)
+            Localizer.OnLocaleChanged -= HandleLocaleChanged;
+    }
+
+    private void ToggleDomain(string domain)
+    {
+        if (!_expandedDomains.Remove(domain))
+            _expandedDomains.Add(domain);
+    }
+
+    private void OnEditChanged(string key, string value)
+    {
+        _editedValues[key] = value;
+        UpdateHasChanges();
+    }
+
+    private void RevertKey(string key)
+    {
+        _editedValues.Remove(key);
+        _overrides.Remove(key);
+        _svc?.RemoveOverride(key);
+        UpdateHasChanges();
+    }
+
+    private void UpdateHasChanges()
+    {
+        if (_svc is null) { _hasChanges = false; return; }
+        var currentOverrides = _svc.GetOverrides();
+        _hasChanges = !AreDictionariesEqual(currentOverrides, _originalOverrides);
+    }
+
+    private async Task SaveAllAsync()
+    {
+        if (_svc is null) return;
+
+        _svc.ClearOverrides();
+        foreach (var kv in _editedValues)
+        {
+            var original = _svc.GetOriginalValue(kv.Key);
+            if (kv.Value != original)
+                _svc.SetOverride(kv.Key, kv.Value);
+        }
+
+        var overrides = _svc.GetOverrides();
+        var json = JsonSerializer.Serialize(overrides);
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "sui-locale-overrides", json);
+        }
+        catch { }
+
+        _originalOverrides = new Dictionary<string, string>(overrides);
+        UpdateHasChanges();
+
+        _savedIndicator = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _savedIndicator = false;
+        StateHasChanged();
+    }
+
+    private async Task DiscardAllAsync()
+    {
+        if (_svc is null) return;
+
+        _svc.ClearOverrides();
+        _editedValues.Clear();
+        _overrides.Clear();
+
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", "sui-locale-overrides");
+        }
+        catch { }
+
+        _originalOverrides.Clear();
+        _hasChanges = false;
+    }
+
+    private static bool AreDictionariesEqual(Dictionary<string, string> a, Dictionary<string, string> b)
+    {
+        if (a.Count != b.Count) return false;
+        foreach (var kv in a)
+        {
+            if (!b.TryGetValue(kv.Key, out var val) || val != kv.Value)
+                return false;
+        }
+        return true;
+    }
+}
