@@ -249,107 +249,36 @@ internal class GraphiteSemanticLight : IThemeSemantic
     public virtual int ZTooltip  => 1100;
 }
 
-internal class GraphiteSemanticDark : IThemeSemantic
+internal class GraphiteSemanticDark : BaseDarkConsistent
 {
-    // Dark — «Антрацит»
-    public virtual string BgDefault     => "oklch(0.10 0.008 240)";
-    public virtual string BgSubtle      => "oklch(0.18 0.012 240)";
-    public virtual string BgMuted       => "oklch(0.15 0.01 240)";
-    public virtual string BgEmphasized  => "oklch(0.22 0.015 240)";
-    public virtual string BgOverlay     => "oklch(0 0 0 / 0.72)";
-    public virtual string BgGlass       => "oklch(0.10 0.008 240 / 0.7)";
-    public virtual string BorderGlass   => "oklch(0.99 0 0 / 0.08)";
-    public virtual string BlurGlass     => "16px";
+    public GraphiteSemanticDark() : base(240) { }
 
-    public virtual string Surface         => "oklch(0.13 0.012 240)";
-    public virtual string SurfaceRaised   => "oklch(0.15 0.015 240)";
-    public virtual string SurfaceOverlay  => "oklch(0.15 0.015 240)";
+    public override string ColorPrimary        => "oklch(0.65 0.07 240)";
+    public override string ColorPrimarySubtle  => "oklch(0.20 0.025 240)";
+    public override string ColorPrimaryMuted   => "oklch(0.28 0.035 240)";
+    public override string ColorPrimaryHover   => "oklch(0.72 0.07 240)";
+    public override string ColorPrimaryActive  => "oklch(0.59 0.07 240)";
+    public override string ColorPrimaryFg      => "oklch(0.10 0.008 240)";
 
-    public virtual string FgDefault   => "oklch(0.95 0.003 240)";
-    public virtual string FgSubtle    => "oklch(0.82 0.005 240)";
-    public virtual string FgMuted     => "oklch(0.62 0.008 240)";
-    public virtual string FgDisabled  => "oklch(0.40 0.01 240)";
-    public virtual string FgInverse   => "oklch(0.10 0.008 240)";
-    public virtual string FgLink      => "oklch(0.65 0.07 240)";
-    public virtual string FgLinkHover => "oklch(0.72 0.07 240)";
+    public override string ColorSuccess        => "oklch(0.58 0.07 155)";
+    public override string ColorSuccessSubtle  => "oklch(0.18 0.02 155)";
+    public override string ColorSuccessHover   => "oklch(0.64 0.07 155)";
+    public override string ColorSuccessFg      => "oklch(0.95 0.003 240)";
 
-    public virtual string BorderDefault => "oklch(0.25 0.015 240)";
-    public virtual string BorderSubtle  => "oklch(0.18 0.012 240)";
-    public virtual string BorderStrong  => "oklch(0.30 0.02 240)";
-    public virtual string BorderFocus   => "oklch(0.65 0.07 240)";
-    public virtual string Divider       => "oklch(0.18 0.012 240)";
+    public override string ColorDanger         => "oklch(0.58 0.12 10)";
+    public override string ColorDangerSubtle   => "oklch(0.20 0.035 10)";
+    public override string ColorDangerHover    => "oklch(0.64 0.12 10)";
+    public override string ColorDangerFg       => "oklch(0.95 0.003 240)";
 
-    public virtual string ColorPrimary        => "oklch(0.65 0.07 240)";
-    public virtual string ColorPrimarySubtle  => "oklch(0.20 0.025 240)";
-    public virtual string ColorPrimaryMuted   => "oklch(0.28 0.035 240)";
-    public virtual string ColorPrimaryHover   => "oklch(0.72 0.07 240)";
-    public virtual string ColorPrimaryActive  => "oklch(0.59 0.07 240)";
-    public virtual string ColorPrimaryFg      => "oklch(0.10 0.008 240)";
+    public override string ColorWarning        => "oklch(0.72 0.10 50)";
+    public override string ColorWarningSubtle  => "oklch(0.22 0.025 50)";
+    public override string ColorWarningHover   => "oklch(0.78 0.08 50)";
+    public override string ColorWarningFg      => "oklch(0.10 0.008 240)";
 
-    public virtual string ColorSuccess        => "oklch(0.58 0.07 155)";
-    public virtual string ColorSuccessSubtle  => "oklch(0.18 0.02 155)";
-    public virtual string ColorSuccessHover   => "oklch(0.64 0.07 155)";
-    public virtual string ColorSuccessFg      => "oklch(0.95 0.003 240)";
-
-    public virtual string ColorDanger         => "oklch(0.58 0.12 10)";
-    public virtual string ColorDangerSubtle   => "oklch(0.20 0.035 10)";
-    public virtual string ColorDangerHover    => "oklch(0.64 0.12 10)";
-    public virtual string ColorDangerFg       => "oklch(0.95 0.003 240)";
-
-    public virtual string ColorWarning        => "oklch(0.72 0.10 50)";
-    public virtual string ColorWarningSubtle  => "oklch(0.22 0.025 50)";
-    public virtual string ColorWarningHover   => "oklch(0.78 0.08 50)";
-    public virtual string ColorWarningFg      => "oklch(0.10 0.008 240)";
-
-    public virtual string ColorInfo           => "oklch(0.60 0.08 220)";
-    public virtual string ColorInfoSubtle     => "oklch(0.20 0.025 220)";
-    public virtual string ColorInfoHover      => "oklch(0.66 0.07 220)";
-    public virtual string ColorInfoFg         => "oklch(0.95 0.003 240)";
-
-    public virtual string Font     => "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-    public virtual string FontMono => "'JetBrains Mono', ui-monospace, monospace";
-    public virtual string TextSm   => "0.8125rem";
-    public virtual string TextBase => "1rem";
-    public virtual string TextLg   => "1.25rem";
-
-    public virtual string TextXs   => "0.6875rem";
-    public virtual string TextXl   => "1.125rem";
-    public virtual string Text2Xl  => "1.375rem";
-    public virtual string Text3Xl  => "1.75rem";
-
-    public virtual string FontWeightNormal   => "400";
-    public virtual string FontWeightMedium   => "500";
-    public virtual string FontWeightSemibold => "600";
-    public virtual string FontWeightBold     => "700";
-
-    public virtual string LineHeightTight   => "1.25";
-    public virtual string LineHeightNormal  => "1.5";
-    public virtual string LineHeightRelaxed => "1.75";
-
-    public virtual string ShadowXs => "0 1px 2px 0 oklch(0 0 0 / 0.40)";
-    public virtual string ShadowSm => "0 2px 4px -1px oklch(0 0 0 / 0.50)";
-    public virtual string ShadowMd => "0 4px 12px -2px oklch(0 0 0 / 0.55)";
-    public virtual string ShadowLg => "0 8px 24px -4px oklch(0 0 0 / 0.60)";
-    public virtual string ShadowXl => "0 16px 48px -8px oklch(0 0 0 / 0.65)";
-
-    public virtual string RadiusSm   => "5px";
-    public virtual string RadiusMd   => "8px";
-    public virtual string RadiusLg   => "13px";
-    public virtual string RadiusXl   => "21px";
-    public virtual string RadiusFull => "9999px";
-
-    public virtual string TransitionFast => "120ms cubic-bezier(0.37, 0, 0.63, 1)";
-    public virtual string TransitionBase => "200ms cubic-bezier(0.19, 1, 0.22, 1)";
-    public virtual string TransitionSlow => "350ms cubic-bezier(0.19, 1, 0.22, 1)";
-
-    public virtual string FocusRing       => "0 0 0 2px oklch(0.10 0.008 240), 0 0 0 4px oklch(0.65 0.07 240)";
-    public virtual string FocusRingDanger => "0 0 0 2px oklch(0.10 0.008 240), 0 0 0 4px oklch(0.58 0.12 10)";
-
-    public virtual int ZDropdown => 1000;
-    public virtual int ZSticky   => 1020;
-    public virtual int ZModal    => 1050;
-    public virtual int ZToast    => 1070;
-    public virtual int ZTooltip  => 1100;
+    public override string ColorInfo           => "oklch(0.60 0.08 220)";
+    public override string ColorInfoSubtle     => "oklch(0.20 0.025 220)";
+    public override string ColorInfoHover      => "oklch(0.66 0.07 220)";
+    public override string ColorInfoFg         => "oklch(0.95 0.003 240)";
 }
 
 internal class GraphiteComponents : IThemeComponents

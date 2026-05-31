@@ -186,69 +186,66 @@ internal class BaseSemanticLight : IThemeSemantic
 }
 
 /// <summary>
-/// Base dark semantic colors for built-in themes. Inherited by <see cref="ThemeBuilder"/>-generated themes.
+/// Base dark semantic colors — deprecated. Use <see cref="BaseDarkConsistent"/> instead.
+/// Preserved for backward compat with <see cref="ThemeBuilder"/>'s OverrideSemanticDark.
 /// </summary>
 internal class BaseSemanticDark : IThemeSemantic
 {
     // Dark — layers and backgrounds (slate, strict)
-    public virtual string BgDefault     => "oklch(0.12 0.008 240)";  // bg-app / slate-900
-    public virtual string BgSubtle      => "oklch(0.20 0.012 240)";  // element / slate-800
-    public virtual string BgMuted       => "oklch(0.17 0.010 240)";
-    public virtual string BgEmphasized  => "oklch(0.24 0.014 240)";
+    public virtual string BgDefault     => "oklch(0.11 0.008 240)";
+    public virtual string BgSubtle      => "oklch(0.15 0.010 240)";
+    public virtual string BgMuted       => "oklch(0.18 0.012 240)";
+    public virtual string BgEmphasized  => "oklch(0.22 0.014 240)";
     public virtual string BgOverlay     => "oklch(0 0 0 / 0.72)";
-    public virtual string BgGlass       => "oklch(0.12 0.008 240 / 0.7)";
+    public virtual string BgGlass       => "oklch(0.11 0.008 240 / 0.7)";
     public virtual string BorderGlass   => "oklch(0.99 0 0 / 0.10)";
     public virtual string BlurGlass     => "12px";
 
-    public virtual string Surface         => "oklch(0.14 0.010 240)";
-    public virtual string SurfaceRaised   => "oklch(0.16 0.012 240)";
-    public virtual string SurfaceOverlay  => "oklch(0.16 0.012 240)";
+    public virtual string Surface         => "oklch(0.16 0.012 240)";
+    public virtual string SurfaceRaised   => "oklch(0.20 0.014 240)";
+    public virtual string SurfaceOverlay  => "oklch(0.20 0.014 240)";
 
-    // Foreground — typography (slate)
-    public virtual string FgDefault   => "oklch(0.95 0.004 240)";
-    public virtual string FgSubtle    => "oklch(0.80 0.006 240)";
-    public virtual string FgMuted     => "oklch(0.58 0.008 240)";
-    public virtual string FgDisabled  => "oklch(0.42 0.010 240)";
-    public virtual string FgInverse   => "oklch(0.12 0.008 240)";
-    public virtual string FgLink      => "oklch(0.50 0.20 240)";
-    public virtual string FgLinkHover => "oklch(0.56 0.18 240)";
+    // Foreground — WCAG-optimized
+    public virtual string FgDefault   => "oklch(0.95 0.005 240)";  // >15:1
+    public virtual string FgSubtle    => "oklch(0.82 0.008 240)";  // ~10:1 AAA
+    public virtual string FgMuted     => "oklch(0.65 0.010 240)";  // ~7:1  AAA
+    public virtual string FgDisabled  => "oklch(0.55 0.010 240)";  // ~4.5:1 AA
+    public virtual string FgInverse   => "oklch(0.11 0.008 240)";
+    public virtual string FgLink      => "oklch(0.62 0.20 240)";
+    public virtual string FgLinkHover => "oklch(0.67 0.18 240)";
 
     // Borders
     public virtual string BorderDefault => "oklch(0.25 0.016 240)";
     public virtual string BorderSubtle  => "oklch(0.18 0.012 240)";
-    public virtual string BorderStrong  => "oklch(0.30 0.018 240)";
-    public virtual string BorderFocus   => "oklch(0.50 0.20 240)";
+    public virtual string BorderStrong  => "oklch(0.32 0.018 240)";
+    public virtual string BorderFocus   => "oklch(0.62 0.20 240)";
     public virtual string Divider       => "oklch(0.18 0.012 240)";
 
-    // Primary — Azure Blue (pure blue, hue 240°)
-    public virtual string ColorPrimary        => "oklch(0.50 0.20 240)";
-    public virtual string ColorPrimarySubtle  => "oklch(0.20 0.04 240)";
-    public virtual string ColorPrimaryMuted   => "oklch(0.28 0.07 240)";
-    public virtual string ColorPrimaryHover   => "oklch(0.56 0.18 240)";
-    public virtual string ColorPrimaryActive  => "oklch(0.45 0.20 240)";
+    // Primary — Azure Blue
+    public virtual string ColorPrimary        => "oklch(0.62 0.20 240)";
+    public virtual string ColorPrimarySubtle  => "oklch(0.22 0.05 240)";
+    public virtual string ColorPrimaryMuted   => "oklch(0.30 0.08 240)";
+    public virtual string ColorPrimaryHover   => "oklch(0.67 0.18 240)";
+    public virtual string ColorPrimaryActive  => "oklch(0.57 0.20 240)";
     public virtual string ColorPrimaryFg      => "oklch(0.98 0 0)";
 
-    // Success — #10b981 (emerald)
     public virtual string ColorSuccess        => "oklch(0.627 0.194 153.2)";
-    public virtual string ColorSuccessSubtle  => "oklch(0.20 0.04 153)";
+    public virtual string ColorSuccessSubtle  => "oklch(0.22 0.05 153)";
     public virtual string ColorSuccessHover   => "oklch(0.70 0.18 153)";
     public virtual string ColorSuccessFg      => "oklch(0.98 0 0)";
 
-    // Danger — #ef4444 (red-500)
     public virtual string ColorDanger         => "oklch(0.58 0.22 22)";
-    public virtual string ColorDangerSubtle   => "oklch(0.22 0.06 22)";
+    public virtual string ColorDangerSubtle   => "oklch(0.24 0.06 22)";
     public virtual string ColorDangerHover    => "oklch(0.65 0.20 22)";
     public virtual string ColorDangerFg       => "oklch(0.98 0 0)";
 
-    // Warning — #f59e0b (amber-500)
     public virtual string ColorWarning        => "oklch(0.74 0.16 75)";
-    public virtual string ColorWarningSubtle  => "oklch(0.24 0.04 75)";
+    public virtual string ColorWarningSubtle  => "oklch(0.26 0.05 75)";
     public virtual string ColorWarningHover   => "oklch(0.80 0.14 75)";
-    public virtual string ColorWarningFg      => "oklch(0.12 0.008 240)";
+    public virtual string ColorWarningFg      => "oklch(0.11 0.008 240)";
 
-    // Info — #0ea5e9 (sky-500)
     public virtual string ColorInfo           => "oklch(0.55 0.15 254)";
-    public virtual string ColorInfoSubtle     => "oklch(0.20 0.04 254)";
+    public virtual string ColorInfoSubtle     => "oklch(0.22 0.05 254)";
     public virtual string ColorInfoHover      => "oklch(0.60 0.14 254)";
     public virtual string ColorInfoFg         => "oklch(0.98 0 0)";
 
@@ -287,8 +284,131 @@ internal class BaseSemanticDark : IThemeSemantic
     public virtual string TransitionBase => "200ms cubic-bezier(0.19, 1, 0.22, 1)";
     public virtual string TransitionSlow => "350ms cubic-bezier(0.19, 1, 0.22, 1)";
 
-    public virtual string FocusRing       => "0 0 0 2px oklch(0.12 0.008 240), 0 0 0 4px oklch(0.50 0.20 240)";
-    public virtual string FocusRingDanger => "0 0 0 2px oklch(0.12 0.008 240), 0 0 0 4px oklch(0.58 0.22 22)";
+    public virtual string FocusRing       => "0 0 0 2px oklch(0.11 0.008 240), 0 0 0 4px oklch(0.62 0.20 240)";
+    public virtual string FocusRingDanger => "0 0 0 2px oklch(0.11 0.008 240), 0 0 0 4px oklch(0.58 0.22 22)";
+
+    public virtual int ZDropdown => 1000;
+    public virtual int ZSticky   => 1020;
+    public virtual int ZModal    => 1050;
+    public virtual int ZToast    => 1070;
+    public virtual int ZTooltip  => 1100;
+}
+
+/// <summary>
+/// Brand-consistent dark mode base.
+/// All surfaces use elevation-based layering (lighter = closer to user).
+/// Same brand hue as light mode, only lightness adjusted for dark background.
+/// WCAG AAA contrast on foreground/muted, AA on disabled.
+/// </summary>
+internal class BaseDarkConsistent : IThemeSemantic
+{
+    private readonly double _hue;
+
+    /// <param name="hue">Brand hue in degrees (same as light mode). Default 240° (cool base).</param>
+    public BaseDarkConsistent(double hue = 240)
+    {
+        _hue = hue;
+    }
+
+    // ── Background — elevation 0 (deepest) ────────────────────────
+    public virtual string BgDefault     => $"oklch(0.11 0.008 {_hue})";
+    public virtual string BgSubtle      => $"oklch(0.15 0.010 {_hue})";
+    public virtual string BgMuted       => $"oklch(0.18 0.012 {_hue})";
+    public virtual string BgEmphasized  => $"oklch(0.22 0.014 {_hue})";
+    public virtual string BgOverlay     => "oklch(0 0 0 / 0.72)";
+    public virtual string BgGlass       => $"oklch(0.11 0.008 {_hue} / 0.7)";
+    public virtual string BorderGlass   => "oklch(0.99 0 0 / 0.10)";
+    public virtual string BlurGlass     => "12px";
+
+    // ── Surfaces — elevation-based (lighter = higher elevation) ───
+    public virtual string Surface         => $"oklch(0.16 0.012 {_hue})";
+    public virtual string SurfaceRaised   => $"oklch(0.20 0.014 {_hue})";
+    public virtual string SurfaceOverlay  => $"oklch(0.20 0.014 {_hue})";
+
+    // ── Foreground — WCAG AAA optimized ───────────────────────────
+    public virtual string FgDefault   => $"oklch(0.95 0.005 {_hue})";  // >15:1
+    public virtual string FgSubtle    => $"oklch(0.82 0.008 {_hue})";  // ~10:1 AAA
+    public virtual string FgMuted     => $"oklch(0.65 0.010 {_hue})";  // ~7:1  AAA
+    public virtual string FgDisabled  => $"oklch(0.55 0.010 {_hue})";  // ~4.5:1 AA
+    public virtual string FgInverse   => $"oklch(0.11 0.008 {_hue})";
+    public virtual string FgLink      => $"oklch(0.62 0.20 {_hue})";
+    public virtual string FgLinkHover => $"oklch(0.67 0.18 {_hue})";
+
+    // ── Borders ──────────────────────────────────────────────────
+    public virtual string BorderDefault => $"oklch(0.25 0.016 {_hue})";
+    public virtual string BorderSubtle  => $"oklch(0.18 0.012 {_hue})";
+    public virtual string BorderStrong  => $"oklch(0.32 0.018 {_hue})";
+    public virtual string BorderFocus   => $"oklch(0.62 0.20 {_hue})";
+    public virtual string Divider       => $"oklch(0.18 0.012 {_hue})";
+
+    // ── Brand colors — same hue, lighter for dark bg ──────────────
+    public virtual string ColorPrimary        => $"oklch(0.62 0.20 {_hue})";
+    public virtual string ColorPrimarySubtle  => $"oklch(0.22 0.05 {_hue})";
+    public virtual string ColorPrimaryMuted   => $"oklch(0.30 0.08 {_hue})";
+    public virtual string ColorPrimaryHover   => $"oklch(0.67 0.18 {_hue})";
+    public virtual string ColorPrimaryActive  => $"oklch(0.57 0.20 {_hue})";
+    public virtual string ColorPrimaryFg      => "oklch(0.98 0 0)";
+
+    // ── Semantic states ───────────────────────────────────────────
+    public virtual string ColorSuccess        => "oklch(0.627 0.194 153.2)";
+    public virtual string ColorSuccessSubtle  => "oklch(0.22 0.05 153)";
+    public virtual string ColorSuccessHover   => "oklch(0.70 0.18 153)";
+    public virtual string ColorSuccessFg      => "oklch(0.98 0 0)";
+
+    public virtual string ColorDanger         => "oklch(0.58 0.22 22)";
+    public virtual string ColorDangerSubtle   => "oklch(0.24 0.06 22)";
+    public virtual string ColorDangerHover    => "oklch(0.65 0.20 22)";
+    public virtual string ColorDangerFg       => "oklch(0.98 0 0)";
+
+    public virtual string ColorWarning        => "oklch(0.74 0.16 75)";
+    public virtual string ColorWarningSubtle  => "oklch(0.26 0.05 75)";
+    public virtual string ColorWarningHover   => "oklch(0.80 0.14 75)";
+    public virtual string ColorWarningFg      => $"oklch(0.11 0.008 {_hue})";
+
+    public virtual string ColorInfo           => "oklch(0.55 0.15 254)";
+    public virtual string ColorInfoSubtle     => "oklch(0.22 0.05 254)";
+    public virtual string ColorInfoHover      => "oklch(0.60 0.14 254)";
+    public virtual string ColorInfoFg         => "oklch(0.98 0 0)";
+
+    // ── Typography ───────────────────────────────────────────────
+    public virtual string Font     => "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif";
+    public virtual string FontMono => "'JetBrains Mono', ui-monospace, monospace";
+    public virtual string TextXs   => "0.6875rem";
+    public virtual string TextSm   => "0.75rem";
+    public virtual string TextBase => "0.8125rem";
+    public virtual string TextLg   => "0.9375rem";
+    public virtual string TextXl   => "1.125rem";
+    public virtual string Text2Xl  => "1.375rem";
+    public virtual string Text3Xl  => "1.75rem";
+
+    public virtual string FontWeightNormal   => "400";
+    public virtual string FontWeightMedium   => "500";
+    public virtual string FontWeightSemibold => "600";
+    public virtual string FontWeightBold     => "700";
+
+    public virtual string LineHeightTight   => "1.25";
+    public virtual string LineHeightNormal  => "1.5";
+    public virtual string LineHeightRelaxed => "1.75";
+
+    // ── Shadows — pure black on dark bg for elevation feel ───────
+    public virtual string ShadowXs => "0 1px 2px 0 oklch(0 0 0 / 0.40)";
+    public virtual string ShadowSm => "0 2px 4px -1px oklch(0 0 0 / 0.50)";
+    public virtual string ShadowMd => "0 4px 12px -2px oklch(0 0 0 / 0.55)";
+    public virtual string ShadowLg => "0 8px 24px -4px oklch(0 0 0 / 0.60)";
+    public virtual string ShadowXl => "0 16px 48px -8px oklch(0 0 0 / 0.65)";
+
+    public virtual string RadiusSm   => "5px";
+    public virtual string RadiusMd   => "8px";
+    public virtual string RadiusLg   => "13px";
+    public virtual string RadiusXl   => "21px";
+    public virtual string RadiusFull => "9999px";
+
+    public virtual string TransitionFast => "120ms cubic-bezier(0.37, 0, 0.63, 1)";
+    public virtual string TransitionBase => "200ms cubic-bezier(0.19, 1, 0.22, 1)";
+    public virtual string TransitionSlow => "350ms cubic-bezier(0.19, 1, 0.22, 1)";
+
+    public virtual string FocusRing       => $"0 0 0 2px oklch(0.11 0.008 {_hue}), 0 0 0 4px oklch(0.62 0.20 {_hue})";
+    public virtual string FocusRingDanger => "0 0 0 2px oklch(0.11 0.008 240), 0 0 0 4px oklch(0.58 0.22 22)";
 
     public virtual int ZDropdown => 1000;
     public virtual int ZSticky   => 1020;
