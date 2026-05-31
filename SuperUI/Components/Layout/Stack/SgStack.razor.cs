@@ -150,9 +150,9 @@ public partial class SgStack : SgComponentBase
         .AddClass("sg-row-hoverable",   Hoverable)
         .Build();
 
-    private string FixUnit(string? value)
+    private string? FixUnit(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return "0px";
+        if (string.IsNullOrWhiteSpace(value)) return null;
         if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out _))
         {
             return value + "px";
