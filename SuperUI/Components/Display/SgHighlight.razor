@@ -1,0 +1,80 @@
+@namespace SuperUI.Components
+@inherits SgComponentBase
+
+@if (_segments is not null)
+{
+    @foreach (var seg in _segments)
+    {
+        if (seg.IsMatch)
+        {
+            <mark style="background:var(--sg-highlight-bg, #fef08a);color:var(--sg-highlight-fg, inherit);border-radius:2px;padding:0 2px">@seg.Text</mark>
+        }
+        else
+        {
+            @seg.Text
+        }
+    }
+}
+else
+{
+    @Text
+}
+
+@code {
+    private List<HighlightSegment>? _segments;
+
+    /// <summary>Text to search within.</summary>
+    [Parameter] public string? Text { get; set; }
+    /// <summary>Query string to highlight. Case-insensitive search.</summary>
+    [Parameter] public string? Query { get; set; }
+    /// <summary>When true (default), highlights all matches. When false, highlights only the first match.</summary>
+    [Parameter] public bool HighlightAll { get; set; } = true;
+    /// <summary>When true, the search is case-sensitive.</summary>
+    [Parameter] public bool CaseSensitive { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        BuildSegments();
+    }
+
+    private void BuildSegments()
+    {
+        _segments = null;
+
+        if (string.IsNullOrEmpty(Text) || string.IsNullOrEmpty(Query))
+            return;
+
+        var comparison = CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var text = Text;
+
+        _segments = new List<HighlightSegment>();
+        int lastIndex = 0;
+        int matchCount = 0;
+
+        for (int i = 0; i <= text.Length - Query.Length; )
+        {
+            int idx = text.IndexOf(Query, i, comparison);
+            if (idx < 0) break;
+
+            matchCount++;
+            if (!HighlightAll && matchCount > 1)
+            {
+                _segments.Add(new HighlightSegment(text[lastIndex..], false));
+                lastIndex = text.Length;
+                break;
+            }
+
+            if (idx > lastIndex)
+                _segments.Add(new HighlightSegment(text[lastIndex..idx], false));
+
+            _segments.Add(new HighlightSegment(text.Substring(idx, Query.Length), true));
+            lastIndex = idx + Query.Length;
+            i = lastIndex;
+        }
+
+        if (lastIndex < text.Length)
+            _segments.Add(new HighlightSegment(text[lastIndex..], false));
+    }
+
+    private record HighlightSegment(string Text, bool IsMatch);
+}
