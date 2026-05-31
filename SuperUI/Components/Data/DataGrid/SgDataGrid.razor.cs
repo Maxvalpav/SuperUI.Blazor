@@ -1259,7 +1259,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
         _pinnedColumns.Clear();
         foreach (var key in state.PinnedColumns)
             _pinnedColumns.Add(key);
-        System.Diagnostics.Debug.WriteLine($"[DataGrid] ImportStateAsync: Loaded pinned columns: {string.Join(",", _pinnedColumns)}");
+        Logger.LogDebug($"[DataGrid] ImportStateAsync: Loaded pinned columns: {string.Join(",", _pinnedColumns)}");
         _pinnedLeftOffsetsCache = null;
         _pinnedLeftOffsetsCacheVersion = -1;
         _columnsVersion++;
@@ -4226,7 +4226,7 @@ private static object? ConvertFromString(string? text, Type type)
 
         if (SelectionEnabled) left += 28;
 
-        System.Diagnostics.Debug.WriteLine($"[DataGrid] EnsurePinnedLeftOffsets: Building cache, pinnedColumns={string.Join(",", _pinnedColumns)}, initial left={left}px");
+        Logger.LogDebug($"[DataGrid] EnsurePinnedLeftOffsets: Building cache, pinnedColumns={string.Join(",", _pinnedColumns)}, initial left={left}px");
 
         var visibleColumns = VisibleColumns;
         
@@ -4241,12 +4241,12 @@ private static object? ConvertFromString(string? text, Type type)
             var width = EstimateWidth(column);
             // Store the current left position for this pinned column
             _pinnedLeftOffsetsCache[column.Key] = left;
-            System.Diagnostics.Debug.WriteLine($"[DataGrid]   Pinned: {column.Key}, left={left}px, width={width}px");
+            Logger.LogDebug($"[DataGrid]   Pinned: {column.Key}, left={left}px, width={width}px");
             // Add this column's width to left for the next pinned column
             left += width;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[DataGrid] EnsurePinnedLeftOffsets: Complete, {_pinnedLeftOffsetsCache.Count} pinned columns");
+        Logger.LogDebug($"[DataGrid] EnsurePinnedLeftOffsets: Complete, {_pinnedLeftOffsetsCache.Count} pinned columns");
         _pinnedLeftOffsetsCacheVersion = _columnsVersion;
     }
 
@@ -4470,13 +4470,13 @@ private static object? ConvertFromString(string? text, Type type)
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] ========== APPLY CHOOSER CHANGES START ==========");
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] _chooserPinnedColumns before: {string.Join(",", _chooserPinnedColumns)}");
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] _pinnedColumns before: {string.Join(",", _pinnedColumns)}");
+            Logger.LogDebug($"[DataGrid] ========== APPLY CHOOSER CHANGES START ==========");
+            Logger.LogDebug($"[DataGrid] _chooserPinnedColumns before: {string.Join(",", _chooserPinnedColumns)}");
+            Logger.LogDebug($"[DataGrid] _pinnedColumns before: {string.Join(",", _pinnedColumns)}");
             
             // Close menu FIRST before applying changes
             _showChooser = false;
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Chooser closed, _showChooser = false");
+            Logger.LogDebug($"[DataGrid] Chooser closed, _showChooser = false");
             
             // Apply changes
             _hiddenColumns.Clear();
@@ -4487,12 +4487,12 @@ private static object? ConvertFromString(string? text, Type type)
             foreach (var key in _chooserPinnedColumns)
                 _pinnedColumns.Add(key);
 
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Hidden columns: {string.Join(", ", _hiddenColumns)}");
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Pinned columns after: {string.Join(", ", _pinnedColumns)}");
+            Logger.LogDebug($"[DataGrid] Hidden columns: {string.Join(", ", _hiddenColumns)}");
+            Logger.LogDebug($"[DataGrid] Pinned columns after: {string.Join(", ", _pinnedColumns)}");
 
             // Invalidate all caches
             _columnsVersion++;
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] _columnsVersion incremented to: {_columnsVersion}");
+            Logger.LogDebug($"[DataGrid] _columnsVersion incremented to: {_columnsVersion}");
             
             _pinnedLeftOffsetsCache = null;
             _pinnedLeftOffsetsCacheVersion = -1;
@@ -4503,26 +4503,26 @@ private static object? ConvertFromString(string? text, Type type)
             _orderedColumnsCacheColumnsVersion = -1;
             InvalidateComputedRowsCache();
             
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] All caches invalidated");
+            Logger.LogDebug($"[DataGrid] All caches invalidated");
             
             // Force rebuild of pinned offsets cache
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Forcing rebuild of pinned offsets cache...");
+            Logger.LogDebug($"[DataGrid] Forcing rebuild of pinned offsets cache...");
             EnsurePinnedLeftOffsets();
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Pinned offsets cache rebuilt");
+            Logger.LogDebug($"[DataGrid] Pinned offsets cache rebuilt");
             
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Calling StateHasChanged...");
+            Logger.LogDebug($"[DataGrid] Calling StateHasChanged...");
             await InvokeAsync(StateHasChanged);
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] StateHasChanged completed");
+            Logger.LogDebug($"[DataGrid] StateHasChanged completed");
             
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Saving state...");
+            Logger.LogDebug($"[DataGrid] Saving state...");
             await SaveStateAsync();
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] State saved");
+            Logger.LogDebug($"[DataGrid] State saved");
             
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] ========== APPLY CHOOSER CHANGES END ==========");
+            Logger.LogDebug($"[DataGrid] ========== APPLY CHOOSER CHANGES END ==========");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] ERROR in ApplyChooserChangesAsync: {ex.Message}\n{ex.StackTrace}");
+            Logger.LogError(ex, "[DataGrid] ApplyChooserChangesAsync failed");
         }
     }
 
@@ -4530,7 +4530,7 @@ private static object? ConvertFromString(string? text, Type type)
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Apply button clicked!");
+            Logger.LogDebug($"[DataGrid] Apply button clicked!");
             
             // Apply changes but keep menu open
             _hiddenColumns.Clear();
@@ -4541,8 +4541,8 @@ private static object? ConvertFromString(string? text, Type type)
             foreach (var key in _chooserPinnedColumns)
                 _pinnedColumns.Add(key);
 
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Hidden columns: {string.Join(", ", _hiddenColumns)}");
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Pinned columns: {string.Join(", ", _pinnedColumns)}");
+            Logger.LogDebug($"[DataGrid] Hidden columns: {string.Join(", ", _hiddenColumns)}");
+            Logger.LogDebug($"[DataGrid] Pinned columns: {string.Join(", ", _pinnedColumns)}");
 
             // Invalidate all caches
             _columnsVersion++;
@@ -4558,17 +4558,17 @@ private static object? ConvertFromString(string? text, Type type)
             // Force rebuild of pinned offsets cache
             EnsurePinnedLeftOffsets();
             
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Changes applied, calling StateHasChanged");
+            Logger.LogDebug($"[DataGrid] Changes applied, calling StateHasChanged");
             await InvokeAsync(StateHasChanged);
             
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Saving state");
+            Logger.LogDebug($"[DataGrid] Saving state");
             await SaveStateAsync();
             
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Apply completed successfully");
+            Logger.LogDebug($"[DataGrid] Apply completed successfully");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[DataGrid] Error in ApplyChooserChangesWithoutClosingAsync: {ex.Message}\n{ex.StackTrace}");
+            Logger.LogError(ex, "[DataGrid] ApplyChooserChangesWithoutClosingAsync failed");
         }
     }
 
@@ -6334,3 +6334,4 @@ public sealed class AutoDetailProperty
     /// <summary>For Object: the object type. For Collection: the element type.</summary>
     public Type ItemType { get; }
 }
+
