@@ -22,12 +22,27 @@
                 style="padding: 0.5rem 1rem; border: 1px solid var(--sg-border-color, #d0d5dd); border-radius: 6px; background: transparent; color: var(--sg-text-primary, #000); cursor: pointer; opacity: @(_hasChanges ? 1 : 0.5);">
             @Localizer["Common_Reset"]
         </button>
+        <span style="flex:1;min-width:0"></span>
+        <button @onclick="DownloadOverridesAsync"
+                style="padding: 0.5rem 1rem; border: 1px solid var(--sg-border-color, #d0d5dd); border-radius: 6px; background: transparent; color: var(--sg-text-primary, #000); cursor: pointer;">
+            &#8595; Download JSON
+        </button>
+        <button @onclick="TriggerUploadAsync"
+                style="padding: 0.5rem 1rem; border: 1px solid var(--sg-border-color, #d0d5dd); border-radius: 6px; background: transparent; color: var(--sg-text-primary, #000); cursor: pointer;">
+            &#8593; Upload JSON
+        </button>
     </div>
 
     @if (_savedIndicator)
     {
         <div style="padding: 0.5rem 1rem; margin-bottom: 1rem; border-radius: 6px; background: #d1fae5; color: #065f46;">
             @Localizer["Common_Saved"]
+        </div>
+    }
+    @if (_errorMessage is not null)
+    {
+        <div style="padding: 0.5rem 1rem; margin-bottom: 1rem; border-radius: 6px; background: #fee2e2; color: #991b1b;">
+            @_errorMessage
         </div>
     }
 
@@ -119,6 +134,7 @@
     private string _search = "";
     private bool _hasChanges;
     private bool _savedIndicator;
+    private string? _errorMessage;
     private bool _initialized;
     private LocalizationService? _svc;
 
@@ -270,5 +286,71 @@
                 return false;
         }
         return true;
+    }
+
+    private async Task DownloadOverridesAsync()
+    {
+        if (_svc is null) return;
+        var overrides = _svc.GetOverrides();
+        var json = JsonSerializer.Serialize(overrides, new JsonSerializerOptions { WriteIndented = true });
+        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json));
+        try
+        {
+            await JS.InvokeVoidAsync("eval",
+                $"const a=document.createElement('a');a.href='data:application/json;base64,{base64}';a.download='locale-overrides.json';document.body.appendChild(a);a.click();document.body.removeChild(a);");
+        }
+        catch { }
+    }
+
+    private async Task TriggerUploadAsync()
+    {
+        _errorMessage = null;
+        try
+        {
+            var json = await JS.InvokeAsync<string>("eval", @"
+                new Promise(function(resolve, reject) {
+                    var input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.json';
+                    input.onchange = function(e) {
+                        var file = e.target.files[0];
+                        if (!file) { resolve(null); return; }
+                        var reader = new FileReader();
+                        reader.onload = function(ev) { resolve(ev.target.result); };
+                        reader.onerror = function() { reject('read error'); };
+                        reader.readAsText(file);
+                    };
+                    input.click();
+                });
+            ");
+            if (string.IsNullOrEmpty(json)) return;
+
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            if (parsed is null) { _errorMessage = "Invalid JSON format"; StateHasChanged(); return; }
+
+            if (_svc is null) return;
+            _svc.LoadOverrides(parsed);
+            _overrides = new Dictionary<string, string>(parsed);
+            _editedValues = new Dictionary<string, string>(parsed);
+            _originalOverrides = new Dictionary<string, string>(parsed);
+            _hasChanges = false;
+
+            try
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", "sui-locale-overrides", json);
+            }
+            catch { }
+
+            _savedIndicator = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _savedIndicator = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Upload failed: {ex.Message}";
+            StateHasChanged();
+        }
     }
 }
