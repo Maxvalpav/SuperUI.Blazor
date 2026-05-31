@@ -3,7 +3,7 @@ using SuperUI.Localization;
 using SuperUI.Enums;
 using SuperUI.Services.Llm;
 
-namespace SuperUI.Components;
+namespace SuperUI.Components.Llm;
 
 /// <summary>Settings panel for LLM configuration.</summary>
 public partial class SgLlmSettings : ComponentBase, IDisposable
