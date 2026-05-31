@@ -88,8 +88,7 @@ export function vibrate(pattern) {
         navigator.vibrate(pattern);
         return true;
     }
-        return false;
-    }
+    return false;
 }
 
 // ── MediaQuery ──────────────────────────────────────────────────────────
@@ -282,8 +281,6 @@ export function stopFocusTracker() {
     focusOutHandler = null;
     focusTrackerRef = null;
     focusTrackerScope = null;
-}
-
 }
 
 export async function showNotification(title, options) {
