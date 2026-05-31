@@ -1,0 +1,105 @@
+@page "/image-editor-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+
+<PageTitle>Image Editor — SuperUI</PageTitle>
+
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false">
+    <ChildContent>
+
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgImageEditor — Full Canvas Image Editor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Crop, rotate, flip, apply filters, draw freehand with undo/redo support.
+                Load an image via URL or file upload and edit it directly in the browser.
+            </SgTypography>
+        </div>
+
+        <div class="demo-url-row">
+            <input type="text" class="demo-url-input"
+                   value="@_imageUrl"
+                   @onchange="OnUrlChanged"
+                   @onkeydown="OnUrlKeyDown"
+                   placeholder="Paste image URL and press Enter..." />
+            <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="LoadFromUrl">
+                Load
+            </SgButton>
+        </div>
+
+        <SgImageEditor @ref="_editor"
+                       Src="@_imageUrl"
+                       Width="100%"
+                       Height="600px"
+                       PenColor="#3b82f6"
+                       PenWidth="3" />
+
+        <SgStack Spacing="SgSize.Sm" Wrap="true" Class="demo-info-row">
+            <SgTag>File upload via toolbar upload button</SgTag>
+            <SgTag>Keyboard: Ctrl+Z undo · Ctrl+Shift+Z redo · Esc cancel crop</SgTag>
+            @if (_imageWidth > 0)
+            {
+                <SgTag Color="info">@(_imageWidth)×@(_imageHeight)px</SgTag>
+            }
+        </SgStack>
+    </div>
+
+    </ChildContent>
+</SgCard>
+
+<style>
+    .demo-url-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        align-items: center;
+    }
+    .demo-url-row > :first-child {
+        flex: 1;
+    }
+    .demo-url-input {
+        flex: 1;
+        padding: 8px 12px;
+        border: 1px solid var(--sg-border, #d1d5db);
+        border-radius: var(--sg-radius-sm, 4px);
+        font-size: 14px;
+        background: var(--sui-bg, #fff);
+        color: var(--sg-fg, #374151);
+        outline: none;
+    }
+    .demo-url-input:focus {
+        border-color: var(--sg-color-primary, #3b82f6);
+        box-shadow: 0 0 0 2px var(--sg-color-primary-alpha, #dbeafe);
+    }
+    .demo-info-row {
+        margin-top: 16px;
+    }
+</style>
+
+@code {
+    private SgImageEditor? _editor;
+    private string _imageUrl = "https://picsum.photos/800/500";
+    private int _imageWidth;
+    private int _imageHeight;
+
+    private async Task LoadFromUrl()
+    {
+        if (string.IsNullOrWhiteSpace(_imageUrl)) return;
+        _imageWidth = 0;
+        _imageHeight = 0;
+    }
+
+    private void OnUrlChanged(ChangeEventArgs e)
+    {
+        _imageUrl = e.Value?.ToString() ?? "";
+    }
+
+    private async Task OnUrlKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await LoadFromUrl();
+    }
+}
