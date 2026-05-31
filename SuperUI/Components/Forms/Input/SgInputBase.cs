@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
-using SuperUI.Localization;
+using SuperUI.Base.ComponentBases;
 
 namespace SuperUI.Components;
 
@@ -12,9 +12,8 @@ namespace SuperUI.Components;
 /// the field participates in <c>OnFieldChanged</c>/<c>OnValidationStateChanged</c> notifications.
 /// </summary>
 /// <typeparam name="TValue">Type of the bound value.</typeparam>
-public abstract class SgInputBase<TValue> : ComponentBase, IDisposable
+public abstract class SgInputBase<TValue> : SgComponentBase, IDisposable
 {
-    private bool _disposed;
     private bool _hasInitializedParameters;
     private EditContext? _previousEditContext;
     private Expression<Func<TValue?>>? _previousValueExpression;
@@ -24,8 +23,6 @@ public abstract class SgInputBase<TValue> : ComponentBase, IDisposable
     /// Optional cascading <see cref="EditContext"/> supplied by an ancestor <c>EditForm</c>.
     /// </summary>
     [CascadingParameter] protected EditContext? CascadedEditContext { get; set; }
-
-    [Inject] protected ISuperUILocalizer Localizer { get; set; } = default!;
 
     /// <summary>The value bound to the input.</summary>
     [Parameter] public TValue? Value { get; set; }
@@ -67,7 +64,6 @@ public abstract class SgInputBase<TValue> : ComponentBase, IDisposable
             {
                 CascadedEditContext.OnValidationStateChanged += HandleValidationStateChanged;
             }
-            Localizer.OnLocaleChanged += HandleLocaleChanged;
             _hasInitializedParameters = true;
         }
         else if (!ReferenceEquals(_previousValueExpression, ValueExpression))
@@ -120,25 +116,14 @@ public abstract class SgInputBase<TValue> : ComponentBase, IDisposable
             System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
     }
 
-    private void HandleLocaleChanged()
-    {
-        if (_disposed) return;
-        _ = InvokeAsync(StateHasChanged).ContinueWith(
-            t => Console.Error.WriteLine($"[SgInputBase] StateHasChanged on locale change failed: {t.Exception}"),
-            System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
-    }
-
     public virtual void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
         if (_previousEditContext is not null)
         {
             _previousEditContext.OnValidationStateChanged -= HandleValidationStateChanged;
             _previousEditContext = null;
         }
-        if (Localizer is not null)
-            Localizer.OnLocaleChanged -= HandleLocaleChanged;
-        GC.SuppressFinalize(this);
+        base.Dispose();
     }
 }
