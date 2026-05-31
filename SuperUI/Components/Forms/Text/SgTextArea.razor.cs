@@ -270,7 +270,8 @@ public partial class SgTextArea : IDisposable
             _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
             await _module.InvokeVoidAsync("focusElement", _textareaRef);
         }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
     }
 
     private async Task OnFocusAsync(FocusEventArgs e)
@@ -283,7 +284,8 @@ public partial class SgTextArea : IDisposable
                 _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
                 await _module.InvokeVoidAsync("selectText", _textareaRef);
             }
-            catch { }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
         }
         await OnFocus.InvokeAsync(e);
     }
@@ -364,7 +366,8 @@ public partial class SgTextArea : IDisposable
             _pasteValue = plain;
             StateHasChanged();
         }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
     }
 
     // ── Emoji handling ───────────────────────────────────────────────────

@@ -280,7 +280,8 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
     {
         if (_llmModule is not null) return;
         try { _llmModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-llm.js"); }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
     }
 
     private async Task RenderMarkdownAsync(SgLlmMessage msg)

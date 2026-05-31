@@ -329,7 +329,8 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
             if (_llmModule is not null)
                 await _llmModule.InvokeVoidAsync("scrollChatToBottom", ".sg-chat-messages");
         }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
     }
 
     // ── Markdown rendering ────────────────────────────────────────────────────
@@ -352,7 +353,8 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
     {
         if (_llmModule is not null) return;
         try { _llmModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-llm.js"); }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
     }
 
     private async Task RenderMarkdownAsync(SgLlmMessage msg)
