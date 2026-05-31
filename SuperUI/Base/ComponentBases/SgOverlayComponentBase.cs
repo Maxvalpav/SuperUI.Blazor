@@ -126,7 +126,7 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
     /// <summary>
     /// Программно закрывает оверлей.
     /// </summary>
-    public async Task CloseAsync()
+    public virtual async Task CloseAsync()
     {
         if (IsDisposed || _isClosing || !Visible) return;
 

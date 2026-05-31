@@ -222,6 +222,17 @@ public partial class SgModal : SgOverlayComponentBase
             await OnClose.InvokeAsync();
     }
 
+    protected override async ValueTask OnDisposingAsync()
+    {
+        if (Visible)
+        {
+            if (ResponsiveMode)
+                await SafeInvokeVoidAsync("unwatchResponsive", RootRef);
+            await SafeInvokeVoidAsync("detach", RootRef);
+        }
+        await base.OnDisposingAsync();
+    }
+
     // ── JS-invokable ────────────────────────────────────────────────────
 
     [JSInvokable]

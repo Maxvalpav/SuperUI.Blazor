@@ -263,7 +263,7 @@
     {
         if (_timeouts.Remove(id, out var cts))
         {
-            try { cts.Cancel(); } catch { }
+            try { cts.Cancel(); } catch (ObjectDisposedException) { }
             cts.Dispose();
         }
     }
@@ -333,7 +333,7 @@
         var toast = _items.FirstOrDefault(x => x.Id == id);
         if (toast?.OnClose is not null)
         {
-            try { toast.OnClose.Invoke(id); } catch { }
+            try { toast.OnClose.Invoke(id); } catch (Exception ex) { System.Console.Error.WriteLine($"[SgToastHost] OnClose failed: {ex.Message}"); }
         }
 
         _items.RemoveAll(x => x.Id == id);
@@ -425,11 +425,11 @@
         Toasts.Removed -= OnRemove;
         Toasts.Updated -= OnUpdate;
 
-        try { _hostCts.Cancel(); } catch { }
+        try { _hostCts.Cancel(); } catch (ObjectDisposedException) { }
 
         foreach (var cts in _timeouts.Values)
         {
-            try { cts.Cancel(); } catch { }
+            try { cts.Cancel(); } catch (ObjectDisposedException) { }
             cts.Dispose();
         }
         _timeouts.Clear();

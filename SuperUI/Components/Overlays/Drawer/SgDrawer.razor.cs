@@ -242,8 +242,15 @@ public partial class SgDrawer : SgOverlayComponentBase
             await OnClosed.InvokeAsync();
     }
 
+    protected override ValueTask OnDisposingAsync()
+    {
+        if (Visible)
+            _ = SafeInvokeVoidAsync("detach", RootRef);
+        return base.OnDisposingAsync();
+    }
+
     // ── Close logic with confirm ─────────────────────────────────────────
-    public new async Task CloseAsync()
+    public override async Task CloseAsync()
     {
         if (IsDisposed || IsClosing || !Visible) return;
 
