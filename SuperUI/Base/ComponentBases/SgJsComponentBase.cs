@@ -268,6 +268,8 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
         Module = null;
 
         GC.SuppressFinalize(this);
+
+        await base.DisposeAsync();
     }
 
     // ── Private ───────────────────────────────────────────────────────────────
