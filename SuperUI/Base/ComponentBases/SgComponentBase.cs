@@ -13,7 +13,7 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
 {
     private string? _autoId;
     private ILogger? _logger;
-    private bool _disposed;
+    protected bool _disposed;
     private Action<IThemeDefinition, string>? _themeChangedHandler;
     private Action? _localeChangedHandler;
 
