@@ -36,7 +36,7 @@ public partial class SgTable<TItem> : SgComponentBase
     private List<SgTableHeaderGroup<TItem>> _headerGroups = new();
     private bool _showExportMenu;
     private ElementReference _exportRef;
-    private bool _isDisposed;
+
 
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
@@ -571,7 +571,7 @@ public partial class SgTable<TItem> : SgComponentBase
     {
         _ = Task.Delay(200).ContinueWith(_ =>
         {
-            if (_isDisposed) return;
+            if (_disposed) return;
             _showExportMenu = false;
             InvokeAsync(StateHasChanged);
         });
@@ -579,8 +579,8 @@ public partial class SgTable<TItem> : SgComponentBase
 
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (_disposed) return;
+        _disposed = true;
 
         if (_jsModule is not null)
         {
@@ -594,6 +594,8 @@ public partial class SgTable<TItem> : SgComponentBase
             catch (ObjectDisposedException) { }
         }
         _jsModule = null;
+
+        await base.DisposeAsync();
     }
 
     private static string EscapeCsv(string value)
