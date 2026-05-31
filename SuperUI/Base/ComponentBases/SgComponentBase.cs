@@ -14,6 +14,8 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
     private string? _autoId;
     private ILogger? _logger;
     private bool _disposed;
+    private Action<IThemeDefinition, string>? _themeChangedHandler;
+    private Action? _localeChangedHandler;
 
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public string? Style { get; set; }
@@ -33,43 +35,35 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        ThemeService.ThemeChanged += HandleThemeChanged;
-        Localizer.OnLocaleChanged += HandleLocaleChanged;
-    }
-
-    private async void HandleThemeChanged(IThemeDefinition theme, string mode)
-    {
-        if (_disposed) return;
-        try
+        _themeChangedHandler = (_, _) =>
         {
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (ObjectDisposedException) { }
-        catch (InvalidOperationException) { }
-        catch (TaskCanceledException) { }
-    }
+            if (_disposed) return;
+            try { InvokeAsync(StateHasChanged); }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            catch (TaskCanceledException) { }
+        };
+        ThemeService.ThemeChanged += _themeChangedHandler;
 
-    private async void HandleLocaleChanged()
-    {
-        if (_disposed) return;
-        try
+        _localeChangedHandler = () =>
         {
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (ObjectDisposedException) { }
-        catch (InvalidOperationException) { }
-        catch (TaskCanceledException) { }
+            if (_disposed) return;
+            try { InvokeAsync(StateHasChanged); }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            catch (TaskCanceledException) { }
+        };
+        Localizer.OnLocaleChanged += _localeChangedHandler;
     }
 
     public virtual void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        if (ThemeService is not null)
-            ThemeService.ThemeChanged -= HandleThemeChanged;
-        if (Localizer is not null)
-            Localizer.OnLocaleChanged -= HandleLocaleChanged;
-        GC.SuppressFinalize(this);
+        if (ThemeService is not null && _themeChangedHandler is not null)
+            ThemeService.ThemeChanged -= _themeChangedHandler;
+        if (Localizer is not null && _localeChangedHandler is not null)
+            Localizer.OnLocaleChanged -= _localeChangedHandler;
     }
 
     public virtual ValueTask DisposeAsync()
