@@ -36,6 +36,7 @@ public partial class SgTable<TItem> : SgComponentBase
     private List<SgTableHeaderGroup<TItem>> _headerGroups = new();
     private bool _showExportMenu;
     private ElementReference _exportRef;
+    private bool _isDisposed;
 
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
@@ -254,7 +255,9 @@ public partial class SgTable<TItem> : SgComponentBase
                 "import", "./_content/SuperUI/Components/SgTable.razor.js");
             await _jsModule.InvokeVoidAsync("syncHeaderScroll", _headerScrollRef, _bodyScrollRef);
         }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
     }
 
     // Column resize
@@ -262,7 +265,7 @@ public partial class SgTable<TItem> : SgComponentBase
     {
         _resizingColumn = columnKey;
         _resizeStartX = e.ClientX;
-        
+
         var col = Columns.FirstOrDefault(c => c.Key == columnKey);
         if (col != null)
         {
@@ -280,22 +283,9 @@ public partial class SgTable<TItem> : SgComponentBase
             }
         }
 
-        await JS.InvokeVoidAsync("eval", @"
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-            const onMouseMove = (e) => {
-                window.sgTableResizeEvent = e;
-            };
-            const onMouseUp = () => {
-                document.body.style.cursor = '';
-                document.body.style.userSelect = '';
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-                window.sgTableResizeEnd = true;
-            };
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
-        ");
+        _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/SuperUI/Components/SgTable.razor.js");
+        await _jsModule.InvokeVoidAsync("startColumnResize", _resizeStartX, _resizeStartWidth);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -304,27 +294,26 @@ public partial class SgTable<TItem> : SgComponentBase
         {
             try
             {
-                var resizeEvent = await JS.InvokeAsync<MouseEventArgs?>("eval", "window.sgTableResizeEvent");
+                _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
+                    "import", "./_content/SuperUI/Components/SgTable.razor.js");
+                var resizeEvent = await _jsModule.InvokeAsync<MouseEventArgs?>("pollResizeEvent");
                 if (resizeEvent != null)
                 {
                     var delta = resizeEvent.ClientX - _resizeStartX;
                     var newWidth = Math.Max(50, _resizeStartWidth + delta);
                     _columnWidths[_resizingColumn] = newWidth;
                     StateHasChanged();
-                    await JS.InvokeVoidAsync("eval", "window.sgTableResizeEvent = null");
                 }
 
-                var resizeEnd = await JS.InvokeAsync<bool>("eval", "window.sgTableResizeEnd || false");
+                var resizeEnd = await _jsModule.InvokeAsync<bool>("pollResizeEnd");
                 if (resizeEnd)
                 {
                     _resizingColumn = null;
-                    await JS.InvokeVoidAsync("eval", "window.sgTableResizeEnd = false");
                 }
             }
-            catch
-            {
-                // Ignore JS interop errors
-            }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -503,10 +492,7 @@ public partial class SgTable<TItem> : SgComponentBase
         var csv = new StringBuilder();
         var cols = Columns.ToList();
 
-        // Header
         csv.AppendLine(string.Join(",", cols.Select(c => EscapeCsv(c.Title))));
-
-        // Rows
         foreach (var item in FilteredAndSortedItems)
         {
             var values = cols.Select(c => EscapeCsv(c.GetDisplay(item)));
@@ -515,36 +501,18 @@ public partial class SgTable<TItem> : SgComponentBase
 
         var fileName = $"{Title ?? "export"}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
         var content = csv.ToString();
-        
-        // Add UTF-8 BOM for Excel to recognize Cyrillic
+
         var bom = new byte[] { 0xEF, 0xBB, 0xBF };
         var bytes = Encoding.UTF8.GetBytes(content);
         var finalBytes = new byte[bom.Length + bytes.Length];
         Buffer.BlockCopy(bom, 0, finalBytes, 0, bom.Length);
         Buffer.BlockCopy(bytes, 0, finalBytes, bom.Length, bytes.Length);
-        
+
         var base64 = Convert.ToBase64String(finalBytes);
 
-        await JS.InvokeVoidAsync("eval", $@"
-            (function() {{
-                const base64 = '{base64}';
-                const binary = atob(base64);
-                const len = binary.length;
-                const bytes = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {{
-                    bytes[i] = binary.charCodeAt(i);
-                }}
-                const blob = new Blob([bytes], {{ type: 'text/csv;charset=utf-8;' }});
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = '{fileName}';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-            }})();
-        ");
+        _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/SuperUI/Components/SgTable.razor.js");
+        await _jsModule.InvokeVoidAsync("downloadFile", base64, fileName, "text/csv;charset=utf-8;");
     }
 
     private async Task ExportToExcel()
@@ -557,18 +525,12 @@ public partial class SgTable<TItem> : SgComponentBase
         sb.AppendLine("<head><meta http-equiv='Content-Type' content='text/html; charset=utf-8'></head>");
         sb.AppendLine("<body>");
         sb.AppendLine("<table border='1'>");
-        
-        // Header
         sb.AppendLine("  <thead>");
         sb.AppendLine("    <tr style='background-color: #f2f2f2;'>");
         foreach (var col in cols)
-        {
             sb.AppendLine($"      <th>{System.Net.WebUtility.HtmlEncode(col.Title)}</th>");
-        }
         sb.AppendLine("    </tr>");
         sb.AppendLine("  </thead>");
-
-        // Body
         sb.AppendLine("  <tbody>");
         foreach (var item in FilteredAndSortedItems)
         {
@@ -587,7 +549,6 @@ public partial class SgTable<TItem> : SgComponentBase
         var fileName = $"{Title ?? "export"}_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
         var content = sb.ToString();
 
-        // Add UTF-8 BOM
         var bom = new byte[] { 0xEF, 0xBB, 0xBF };
         var bytes = Encoding.UTF8.GetBytes(content);
         var finalBytes = new byte[bom.Length + bytes.Length];
@@ -596,26 +557,9 @@ public partial class SgTable<TItem> : SgComponentBase
 
         var base64 = Convert.ToBase64String(finalBytes);
 
-        await JS.InvokeVoidAsync("eval", $@"
-            (function() {{
-                const base64 = '{base64}';
-                const binary = atob(base64);
-                const len = binary.length;
-                const bytes = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {{
-                    bytes[i] = binary.charCodeAt(i);
-                }}
-                const blob = new Blob([bytes], {{ type: 'application/vnd.ms-excel' }});
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = '{fileName}';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-            }})();
-        ");
+        _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/SuperUI/Components/SgTable.razor.js");
+        await _jsModule.InvokeVoidAsync("downloadFile", base64, fileName, "application/vnd.ms-excel");
     }
 
     private void ToggleExportMenu()
@@ -625,12 +569,31 @@ public partial class SgTable<TItem> : SgComponentBase
 
     private void HandleExportFocusOut()
     {
-        // Delay to allow button click to process before hiding menu
-        _ = Task.Delay(200).ContinueWith(_ => 
+        _ = Task.Delay(200).ContinueWith(_ =>
         {
+            if (_isDisposed) return;
             _showExportMenu = false;
             InvokeAsync(StateHasChanged);
         });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_jsModule is not null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("resetResizeState");
+                await _jsModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+        }
+        _jsModule = null;
     }
 
     private static string EscapeCsv(string value)
