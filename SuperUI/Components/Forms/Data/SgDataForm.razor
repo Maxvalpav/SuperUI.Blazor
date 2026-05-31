@@ -624,7 +624,7 @@
             CopyValues(source, clone);
             return clone;
         }
-        catch
+        catch (MissingMemberException)
         {
             return null;
         }
@@ -635,7 +635,9 @@
         foreach (var p in typeof(TModel).GetProperties(BindingFlags.Instance | BindingFlags.Public))
         {
             if (!p.CanRead || !p.CanWrite || p.GetIndexParameters().Length > 0) continue;
-            try { p.SetValue(to, p.GetValue(from)); } catch { /* skip */ }
+            try { p.SetValue(to, p.GetValue(from)); }
+            catch (TargetInvocationException) { }
+            catch (ArgumentException) { }
         }
     }
 
@@ -675,7 +677,17 @@
             value = Convert.ChangeType(raw, targetType, CultureInfo.CurrentCulture);
             return true;
         }
-        catch
+        catch (FormatException)
+        {
+            value = null;
+            return false;
+        }
+        catch (OverflowException)
+        {
+            value = null;
+            return false;
+        }
+        catch (InvalidCastException)
         {
             value = null;
             return false;

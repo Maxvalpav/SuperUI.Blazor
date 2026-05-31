@@ -165,7 +165,7 @@ public partial class SgAlert : IDisposable
 
     protected override void OnInitialized()
     {
-        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { } catch (InvalidOperationException) { } catch (TaskCanceledException) { } };
         Localizer.OnLocaleChanged += _localeChangedHandler;
         _collapsed = Collapsed;
         StartTimeout();

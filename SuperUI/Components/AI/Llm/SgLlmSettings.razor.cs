@@ -469,7 +469,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
 
     protected override async Task OnInitializedAsync()
     {
-        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { } catch (InvalidOperationException) { } catch (TaskCanceledException) { } };
         Localizer.OnLocaleChanged += _localeChangedHandler;
 
         LlmService.OnError += OnServiceError;

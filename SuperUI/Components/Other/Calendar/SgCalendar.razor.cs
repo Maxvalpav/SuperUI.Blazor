@@ -150,7 +150,7 @@ namespace SuperUI.Components
 
         protected override void OnInitialized()
         {
-            _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+            _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { } catch (InvalidOperationException) { } catch (TaskCanceledException) { } };
             Localizer.OnLocaleChanged += _localeChangedHandler;
             _currentMonth = new DateTime(Value.Year, Value.Month, 1);
         }
