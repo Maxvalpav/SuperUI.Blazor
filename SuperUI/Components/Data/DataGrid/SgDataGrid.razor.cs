@@ -1620,10 +1620,11 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
         await InvokeAsync(StateHasChanged);
     }
 
-    private void OpenRowHighlighterAsync()
+    private Task OpenRowHighlighterAsync()
     {
         _rowHighlighterModalOpen = true;
         StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private void CloseRowHighlighterAsync()
