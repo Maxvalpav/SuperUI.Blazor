@@ -1,0 +1,61 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@if (_renderContent)
+{
+    @ChildContent
+}
+else
+{
+    <span @ref="_target" style="display:block;min-height:1px">@Placeholder</span>
+}
+
+@code {
+    private ElementReference _target;
+    private bool _renderContent;
+
+    /// <summary>Content rendered only when scrolled into view.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Placeholder shown until the element is visible.</summary>
+    [Parameter] public RenderFragment? Placeholder { get; set; }
+    /// <summary>If true, renders content only once when first visible (default true).</summary>
+    [Parameter] public bool Once { get; set; } = true;
+    /// <summary>IntersectionObserver threshold (0.0 – 1.0).</summary>
+    [Parameter] public double Threshold { get; set; } = 0.0;
+    /// <summary>IntersectionObserver root margin (e.g. "100px" triggers 100px before viewport).</summary>
+    [Parameter] public string RootMargin { get; set; } = "100px";
+
+    /// <summary>Whether the content has been rendered.</summary>
+    public bool IsRendered => _renderContent;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (!_renderContent)
+            await SafeInvokeVoidAsync("observeIntersection", _target, Threshold, RootMargin, Once, SelfRef);
+    }
+
+    protected override async Task OnAfterRenderSafeAsync(bool firstRender)
+    {
+        if (_renderContent && Once)
+            await SafeInvokeVoidAsync("unobserveIntersection", _target);
+    }
+
+    [JSInvokable]
+    public async Task OnVisibilityChanged(bool isIntersecting, double ratio)
+    {
+        if (isIntersecting && !_renderContent)
+        {
+            _renderContent = true;
+            StateHasChanged();
+        }
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        if (!_renderContent)
+            await SafeInvokeVoidAsync("unobserveIntersection", _target);
+    }
+}
