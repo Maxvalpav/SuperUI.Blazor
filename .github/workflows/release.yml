@@ -57,10 +57,20 @@ jobs:
           echo "tag=$NEW" >> $GITHUB_OUTPUT
           echo "version=$MAJOR.$MINOR.$PATCH" >> $GITHUB_OUTPUT
 
-      - name: Create tag
+      - name: Update csproj version
+        run: |
+          sed -i 's|<Version>[^<]*</Version>|<Version>${{ steps.bump.outputs.version }}</Version>|' ${{ env.PROJECT_PATH }}
+          sed -i 's|<PackageReleaseNotes>[^<]*</PackageReleaseNotes>|<PackageReleaseNotes>${{ steps.bump.outputs.version }} — see https://github.com/Maxvalpav/SuperUI.Blazor/releases/tag/${{ steps.bump.outputs.tag }}</PackageReleaseNotes>|' ${{ env.PROJECT_PATH }}
+
+      - name: Commit version bump
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+          git add ${{ env.PROJECT_PATH }}
+          git commit -m "Bump version to ${{ steps.bump.outputs.version }}"
+
+      - name: Create tag
+        run: |
           git tag ${{ steps.bump.outputs.tag }}
 
       - name: Setup .NET
@@ -98,8 +108,10 @@ jobs:
       - name: Pack
         run: dotnet pack ${{ env.PROJECT_PATH }} --configuration ${{ env.CONFIGURATION }} --no-build --output ./artifacts
 
-      - name: Push tag
-        run: git push origin ${{ steps.bump.outputs.tag }}
+      - name: Push commit and tag
+        run: |
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin ${{ steps.bump.outputs.tag }}
 
       - name: Push to NuGet.org
         run: |
