@@ -1,18 +1,30 @@
 @namespace SuperUI.Components
 @inherits SgJsComponentBase
+@implements IAsyncDisposable
 
 @code {
+    /// <summary>Fired after a copy attempt. Receives true if the copy succeeded.</summary>
+    [Parameter] public EventCallback<bool> OnCopied { get; set; }
+    /// <summary>Fired after a read attempt. Receives the clipboard text, or null on failure/denial.</summary>
+    [Parameter] public EventCallback<string?> OnRead { get; set; }
+
     protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
 
     /// <summary>Copies the specified text to the system clipboard.</summary>
     public async Task<bool> CopyAsync(string text)
     {
-        return await SafeInvokeAsync<bool>("copyToClipboard", text);
+        var result = await SafeInvokeAsync<bool>("copyToClipboard", text);
+        await OnCopied.InvokeAsync(result);
+        return result;
     }
 
-    /// <summary>Reads text from the system clipboard.</summary>
+    /// <summary>Reads text from the system clipboard (requires user gesture / permission).</summary>
     public async Task<string?> ReadAsync()
     {
-        return await SafeInvokeAsync<string>("readFromClipboard");
+        var text = await SafeInvokeAsync<string>("readFromClipboard");
+        await OnRead.InvokeAsync(text);
+        return text;
     }
+
+    protected override ValueTask OnDisposingAsync() => ValueTask.CompletedTask;
 }

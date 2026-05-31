@@ -1,0 +1,643 @@
+@page "/non-visual-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+@inject NavigationManager Navigation
+
+<PageTitle>Non-Visual Components — SuperUI</PageTitle>
+
+<SgCard Variant="SgCardVariant.Default" HeaderContent="@_headerContent">
+    <ChildContent>
+
+        @* ════════════════════════════════════════════════
+           1. SgMediaQuery
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgMediaQuery</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Reactive media query. Change browser width to see it update.
+                </SgTypography>
+            </div>
+            <SgMediaQuery Query="(max-width: 768px)" Matching="@_mobile" NotMatching="@_desktop" />
+        </div>
+
+        @* ════════════════════════════════════════════════
+           2. SgKeyboardShortcut
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgKeyboardShortcut</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Press <kbd>Ctrl+Shift+H</kbd> to trigger the handler.
+                </SgTypography>
+            </div>
+            <SgKeyboardShortcut Keys="Ctrl+Shift+H" OnExecute="@OnShortcutFired" />
+            <SgAlert @ref="_shortcutAlert" Variant="@_shortcutSeverity" Closable Visible="@_showShortcutAlert">
+                @_shortcutMessage
+            </SgAlert>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           3. SgDebounce
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgDebounce</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Type in the field — the debounced value updates after 500ms of inactivity.
+                </SgTypography>
+            </div>
+            <SgDebounce TValue="string" Value="_debounceInput" ValueChanged="@OnDebounceInputChanged" Delay="500" OnDebouncedValue="@OnDebounced" />
+            <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;">
+                <SgTextBox @bind-Value="_debounceInput" Placeholder="Type something..." Style="flex:1;min-width:200px;" />
+                <div style="padding:8px 16px;border-radius:8px;background:var(--sg-surface-alt, #f3f4f6);">
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Raw: <strong>@_debounceInput</strong></SgTypography>
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Debounced: <strong>@_debouncedValue</strong></SgTypography>
+                </div>
+            </div>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           4. SgInterval
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgInterval</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Timer ticks every second. Start/Stop with the buttons.
+                </SgTypography>
+            </div>
+            <SgInterval @ref="_interval" IntervalMs="1000" OnTick="@OnTick" AutoStart="false" />
+            <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
+                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" @onclick="() => _interval.Start()" Disabled="@(_interval?.IsRunning == true)">Start</SgButton>
+                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Default" @onclick="() => _interval.Stop()" Disabled="@(_interval?.IsRunning != true)">Stop</SgButton>
+                <SgChip>@_tickCount ticks</SgChip>
+            </div>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           5. SgBeforeUnload
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgBeforeUnload</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Toggle the switch, then try to close or reload the page.
+                </SgTypography>
+            </div>
+            <SgBeforeUnload Prevent="@_preventUnload" Message="You have unsaved test data!" />
+            <SgSwitch @bind-Value="_preventUnload" Label="Prevent page unload" />
+        </div>
+
+        @* ════════════════════════════════════════════════
+           6. SgUrlParam
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgUrlParam</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Type a value — it syncs to the URL query string. Try browser back/forward.
+                </SgTypography>
+            </div>
+            <SgUrlParam Name="tab" Value="_urlParam" ValueChanged="@(v => { _urlParam = v; StateHasChanged(); })" OnExternalChange="@OnUrlParamExternal" />
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+                <SgTextBox @bind-Value="_urlParam" Placeholder="tab value" Style="min-width:200px;" />
+                <SgChip>?tab=@_urlParam</SgChip>
+            </div>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           7. SgVisibilitySensor
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgVisibilitySensor</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Scroll down — the sensor fires when the box enters the viewport.
+                </SgTypography>
+            </div>
+            <div style="height:200px;display:flex;align-items:flex-end;">
+                <div style="padding:16px;border-radius:8px;background:var(--sg-surface-alt);">Scroll down to see the sensor →</div>
+            </div>
+            <SgVisibilitySensor Once="true" OnVisible="@OnVisible" OnHidden="@OnHidden">
+                <div style="padding:24px;border-radius:12px;border:2px dashed var(--sg-primary);text-align:center;margin-top:16px;">
+                    <SgIcon Icon="@(_sensorTriggered ? SgIcons.CheckCircle : SgIcons.Eye)" Size="32px" Color="@(_sensorTriggered ? "var(--sg-success)" : "var(--sg-text-muted)")" />
+                    <SgTypography Weight="SgTypographyWeight.Semibold" Style="display:block;margin-top:8px;">
+                        @(_sensorTriggered ? "Visible!" : "Waiting...")
+                    </SgTypography>
+                </div>
+            </SgVisibilitySensor>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           8. SgLocalStorage
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgLocalStorage</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Type a value — it persists to localStorage. Open the same page in another tab to see cross-tab sync.
+                </SgTypography>
+            </div>
+            <SgLocalStorage Key="sui-demo-storage" Value="_storageValue" ValueChanged="@(v => { _storageValue = v; StateHasChanged(); })" OnExternalChange="@OnStorageExtern" />
+            <div style="display:flex;gap:12px;align-items:center;margin-top:8px;">
+                <SgTextBox @bind-Value="_storageValue" Placeholder="localStorage value" Style="min-width:200px;" />
+                <SgChip>localStorage: @_storageValue</SgChip>
+            </div>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           9. SgFullscreen
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgFullscreen</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Toggle fullscreen mode for this card.
+                </SgTypography>
+            </div>
+            <SgFullscreen @ref="_fullscreen" Target="@_fullscreenTarget" @bind-IsFullscreen="_isFullscreen" />
+            <div @ref="_fullscreenTarget" style="padding:16px;border-radius:12px;background:var(--sg-surface-alt, #f3f4f6);">
+                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" @onclick="() => _fullscreen.ToggleAsync()">
+                    @(_isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen")
+                </SgButton>
+                <SgChip Style="margin-left:8px;">@(_isFullscreen ? "Fullscreen" : "Windowed")</SgChip>
+            </div>
+        </div>
+
+        @* ════════════════════════════════════════════════
+            10. SgClipboard
+            ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgClipboard</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Copy text to clipboard and read from clipboard.
+                </SgTypography>
+            </div>
+            <SgClipboard @ref="_clipboard" OnCopied="@OnClipboardCopied" OnRead="@OnClipboardRead" />
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <SgTextBox @bind-Value="_clipboardText" Placeholder="Text to copy" Style="flex:1;min-width:200px;" />
+                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" @onclick="() => _clipboard?.CopyAsync(_clipboardText)">
+                    Copy
+                </SgButton>
+                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Default" @onclick="() => _clipboard?.ReadAsync()">
+                    Read
+                </SgButton>
+            </div>
+            <SgAlert Variant="@_clipboardSeverity" Closable Visible="@_showClipboardAlert">
+                @_clipboardMessage
+            </SgAlert>
+        </div>
+
+        @* ════════════════════════════════════════════════
+            11. SgFocusTracker
+            ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgFocusTracker</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Tab through the inputs below — the tracker logs the focused element.
+                </SgTypography>
+            </div>
+            <SgFocusTracker OnFocusIn="@OnFocusedIn" OnFocusOut="@OnFocusedOut" />
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">
+                <SgTextBox TValue="string" Placeholder="First name" Style="flex:1;min-width:120px;" />
+                <SgTextBox TValue="string" Placeholder="Last name" Style="flex:1;min-width:120px;" />
+                <SgTextBox TValue="string" Placeholder="Email" Style="flex:1;min-width:120px;" />
+            </div>
+            <SgAlert Variant="@SgAlertVariant.Info" Closable Visible="@(!string.IsNullOrEmpty(_focusedElement))">
+                Focused: <strong>@_focusedElement</strong>
+            </SgAlert>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           11. SgClickOutside
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgClickOutside</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Click inside the colored box, then click outside it.
+                </SgTypography>
+            </div>
+            <SgClickOutside OnClickOutside="@OnOutsideClick">
+                <div style="padding:24px;border-radius:12px;background:var(--sg-surface-alt,#f3f4f6);text-align:center;display:inline-block;">
+                    <SgTypography>Click this box, then click outside.</SgTypography>
+                </div>
+            </SgClickOutside>
+            <SgChip Style="margin-top:8px;">Outside clicks: @_clickOutsideCount</SgChip>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           12. SgLongPress
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgLongPress</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Press and hold the box for 500ms.
+                </SgTypography>
+            </div>
+            <SgLongPress OnLongPress="@OnLongPressFired" Duration="500">
+                <div style="padding:24px;border-radius:12px;background:var(--sg-surface-alt,#f3f4f6);text-align:center;cursor:pointer;user-select:none;">
+                    <SgTypography Weight="SgTypographyWeight.Semibold">@_longPressStatus</SgTypography>
+                </div>
+            </SgLongPress>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           13. SgFileDrop
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgFileDrop</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Drag and drop a file onto the dashed area below.
+                </SgTypography>
+            </div>
+            <SgFileDrop OnDrop="@OnFileDropped">
+                <div style="padding:48px 24px;border-radius:12px;border:2px dashed var(--sg-primary,#4f46e5);text-align:center;min-height:120px;display:flex;align-items:center;justify-content:center;">
+                    <SgTypography>
+                        @if (_droppedFileName is not null)
+                        {
+                            <span>Dropped: <strong>@_droppedFileName</strong></span>
+                        }
+                        else
+                        {
+                            <span>Drop a file here</span>
+                        }
+                    </SgTypography>
+                </div>
+            </SgFileDrop>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           14. SgElementSize
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgElementSize</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Resize the browser — the element dimensions update in real time.
+                </SgTypography>
+            </div>
+            <SgElementSize OnSizeChanged="@OnElementSizeChanged">
+                <div style="padding:24px;border-radius:12px;background:var(--sg-surface-alt,#f3f4f6);text-align:center;">
+                    <SgTypography>This element's size: <strong>@_elementSize</strong></SgTypography>
+                </div>
+            </SgElementSize>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           15. SgScrollSpy
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgScrollSpy</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Scroll the page — the spy tracks which section heading is in view.
+                </SgTypography>
+            </div>
+            <SgScrollSpy Selector="h2, h3, h4, h5" OnActiveChanged="@OnActiveSectionChanged" />
+            <SgChip>Active heading: @_activeSection</SgChip>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           16. SgFormDirty
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgFormDirty</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Type in the field, then use MarkDirty/Reset via the buttons.
+                </SgTypography>
+            </div>
+            <SgFormDirty @ref="_formDirty" IsDirtyChanged="@OnFormDirtyChanged" />
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+                <SgTextBox @bind-Value="_dirtyFormInput" Placeholder="Type something..." Style="flex:1;min-width:160px;" />
+                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" @onclick="() => _formDirty?.MarkDirty()">Mark Dirty</SgButton>
+                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Default" @onclick="() => _formDirty?.Reset()">Reset</SgButton>
+            </div>
+            <SgChip>IsDirty: @_isFormDirty</SgChip>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           17. SgAutoFocus
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgAutoFocus</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    The input below receives focus on page load with a 300ms delay.
+                </SgTypography>
+            </div>
+            <input @ref="_autoFocusTarget" placeholder="I get auto-focused after 300ms" style="padding:8px 12px;border-radius:8px;border:1px solid var(--sg-border);min-width:260px;" />
+            <SgAutoFocus Target="@_autoFocusTarget" When="true" DelayMs="300" />
+        </div>
+
+        @* ════════════════════════════════════════════════
+           18. SgTextSelect
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgTextSelect</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Select any text on this page — the selection is tracked below.
+                </SgTypography>
+            </div>
+            <SgTextSelect OnSelect="@OnTextSelected" OnDeselect="@OnTextDeselected" />
+            <SgAlert Variant="@SgAlertVariant.Info" Closable Visible="@(!string.IsNullOrEmpty(_selectedText))">
+                Selected: <strong>@_selectedText</strong>
+            </SgAlert>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Style="margin-top:4px;">
+                Try selecting any text anywhere on this page.
+            </SgTypography>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           19. SgRenderCount
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgRenderCount</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Every render is counted. Toggle the switch to trigger re-renders.
+                </SgTypography>
+            </div>
+            <SgRenderCount OnRender="@OnRenderOccurred" />
+            <div style="display:flex;gap:12px;align-items:center;">
+                <SgChip>Render count: @_renderCount</SgChip>
+                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Default" @onclick="StateHasChanged">Trigger Re-render</SgButton>
+            </div>
+        </div>
+
+        @* ════════════════════════════════════════════════
+           20. SgScriptState
+           ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgScriptState</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Loads an external script and shows its state. Uses a placeholder CDN URL.
+                </SgTypography>
+            </div>
+            <SgScriptState ScriptUrl="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"
+                           Loading="@_scriptLoading" ErrorContent="@_scriptError">
+                <SgChip Style="margin-top:4px;">@_scriptStateText</SgChip>
+            </SgScriptState>
+        </div>
+
+    </ChildContent>
+</SgCard>
+
+@code {
+    private RenderFragment _headerContent => __builder =>
+    {
+        <SgStack Horizontal Align="SgAlignItems.Center" Space="SgSize.Md">
+            <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:linear-gradient(135deg,#6366f1,#a855f7);">
+                <SgIcon Icon="@SgIcons.Box" Size="20px" />
+            </div>
+            <div>
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">
+                    Non-Visual Components
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                    Behavioral components with no visible UI of their own
+                </SgTypography>
+            </div>
+        </SgStack>
+    };
+
+    // ── SgMediaQuery ─────────────────────────────────────────
+    private RenderFragment _mobile => __builder =>
+    {
+        <SgAlert Variant="@SgAlertVariant.Warn">Mobile view (&le;768px)</SgAlert>
+    };
+    private RenderFragment _desktop => __builder =>
+    {
+        <SgAlert Variant="@SgAlertVariant.Success">Desktop view (&gt;768px)</SgAlert>
+    };
+
+    // ── SgKeyboardShortcut ──────────────────────────────────
+    private SgAlert? _shortcutAlert;
+    private bool _showShortcutAlert;
+    private SgAlertVariant _shortcutSeverity = SgAlertVariant.Success;
+    private string _shortcutMessage = "";
+
+    private async Task OnShortcutFired()
+    {
+        _shortcutMessage = $"Shortcut fired at {DateTime.Now:T}";
+        _shortcutSeverity = SgAlertVariant.Success;
+        _showShortcutAlert = true;
+        StateHasChanged();
+    }
+
+    // ── SgDebounce ──────────────────────────────────────────
+    private string _debounceInput = "";
+    private string _debouncedValue = "";
+
+    private Task OnDebounceInputChanged(string value)
+    {
+        _debounceInput = value;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnDebounced(string value)
+    {
+        _debouncedValue = value;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── SgInterval ──────────────────────────────────────────
+    private SgInterval? _interval;
+    private int _tickCount;
+
+    private Task OnTick()
+    {
+        _tickCount++;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── SgBeforeUnload ──────────────────────────────────────
+    private bool _preventUnload;
+
+    // ── SgUrlParam ──────────────────────────────────────────
+    private string _urlParam = "";
+
+    private Task OnUrlParamExternal(string value)
+    {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── SgVisibilitySensor ──────────────────────────────────
+    private bool _sensorTriggered;
+
+    private Task OnVisible()
+    {
+        _sensorTriggered = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnHidden()
+    {
+        _sensorTriggered = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── SgLocalStorage ──────────────────────────────────────
+    private string _storageValue = "";
+
+    private Task OnStorageExtern(string value)
+    {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── SgFullscreen ────────────────────────────────────────
+    private SgFullscreen? _fullscreen;
+    private ElementReference _fullscreenTarget;
+    private bool _isFullscreen;
+
+    // ── SgClipboard ─────────────────────────────────────────
+    private SgClipboard? _clipboard;
+    private string _clipboardText = "";
+    private bool _showClipboardAlert;
+    private SgAlertVariant _clipboardSeverity = SgAlertVariant.Success;
+    private string _clipboardMessage = "";
+
+    private async Task OnClipboardCopied(bool success)
+    {
+        _clipboardSeverity = success ? SgAlertVariant.Success : SgAlertVariant.Warn;
+        _clipboardMessage = success
+            ? $"Copied: \"{_clipboardText}\""
+            : "Copy failed — clipboard API unavailable";
+        _showClipboardAlert = true;
+        StateHasChanged();
+    }
+
+    private async Task OnClipboardRead(string? text)
+    {
+        if (text is not null)
+        {
+            _clipboardText = text;
+            _clipboardSeverity = SgAlertVariant.Success;
+            _clipboardMessage = $"Read from clipboard: \"{text}\"";
+        }
+        else
+        {
+            _clipboardSeverity = SgAlertVariant.Warn;
+            _clipboardMessage = "Read failed — clipboard API unavailable or denied";
+        }
+        _showClipboardAlert = true;
+        StateHasChanged();
+    }
+
+    // ── SgFocusTracker ──────────────────────────────────────
+    private string? _focusedElement;
+
+    private Task OnFocusedIn(string selector)
+    {
+        _focusedElement = selector;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnFocusedOut()
+    {
+        _focusedElement = null;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── SgClickOutside ──────────────────────────────────────
+    private int _clickOutsideCount;
+    private async Task OnOutsideClick()
+    {
+        _clickOutsideCount++;
+        StateHasChanged();
+    }
+
+    // ── SgLongPress ─────────────────────────────────────────
+    private string _longPressStatus = "Press and hold the box";
+    private async Task OnLongPressFired()
+    {
+        _longPressStatus = $"Long press fired at {DateTime.Now:T}";
+        StateHasChanged();
+    }
+
+    // ── SgFileDrop ──────────────────────────────────────────
+    private string? _droppedFileName;
+    private async Task OnFileDropped(SgFileDropResult result)
+    {
+        _droppedFileName = result.Name;
+        StateHasChanged();
+    }
+
+    // ── SgElementSize ───────────────────────────────────────
+    private string _elementSize = "measuring...";
+    private async Task OnElementSizeChanged(SgElementSizeResult size)
+    {
+        _elementSize = $"{size.Width:F0} × {size.Height:F0}";
+        StateHasChanged();
+    }
+
+    // ── SgFormDirty ─────────────────────────────────────────
+    private bool _isFormDirty;
+    private SgFormDirty? _formDirty;
+    private string _dirtyFormInput = "";
+    private async Task OnFormDirtyChanged(bool dirty)
+    {
+        _isFormDirty = dirty;
+        StateHasChanged();
+    }
+
+    // ── SgAutoFocus ─────────────────────────────────────────
+    private ElementReference _autoFocusTarget;
+
+    // ── SgTextSelect ────────────────────────────────────────
+    private string _selectedText = "";
+    private async Task OnTextSelected(string text)
+    {
+        _selectedText = text;
+        StateHasChanged();
+    }
+    private async Task OnTextDeselected()
+    {
+        _selectedText = "";
+        StateHasChanged();
+    }
+
+    // ── SgRenderCount ───────────────────────────────────────
+    private int _renderCount;
+    private async Task OnRenderOccurred(int count)
+    {
+        _renderCount = count;
+        StateHasChanged();
+    }
+
+    // ── SgScrollSpy ─────────────────────────────────────────
+    private string _activeSection = "none";
+    private async Task OnActiveSectionChanged(string id)
+    {
+        _activeSection = string.IsNullOrEmpty(id) ? "none" : id;
+        StateHasChanged();
+    }
+
+    // ── SgScriptState ───────────────────────────────────────
+    private string _scriptStateText = "Script loaded";
+    private RenderFragment _scriptLoading => __builder =>
+    {
+        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Loading script...</SgTypography>
+    };
+    private RenderFragment _scriptError => __builder =>
+    {
+        <SgAlert Variant="@SgAlertVariant.Warn">Script failed to load (may be blocked by CSP)</SgAlert>
+    };
+}
