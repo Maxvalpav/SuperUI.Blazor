@@ -1,0 +1,206 @@
+@namespace SuperUI.Components
+@typeparam TItem
+@implements IDisposable
+@using SuperUI.Enums
+
+<div class="@RootClass" style="@Style"
+     @onmouseenter="OnMouseEnter"
+     @onmouseleave="OnMouseLeave"
+     @attributes="AdditionalAttributes">
+
+    @* ─── Slides track ─── *@
+    <div class="sgc-carousel-track" style="transform:translateX(-@(ActiveIndex * 100)%)">
+        @foreach (var item in Items)
+        {
+            <div class="sgc-carousel-slide" @key="item">
+                @ItemTemplate(item)
+            </div>
+        }
+    </div>
+
+    @* ─── Arrows ─── *@
+    @if (ShowArrows && _count > 1)
+    {
+        <button type="button" class="sgc-carousel-arrow sgc-carousel-arrow-prev"
+                aria-label="Previous slide"
+                @onclick="GoToPrev" @onclick:stopPropagation="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+            </svg>
+        </button>
+        <button type="button" class="sgc-carousel-arrow sgc-carousel-arrow-next"
+                aria-label="Next slide"
+                @onclick="GoToNext" @onclick:stopPropagation="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+            </svg>
+        </button>
+    }
+
+    @* ─── Indicators ─── *@
+    @if (ShowIndicators && _count > 1)
+    {
+        <div class="sgc-carousel-indicators" role="tablist" aria-label="Slides">
+            @for (var i = 0; i < _count; i++)
+            {
+                <button type="button"
+                        class="sgc-carousel-dot @(i == ActiveIndex ? "sgc-active" : "")"
+                        aria-label="Go to slide @(i + 1)"
+                        aria-selected="@(i == ActiveIndex ? "true" : "false")"
+                        role="tab"
+                        @onclick="(() => GoTo(i))"
+                        @onclick:stopPropagation="true" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private int _count;
+    private Timer? _timer;
+    private bool _isHovering;
+    private readonly object _timerLock = new();
+
+    /// <summary>Collection of items to display as slides.</summary>
+    [Parameter, EditorRequired] public IEnumerable<TItem> Items { get; set; } = [];
+
+    /// <summary>Template for rendering each slide item.</summary>
+    [Parameter, EditorRequired] public RenderFragment<TItem> ItemTemplate { get; set; } = null!;
+
+    /// <summary>Current active slide index (0-based).</summary>
+    [Parameter] public int ActiveIndex { get; set; }
+
+    /// <summary>Fires when <see cref="ActiveIndex"/> changes.</summary>
+    [Parameter] public EventCallback<int> ActiveIndexChanged { get; set; }
+
+    /// <summary>Whether to automatically advance slides.</summary>
+    [Parameter] public bool AutoPlay { get; set; } = true;
+
+    /// <summary>Interval in milliseconds between auto-advances.</summary>
+    [Parameter] public int Interval { get; set; } = 4000;
+
+    /// <summary>Whether to loop infinitely.</summary>
+    [Parameter] public bool Loop { get; set; } = true;
+
+    /// <summary>Pause auto-play when hovering.</summary>
+    [Parameter] public bool PauseOnHover { get; set; } = true;
+
+    /// <summary>Show previous/next arrow buttons.</summary>
+    [Parameter] public bool ShowArrows { get; set; } = true;
+
+    /// <summary>Show dot indicators.</summary>
+    [Parameter] public bool ShowIndicators { get; set; } = true;
+
+    /// <summary>Transition effect.</summary>
+    [Parameter] public SgCarouselTransition Transition { get; set; } = SgCarouselTransition.Slide;
+
+    /// <summary>Additional CSS classes.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Inline styles.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Captures unmatched HTML attributes.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _count = Items?.Count() ?? 0;
+    }
+
+    protected override void OnInitialized()
+    {
+        if (AutoPlay) StartTimer();
+    }
+
+    /// <summary>Releases resources used by the carousel.</summary>
+    public void Dispose()
+    {
+        StopTimer();
+    }
+
+    private async Task GoTo(int index)
+    {
+        if (index < 0 || index >= _count) return;
+        ActiveIndex = index;
+        await ActiveIndexChanged.InvokeAsync(ActiveIndex);
+        StateHasChanged();
+        ResetTimer();
+    }
+
+    private async Task GoToNext()
+    {
+        if (_count == 0) return;
+        var next = ActiveIndex + 1;
+        if (next >= _count) next = Loop ? 0 : _count - 1;
+        await GoTo(next);
+    }
+
+    private async Task GoToPrev()
+    {
+        if (_count == 0) return;
+        var prev = ActiveIndex - 1;
+        if (prev < 0) prev = Loop ? _count - 1 : 0;
+        await GoTo(prev);
+    }
+
+    private void OnMouseEnter()
+    {
+        _isHovering = true;
+        if (PauseOnHover) StopTimer();
+    }
+
+    private void OnMouseLeave()
+    {
+        _isHovering = false;
+        if (AutoPlay) StartTimer();
+    }
+
+    private void StartTimer()
+    {
+        lock (_timerLock)
+        {
+            if (_timer is not null) return;
+            _timer = new Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (!_isHovering || !PauseOnHover)
+                        await GoToNext();
+                });
+            }, null, Interval, Interval);
+        }
+    }
+
+    private void StopTimer()
+    {
+        lock (_timerLock)
+        {
+            _timer?.Dispose();
+            _timer = null;
+        }
+    }
+
+    private void ResetTimer()
+    {
+        if (AutoPlay)
+        {
+            StopTimer();
+            StartTimer();
+        }
+    }
+
+    private string RootClass
+    {
+        get
+        {
+            var cls = new List<string>(4) { "sgc-carousel" };
+            if (Transition == SgCarouselTransition.Fade) cls.Add("sgc-carousel-fade");
+            if (!string.IsNullOrWhiteSpace(CssClass)) cls.Add(CssClass!);
+            return string.Join(' ', cls);
+        }
+    }
+}
