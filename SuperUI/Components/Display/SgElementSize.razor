@@ -1,0 +1,41 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+<span @ref="_target" style="display:contents">@ChildContent</span>
+
+@code {
+    private ElementReference _target;
+
+    /// <summary>Content to measure.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Fires with the new dimensions when the element resizes.</summary>
+    [Parameter] public EventCallback<SgElementSizeResult> OnSizeChanged { get; set; }
+
+    /// <summary>Current width of the tracked element in pixels.</summary>
+    public double Width { get; private set; }
+    /// <summary>Current height of the tracked element in pixels.</summary>
+    public double Height { get; private set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("initElementSize", _target, SelfRef);
+    }
+
+    [JSInvokable]
+    public async Task OnSizeChangedInternal(double width, double height)
+    {
+        if (Math.Abs(Width - width) < 0.5 && Math.Abs(Height - height) < 0.5) return;
+        Width = width;
+        Height = height;
+        StateHasChanged();
+        await OnSizeChanged.InvokeAsync(new SgElementSizeResult(width, height));
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("disposeElementSize");
+    }
+}

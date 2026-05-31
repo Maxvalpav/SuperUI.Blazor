@@ -1,0 +1,44 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@code {
+    /// <summary>Optional CSS selector to scope text selection tracking. If null, tracks the whole document.</summary>
+    [Parameter] public string? Scope { get; set; }
+    /// <summary>Fires when text is selected, with the selected text.</summary>
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+    /// <summary>Fires when the selection is cleared.</summary>
+    [Parameter] public EventCallback OnDeselect { get; set; }
+
+    /// <summary>Currently selected text, or empty if none.</summary>
+    public string SelectedText { get; private set; } = "";
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("initTextSelect", Scope, SelfRef);
+    }
+
+    [JSInvokable]
+    public async Task OnTextSelected(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            SelectedText = "";
+            StateHasChanged();
+            await OnDeselect.InvokeAsync();
+        }
+        else
+        {
+            SelectedText = text;
+            StateHasChanged();
+            await OnSelect.InvokeAsync(text);
+        }
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("disposeTextSelect");
+    }
+}

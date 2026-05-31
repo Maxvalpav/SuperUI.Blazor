@@ -1,0 +1,86 @@
+@namespace SuperUI.Components
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@code {
+    /// <summary>Query parameter name in the URL.</summary>
+    [Parameter] public string Name { get; set; } = "";
+    /// <summary>Current value of the query parameter. Two-way bound.</summary>
+    [Parameter] public string Value { get; set; } = "";
+    /// <summary>Fires when the value changes.</summary>
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    /// <summary>Fires when the parameter changes from an external source (browser back/forward).</summary>
+    [Parameter] public EventCallback<string> OnExternalChange { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        var initial = ReadFromUrl();
+        if (initial != Value)
+        {
+            Value = initial;
+            _ = ValueChanged.InvokeAsync(initial);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var current = ReadFromUrl();
+        if (current != Value && !_isUpdatingUrl)
+        {
+            await WriteToUrlAsync(Value);
+        }
+    }
+
+    private bool _isUpdatingUrl;
+
+    private async Task WriteToUrlAsync(string newValue)
+    {
+        _isUpdatingUrl = true;
+        try
+        {
+            var uri = new Uri(Navigation.Uri);
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            if (string.IsNullOrEmpty(newValue))
+                query.Remove(Name);
+            else
+                query[Name] = newValue;
+
+            var newQuery = query.ToString()!;
+            var newUri = uri.GetComponents(UriComponents.Scheme | UriComponents.Host | UriComponents.Port | UriComponents.Path, UriFormat.Unescaped)
+                + (string.IsNullOrEmpty(newQuery) ? "" : "?" + newQuery)
+                + (string.IsNullOrEmpty(uri.Fragment) ? "" : uri.Fragment);
+
+            Navigation.NavigateTo(newUri, replace: true);
+        }
+        finally
+        {
+            _isUpdatingUrl = false;
+        }
+    }
+
+    private string ReadFromUrl()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        return query[Name] ?? "";
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (_isUpdatingUrl) return;
+        var newValue = ReadFromUrl();
+        if (newValue != Value)
+        {
+            Value = newValue;
+            await ValueChanged.InvokeAsync(newValue);
+            await OnExternalChange.InvokeAsync(newValue);
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

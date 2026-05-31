@@ -1,0 +1,56 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@if (IsMatch)
+{
+    @if (Matching is not null)
+    {
+        @Matching
+    }
+    else
+    {
+        @ChildContent
+    }
+}
+else
+{
+    @NotMatching
+}
+
+@code {
+    /// <summary>CSS media query string to observe.</summary>
+    [Parameter] public string Query { get; set; } = "(max-width: 768px)";
+    /// <summary>Rendered when the query matches.</summary>
+    [Parameter] public RenderFragment? Matching { get; set; }
+    /// <summary>Rendered when the query does not match.</summary>
+    [Parameter] public RenderFragment? NotMatching { get; set; }
+    /// <summary>Default content — used as <see cref="Matching"/> when not specified.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Fires when the match state changes.</summary>
+    [Parameter] public EventCallback<bool> OnChanged { get; set; }
+
+    /// <summary>Whether the media query currently matches.</summary>
+    public bool IsMatch { get; private set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("observeMediaQuery", Query, SelfRef);
+    }
+
+    [JSInvokable]
+    public async Task OnMatchChanged(bool matches)
+    {
+        if (IsMatch == matches) return;
+        IsMatch = matches;
+        await OnChanged.InvokeAsync(matches);
+        StateHasChanged();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("unobserveMediaQuery");
+    }
+}

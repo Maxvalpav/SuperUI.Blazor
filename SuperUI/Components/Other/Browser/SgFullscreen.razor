@@ -1,0 +1,57 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@code {
+    /// <summary>Element to display fullscreen. If null, uses document.documentElement.</summary>
+    [Parameter] public ElementReference? Target { get; set; }
+    /// <summary>Whether the element is currently fullscreen. Two-way bound.</summary>
+    [Parameter] public bool IsFullscreen { get; set; }
+    /// <summary>Fires when fullscreen state changes.</summary>
+    [Parameter] public EventCallback<bool> IsFullscreenChanged { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("listenFullscreenChange", SelfRef);
+    }
+
+    /// <summary>Requests fullscreen for the target element.</summary>
+    public async Task EnterAsync()
+    {
+        if (Target.HasValue)
+            await SafeInvokeVoidAsync("enterFullscreen", Target.Value);
+        else
+            await SafeInvokeVoidAsync("enterFullscreen");
+    }
+
+    /// <summary>Exits fullscreen.</summary>
+    public async Task ExitAsync()
+    {
+        await SafeInvokeVoidAsync("exitFullscreen");
+    }
+
+    /// <summary>Toggles fullscreen state.</summary>
+    public async Task ToggleAsync()
+    {
+        if (IsFullscreen)
+            await ExitAsync();
+        else
+            await EnterAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnFullscreenChanged(bool isFullscreen)
+    {
+        if (IsFullscreen == isFullscreen) return;
+        IsFullscreen = isFullscreen;
+        await IsFullscreenChanged.InvokeAsync(isFullscreen);
+        StateHasChanged();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("stopListeningFullscreen");
+    }
+}

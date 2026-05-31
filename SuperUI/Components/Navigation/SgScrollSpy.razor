@@ -1,0 +1,47 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@* Invisible — no UI *@
+
+@code {
+    /// <summary>CSS selector for the headings (or elements) to observe.</summary>
+    [Parameter] public string Selector { get; set; } = "h2, h3";
+    /// <summary>IntersectionObserver root margin. Default offsets for fixed headers.</summary>
+    [Parameter] public string RootMargin { get; set; } = "-80px 0px -80% 0px";
+    /// <summary>Fires with the id of the currently active (intersecting) element.</summary>
+    [Parameter] public EventCallback<string> OnActiveChanged { get; set; }
+
+    /// <summary>Id of the currently active heading.</summary>
+    public string? ActiveId { get; private set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("initScrollSpy", Selector, RootMargin, SelfRef);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsInteractive)
+        {
+            await SafeInvokeVoidAsync("disposeScrollSpy");
+            await SafeInvokeVoidAsync("initScrollSpy", Selector, RootMargin, SelfRef);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnActiveChangedInternal(string? id)
+    {
+        if (ActiveId == id) return;
+        ActiveId = id;
+        StateHasChanged();
+        await OnActiveChanged.InvokeAsync(id ?? "");
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("disposeScrollSpy");
+    }
+}

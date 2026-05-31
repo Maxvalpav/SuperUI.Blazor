@@ -1,0 +1,44 @@
+@namespace SuperUI.Components
+@typeparam TValue
+@inherits SgComponentBase
+@implements IDisposable
+
+@code {
+    /// <summary>Value to debounce. Changes restart the delay.</summary>
+    [Parameter] public TValue Value { get; set; } = default!;
+    /// <summary>Bubbles the raw value changes immediately (no debounce).</summary>
+    [Parameter] public EventCallback<TValue> ValueChanged { get; set; }
+    /// <summary>Delay in milliseconds before the debounced value is emitted.</summary>
+    [Parameter] public int Delay { get; set; } = 300;
+    /// <summary>Fires after the value has not changed for <see cref="Delay"/> ms.</summary>
+    [Parameter] public EventCallback<TValue> OnDebouncedValue { get; set; }
+
+    private CancellationTokenSource? _cts;
+
+    protected override void OnParametersSet()
+    {
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+        var currentValue = Value;
+        _ = DebounceAsync(currentValue, token);
+    }
+
+    private async Task DebounceAsync(TValue value, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(Delay, token);
+            await OnDebouncedValue.InvokeAsync(value);
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

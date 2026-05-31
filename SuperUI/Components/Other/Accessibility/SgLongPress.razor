@@ -1,0 +1,50 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+<span @ref="_target" style="display:contents">@ChildContent</span>
+
+@code {
+    private ElementReference _target;
+
+    /// <summary>Content that responds to long-press.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Fires when the element is pressed for the specified duration.</summary>
+    [Parameter] public EventCallback OnLongPress { get; set; }
+    /// <summary>Duration in milliseconds to hold before firing <see cref="OnLongPress"/>.</summary>
+    [Parameter] public int Duration { get; set; } = 500;
+    /// <summary>Fires when the press starts (mousedown/touchstart).</summary>
+    [Parameter] public EventCallback OnPressStart { get; set; }
+    /// <summary>Fires when the press ends (mouseup/touchend).</summary>
+    [Parameter] public EventCallback OnPressEnd { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("initLongPress", _target, Duration, SelfRef);
+    }
+
+    [JSInvokable]
+    public async Task OnLongPressFired()
+    {
+        await OnLongPress.InvokeAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnPressStarted()
+    {
+        await OnPressStart.InvokeAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnPressEnded()
+    {
+        await OnPressEnd.InvokeAsync();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("disposeLongPress");
+    }
+}

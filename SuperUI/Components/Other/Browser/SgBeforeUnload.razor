@@ -1,0 +1,28 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@code {
+    /// <summary>Whether to show the beforeunload dialog.</summary>
+    [Parameter] public bool Prevent { get; set; }
+    /// <summary>Message to display in the beforeunload dialog (browser may ignore custom messages).</summary>
+    [Parameter] public string Message { get; set; } = "You have unsaved changes.";
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsInteractive)
+            await SafeInvokeVoidAsync("setBeforeUnload", Prevent, Message);
+    }
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("setBeforeUnload", Prevent, Message);
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("setBeforeUnload", false, "");
+    }
+}

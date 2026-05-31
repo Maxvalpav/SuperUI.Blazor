@@ -1,0 +1,41 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@code {
+    /// <summary>Element to focus.</summary>
+    [Parameter] public ElementReference? Target { get; set; }
+    /// <summary>When true, the target element receives focus.</summary>
+    [Parameter] public bool When { get; set; } = true;
+    /// <summary>Delay in milliseconds before focusing.</summary>
+    [Parameter] public int DelayMs { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsInteractive && When && Target.HasValue && !string.IsNullOrEmpty(Target.Value.Id))
+        {
+            if (DelayMs > 0)
+                await SafeInvokeVoidAsync("focusElementWithDelay", Target.Value, DelayMs);
+            else
+                await SafeInvokeVoidAsync("focusElement", Target.Value);
+        }
+    }
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (When && Target.HasValue)
+        {
+            if (DelayMs > 0)
+                await SafeInvokeVoidAsync("focusElementWithDelay", Target.Value, DelayMs);
+            else
+                await SafeInvokeVoidAsync("focusElement", Target.Value);
+        }
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("cancelFocusDelay");
+    }
+}

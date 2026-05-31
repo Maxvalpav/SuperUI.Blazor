@@ -1,0 +1,77 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+<div @ref="_dropZone"
+     style="display:contents"
+     @ondragover:preventDefault
+     @ondrop:preventDefault>
+    @ChildContent
+    @if (_isDragOver)
+    {
+        <div style="position:absolute;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;border-radius:12px;border:2px dashed var(--sg-primary,#4f46e5);background:color-mix(in srgb,var(--sg-primary,#4f46e5) 10%,transparent);pointer-events:none;">
+            <SgTypography Weight="SgTypographyWeight.Semibold" Color="var(--sg-color-primary)">@(Localizer["Common_DropFiles"] ?? "Drop files here")</SgTypography>
+        </div>
+    }
+</div>
+
+@code {
+    private ElementReference _dropZone;
+    private bool _isDragOver;
+
+    /// <summary>Content inside the drop zone.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Fires when files are dropped. Receives the file name and content as base64.</summary>
+    [Parameter] public EventCallback<SgFileDropResult> OnDrop { get; set; }
+    /// <summary>Fires when a dragged item enters the drop zone.</summary>
+    [Parameter] public EventCallback OnDragEnter { get; set; }
+    /// <summary>Fires when a dragged item leaves the drop zone.</summary>
+    [Parameter] public EventCallback OnDragLeave { get; set; }
+    /// <summary>Whether to accept drops.</summary>
+    [Parameter] public bool Enabled { get; set; } = true;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("initFileDrop", _dropZone, SelfRef);
+    }
+
+    [JSInvokable]
+    public async Task OnDragEntered()
+    {
+        if (!Enabled) return;
+        _isDragOver = true;
+        StateHasChanged();
+        await OnDragEnter.InvokeAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnDragLeft()
+    {
+        _isDragOver = false;
+        StateHasChanged();
+        await OnDragLeave.InvokeAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnFileDropped(string name, long size, string type, string? dataUrl)
+    {
+        _isDragOver = false;
+        StateHasChanged();
+        if (!Enabled) return;
+        var result = new SgFileDropResult
+        {
+            Name = name,
+            Size = size,
+            Type = type,
+            DataUrl = dataUrl
+        };
+        await OnDrop.InvokeAsync(result);
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("disposeFileDrop");
+    }
+}

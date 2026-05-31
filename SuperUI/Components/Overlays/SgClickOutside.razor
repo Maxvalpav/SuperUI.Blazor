@@ -1,0 +1,44 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+<span @ref="_container" style="display:contents">@ChildContent</span>
+
+@code {
+    private ElementReference _container;
+
+    /// <summary>Content to watch for outside clicks.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Fires when a click occurs outside the wrapped content.</summary>
+    [Parameter] public EventCallback<PointerEventArgs> OnClickOutside { get; set; }
+    /// <summary>Whether outside-click detection is active.</summary>
+    [Parameter] public bool Enabled { get; set; } = true;
+    /// <summary>Optional CSS selector to exclude elements (e.g. ".ignore-click").</summary>
+    [Parameter] public string? ExcludeSelector { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("initClickOutside", _container, SelfRef, ExcludeSelector);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsInteractive)
+            await SafeInvokeVoidAsync("setClickOutsideEnabled", Enabled);
+    }
+
+    [JSInvokable]
+    public async Task OnOutsideClick(int clientX, int clientY)
+    {
+        if (!Enabled) return;
+        var args = new PointerEventArgs { ClientX = clientX, ClientY = clientY };
+        await OnClickOutside.InvokeAsync(args);
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("disposeClickOutside");
+    }
+}

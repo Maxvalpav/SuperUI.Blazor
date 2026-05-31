@@ -1,0 +1,57 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@code {
+    /// <summary>localStorage key to bind to.</summary>
+    [Parameter] public string Key { get; set; } = "";
+    /// <summary>Current value. Two-way bound.</summary>
+    [Parameter] public string Value { get; set; } = "";
+    /// <summary>Fires when the value changes (programmatically or from another tab).</summary>
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    /// <summary>Fires specifically when the value is changed from another tab/window.</summary>
+    [Parameter] public EventCallback<string> OnExternalChange { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        // Read initial value
+        var initial = await SafeInvokeAsync<string>("localStorage.getItem", Key);
+        if (initial is not null && initial != Value)
+        {
+            Value = initial;
+            await ValueChanged.InvokeAsync(initial);
+            StateHasChanged();
+        }
+        // Listen for cross-tab changes
+        await SafeInvokeVoidAsync("initLocalStorageWatcher", Key, SelfRef);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsInteractive && !string.IsNullOrEmpty(Key) && !_isInternalUpdate)
+        {
+            await SafeInvokeVoidAsync("localStorage.setItem", Key, Value ?? "");
+        }
+    }
+
+    private bool _isInternalUpdate;
+
+    [JSInvokable]
+    public async Task OnStorageChanged(string newValue)
+    {
+        if (Value == newValue) return;
+        _isInternalUpdate = true;
+        Value = newValue;
+        await ValueChanged.InvokeAsync(newValue);
+        await OnExternalChange.InvokeAsync(newValue);
+        StateHasChanged();
+        _isInternalUpdate = false;
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("stopLocalStorageWatcher");
+    }
+}

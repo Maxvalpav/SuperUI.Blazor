@@ -1,0 +1,63 @@
+@namespace SuperUI.Components
+@inherits SgComponentBase
+@implements IDisposable
+
+@code {
+    /// <summary>Interval in milliseconds between ticks.</summary>
+    [Parameter] public int IntervalMs { get; set; } = 1000;
+    /// <summary>Fires on each tick.</summary>
+    [Parameter] public EventCallback OnTick { get; set; }
+    /// <summary>Whether the interval starts automatically on initialization.</summary>
+    [Parameter] public bool AutoStart { get; set; } = true;
+
+    /// <summary>Whether the interval is currently running.</summary>
+    public bool IsRunning { get; private set; }
+
+    private readonly CancellationTokenSource _disposeCts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AutoStart)
+            Start();
+    }
+
+    /// <summary>Starts the interval timer.</summary>
+    public void Start()
+    {
+        if (IsRunning) return;
+        IsRunning = true;
+        _ = RunLoopAsync();
+    }
+
+    /// <summary>Stops the interval timer.</summary>
+    public void Stop()
+    {
+        IsRunning = false;
+    }
+
+    private async Task RunLoopAsync()
+    {
+        while (IsRunning && !_disposeCts.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(IntervalMs, _disposeCts.Token);
+                if (IsRunning && !_disposeCts.IsCancellationRequested)
+                {
+                    await OnTick.InvokeAsync();
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        IsRunning = false;
+        _disposeCts.Cancel();
+        _disposeCts.Dispose();
+    }
+}

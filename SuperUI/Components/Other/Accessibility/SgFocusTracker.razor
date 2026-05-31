@@ -1,0 +1,43 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@code {
+    /// <summary>CSS selector of the container to track focus within. If null, tracks the whole document.</summary>
+    [Parameter] public string? Scope { get; set; }
+    /// <summary>Fires with a CSS selector string of the focused element when focus enters the scope.</summary>
+    [Parameter] public EventCallback<string> OnFocusIn { get; set; }
+    /// <summary>Fires when focus leaves the scope entirely.</summary>
+    [Parameter] public EventCallback OnFocusOut { get; set; }
+
+    /// <summary>CSS selector of the currently focused element (or empty if none).</summary>
+    public string? CurrentFocusedElement { get; private set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("initFocusTracker", Scope, SelfRef);
+    }
+
+    [JSInvokable]
+    public async Task OnFocusedIn(string selector)
+    {
+        CurrentFocusedElement = selector;
+        StateHasChanged();
+        await OnFocusIn.InvokeAsync(selector);
+    }
+
+    [JSInvokable]
+    public async Task OnFocusedOut()
+    {
+        CurrentFocusedElement = null;
+        StateHasChanged();
+        await OnFocusOut.InvokeAsync();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("stopFocusTracker");
+    }
+}

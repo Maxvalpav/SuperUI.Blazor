@@ -1,0 +1,38 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@code {
+    /// <summary>Keyboard shortcut combination (e.g. "Ctrl+S", "Escape", "Shift+?").</summary>
+    [Parameter] public string Keys { get; set; } = "";
+    /// <summary>Fires when the shortcut is pressed.</summary>
+    [Parameter] public EventCallback OnExecute { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (!string.IsNullOrEmpty(Keys))
+            await SafeInvokeVoidAsync("registerShortcut", Keys, SelfRef);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsInteractive && !string.IsNullOrEmpty(Keys))
+        {
+            await SafeInvokeVoidAsync("unregisterShortcut");
+            await SafeInvokeVoidAsync("registerShortcut", Keys, SelfRef);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnShortcutExecuted()
+    {
+        await OnExecute.InvokeAsync();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("unregisterShortcut");
+    }
+}

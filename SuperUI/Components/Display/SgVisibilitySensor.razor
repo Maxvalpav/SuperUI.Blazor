@@ -1,0 +1,49 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+<span @ref="_target" style="display:contents">@ChildContent</span>
+
+@code {
+    private ElementReference _target;
+
+    /// <summary>Content to track visibility for.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Fires when the element becomes visible.</summary>
+    [Parameter] public EventCallback OnVisible { get; set; }
+    /// <summary>Fires when the element becomes hidden.</summary>
+    [Parameter] public EventCallback OnHidden { get; set; }
+    /// <summary>IntersectionObserver threshold (0.0 – 1.0).</summary>
+    [Parameter] public double Threshold { get; set; } = 0.0;
+    /// <summary>IntersectionObserver root margin (e.g. "100px").</summary>
+    [Parameter] public string? RootMargin { get; set; }
+    /// <summary>If true, fires only once when the element first becomes visible.</summary>
+    [Parameter] public bool Once { get; set; }
+
+    /// <summary>Whether the element is currently visible.</summary>
+    public bool IsVisible { get; private set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("observeIntersection", _target, Threshold, RootMargin ?? "0px", Once, SelfRef);
+    }
+
+    [JSInvokable]
+    public async Task OnVisibilityChanged(bool isIntersecting, double ratio)
+    {
+        if (IsVisible == isIntersecting) return;
+        IsVisible = isIntersecting;
+        StateHasChanged();
+        if (isIntersecting)
+            await OnVisible.InvokeAsync();
+        else
+            await OnHidden.InvokeAsync();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("unobserveIntersection", _target);
+    }
+}

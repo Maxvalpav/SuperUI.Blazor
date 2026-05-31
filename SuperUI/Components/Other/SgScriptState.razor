@@ -1,0 +1,70 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@if (State == ScriptLoadState.Loading)
+{
+    @Loading
+}
+else if (State == ScriptLoadState.Error)
+{
+    @ErrorContent
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    /// <summary>URL of the external script to load.</summary>
+    [Parameter] public string ScriptUrl { get; set; } = "";
+    /// <summary>Optional URL of an external stylesheet to load.</summary>
+    [Parameter] public string? StylesheetUrl { get; set; }
+    /// <summary>Content to render when the script is loaded.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Content to render while loading.</summary>
+    [Parameter] public RenderFragment? Loading { get; set; }
+    /// <summary>Content to render on load error.</summary>
+    [Parameter] public RenderFragment? ErrorContent { get; set; }
+
+    /// <summary>Current load state of the script.</summary>
+    public ScriptLoadState State { get; private set; } = ScriptLoadState.Loading;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (!string.IsNullOrEmpty(ScriptUrl))
+        {
+            await SafeInvokeVoidAsync("loadScript", ScriptUrl, SelfRef);
+        }
+        else
+        {
+            State = ScriptLoadState.Loaded;
+            StateHasChanged();
+        }
+        if (!string.IsNullOrEmpty(StylesheetUrl))
+        {
+            await SafeInvokeVoidAsync("loadStylesheet", StylesheetUrl);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnScriptLoaded()
+    {
+        State = ScriptLoadState.Loaded;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnScriptError(string url)
+    {
+        State = ScriptLoadState.Error;
+        StateHasChanged();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        // Scripts stay loaded in the page
+    }
+}
