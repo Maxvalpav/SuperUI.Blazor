@@ -1,0 +1,59 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+@ChildContent
+
+@if (HasMore)
+{
+    <span @ref="_sentinel" style="display:block;min-height:1px">
+        @if (IsLoading)
+        {
+            @LoadingContent
+        }
+    </span>
+}
+
+@code {
+    private ElementReference _sentinel;
+
+    /// <summary>Content to scroll through (typically a list of items).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Fires when the sentinel enters the viewport, requesting more data.</summary>
+    [Parameter] public EventCallback OnLoadMore { get; set; }
+    /// <summary>Custom loading indicator shown while loading more items.</summary>
+    [Parameter] public RenderFragment? LoadingContent { get; set; }
+    /// <summary>Whether a load operation is in progress. While true, OnLoadMore won't fire again.</summary>
+    [Parameter] public bool IsLoading { get; set; }
+    /// <summary>Set to false when there is no more data to load. Stops the observer.</summary>
+    [Parameter] public bool HasMore { get; set; } = true;
+    /// <summary>IntersectionObserver threshold (0.0 – 1.0).</summary>
+    [Parameter] public double Threshold { get; set; } = 0.0;
+    /// <summary>IntersectionObserver root margin. Use "200px" to trigger 200px before the sentinel is visible.</summary>
+    [Parameter] public string RootMargin { get; set; } = "200px";
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async Task OnAfterRenderSafeAsync(bool firstRender)
+    {
+        if (!IsInteractive) return;
+        if (HasMore && !IsLoading)
+            await SafeInvokeVoidAsync("observeIntersection", _sentinel, Threshold, RootMargin, false, SelfRef);
+        else
+            await SafeInvokeVoidAsync("unobserveIntersection", _sentinel);
+    }
+
+    [JSInvokable]
+    public async Task OnVisibilityChanged(bool isIntersecting, double ratio)
+    {
+        if (isIntersecting && HasMore && !IsLoading)
+        {
+            await OnLoadMore.InvokeAsync();
+        }
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("unobserveIntersection", _sentinel);
+    }
+}

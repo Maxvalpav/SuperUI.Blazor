@@ -444,8 +444,43 @@
         </div>
 
         @* ════════════════════════════════════════════════
-           20. SgScriptState
-           ════════════════════════════════════════════════ *@
+            23. SgInfiniteScroll
+            ════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgInfiniteScroll</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Scroll to the bottom of this section to load more items.
+                </SgTypography>
+            </div>
+            <div style="max-height:200px;overflow-y:auto;border:1px solid var(--sg-border,#d1d5db);border-radius:8px;padding:8px;">
+                <SgInfiniteScroll OnLoadMore="@OnLoadMoreItems" IsLoading="@_infiniteLoading" HasMore="@_infiniteHasMore" RootMargin="100px">
+                    @foreach (var item in _infiniteItems)
+                    {
+                        <div style="padding:8px 12px;border-bottom:1px solid var(--sg-border,#e5e7eb);display:flex;align-items:center;gap:8px;">
+                            <SgAvatar Text="@item[..1]" Size="SgSize.Sm" />
+                            <span>@item</span>
+                        </div>
+                    }
+                </SgInfiniteScroll>
+                @if (_infiniteLoading)
+                {
+                    <div style="text-align:center;padding:12px;color:var(--sg-text-muted);">
+                        Loading more...
+                    </div>
+                }
+                @if (!_infiniteHasMore && _infiniteItems.Count > 0)
+                {
+                    <div style="text-align:center;padding:12px;color:var(--sg-text-muted);font-size:13px;">
+                        All items loaded
+                    </div>
+                }
+            </div>
+        </div>
+
+        @* ════════════════════════════════════════════════
+            24. SgScriptState
+            ════════════════════════════════════════════════ *@
         <div class="demo-section">
             <div class="demo-section-header">
                 <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">SgScriptState</SgTypography>
@@ -707,6 +742,27 @@
     private async Task OnActiveSectionChanged(string id)
     {
         _activeSection = string.IsNullOrEmpty(id) ? "none" : id;
+        StateHasChanged();
+    }
+
+    // ── SgInfiniteScroll ────────────────────────────────────
+    private List<string> _infiniteItems = Enumerable.Range(1, 10).Select(i => $"Item {i}").ToList();
+    private bool _infiniteLoading;
+    private bool _infiniteHasMore = true;
+    private int _infinitePage;
+
+    private async Task OnLoadMoreItems()
+    {
+        if (_infiniteLoading) return;
+        _infiniteLoading = true;
+        _infinitePage++;
+        StateHasChanged();
+        await Task.Delay(800);
+        var newItems = Enumerable.Range(_infiniteItems.Count + 1, 5)
+            .Select(i => $"Item {i}").ToList();
+        _infiniteItems.AddRange(newItems);
+        if (_infinitePage >= 4) _infiniteHasMore = false;
+        _infiniteLoading = false;
         StateHasChanged();
     }
 
