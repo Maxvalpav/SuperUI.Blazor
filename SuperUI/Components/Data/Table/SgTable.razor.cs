@@ -7,6 +7,8 @@ using System.Reflection;
 using System.Text;
 using SuperUI.Enums;
 using SuperUI.Base.ComponentBases;
+using SuperUI.Base.Utilities;
+using SuperUI.Base.Utilities;
 
 namespace SuperUI.Components;
 
@@ -27,6 +29,7 @@ public partial class SgTable<TItem> : SgComponentBase
     private ElementReference _headerScrollRef;
     private ElementReference _bodyScrollRef;
     private IJSObjectReference? _jsModule;
+    private CancellationTokenSource? _lifetimeCts;
     private Dictionary<string, double> _columnWidths = new();
     private string? _resizingColumn;
     private double _resizeStartX;
@@ -39,6 +42,7 @@ public partial class SgTable<TItem> : SgComponentBase
 
 
     [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private SgJsModuleCache ModuleCache { get; set; } = default!;
 
     /// <summary>Whether to show a loading indicator.</summary>
     [Parameter] public bool Loading { get; set; }
@@ -567,14 +571,16 @@ public partial class SgTable<TItem> : SgComponentBase
         _showExportMenu = !_showExportMenu;
     }
 
-    private void HandleExportFocusOut()
+    private async Task HandleExportFocusOut()
     {
-        _ = Task.Delay(200).ContinueWith(_ =>
+        try
         {
-            if (_disposed) return;
-            _showExportMenu = false;
-            InvokeAsync(StateHasChanged);
-        });
+            await Task.Delay(200, GetLifetimeToken());
+        }
+        catch (TaskCanceledException) { return; }
+        if (_disposed) return;
+        _showExportMenu = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     public async ValueTask DisposeAsync()
@@ -582,12 +588,15 @@ public partial class SgTable<TItem> : SgComponentBase
         if (_disposed) return;
         _disposed = true;
 
+
+        _lifetimeCts?.Cancel();
+        _lifetimeCts?.Dispose();
         if (_jsModule is not null)
         {
             try
             {
                 await _jsModule.InvokeVoidAsync("resetResizeState");
-                await _jsModule.DisposeAsync();
+
             }
             catch (JSDisconnectedException) { }
             catch (TaskCanceledException) { }
@@ -596,6 +605,12 @@ public partial class SgTable<TItem> : SgComponentBase
         _jsModule = null;
 
         await base.DisposeAsync();
+    }
+
+    private CancellationToken GetLifetimeToken()
+    {
+        _lifetimeCts ??= new CancellationTokenSource();
+        return _lifetimeCts.Token;
     }
 
     private static string EscapeCsv(string value)
@@ -608,3 +623,6 @@ public partial class SgTable<TItem> : SgComponentBase
         return value;
     }
 }
+
+
+
