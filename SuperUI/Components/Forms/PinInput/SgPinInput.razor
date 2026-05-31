@@ -1,0 +1,224 @@
+@namespace SuperUI.Components
+@inherits SgInputBase<string>
+@inject IJSRuntime JS
+
+<div class="@RootClass" style="@Style" role="group" aria-label="PIN input"
+     @attributes="AdditionalAttributes">
+
+    @for (var i = 0; i < Length; i++)
+    {
+        var idx = i;
+        <input id="@InputId(idx)"
+               type="@GetInputType()"
+               inputmode="@InputMode"
+               class="@InputClass(idx)"
+               value="@GetChar(idx)"
+               autocomplete="one-time-code"
+               disabled="@Disabled"
+               readonly="@ReadOnly"
+               @oninput="@(e => OnInput(idx, e.Value?.ToString() ?? ""))"
+               @onkeydown="@(e => OnKeyDown(idx, e))"
+               @onfocus="@(() => OnFocus(idx))" />
+    }
+</div>
+
+@code {
+    private string[] _chars = [];
+    private string _baseId = "sg-pin-" + Guid.NewGuid().ToString("N")[..8];
+    private bool _disposed;
+
+    /// <summary>Number of input boxes (4-8 recommended).</summary>
+    [Parameter] public int Length { get; set; } = 6;
+
+    /// <summary>Hide characters (password mode).</summary>
+    [Parameter] public bool Secret { get; set; }
+
+    /// <summary>Accept only digits (default true).</summary>
+    [Parameter] public bool DigitsOnly { get; set; } = true;
+
+    /// <summary>Fires when all boxes are filled.</summary>
+    [Parameter] public EventCallback<string> OnComplete { get; set; }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Inline styles.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Disable interaction.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Prevent modification.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Captures unmatched HTML attributes.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        EnsureArray();
+        SyncFromValue();
+    }
+
+    public override void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        base.Dispose();
+    }
+
+    private void EnsureArray()
+    {
+        if (_chars.Length != Length)
+            _chars = new string[Length];
+    }
+
+    private void SyncFromValue()
+    {
+        if (Value is null)
+        {
+            Array.Fill(_chars, "");
+            return;
+        }
+        for (var i = 0; i < Length; i++)
+            _chars[i] = i < Value.Length ? Value[i].ToString() : "";
+    }
+
+    private string GetChar(int index) =>
+        (uint)index < (uint)_chars.Length ? _chars[index] ?? "" : "";
+
+    private async Task OnInput(int index, string raw)
+    {
+        if (index < 0 || index >= Length) return;
+
+        if (raw.Length > 1)
+        {
+            await DistributePaste(raw);
+            await SyncDom();
+            return;
+        }
+
+        var ch = raw.Length == 0 ? "" : raw[^1].ToString();
+
+        if (!string.IsNullOrEmpty(ch) && !IsValidChar(ch[0]))
+        {
+            await ClearDomInput(index);
+            return;
+        }
+
+        _chars[index] = ch;
+        await CommitValue();
+
+        if (!string.IsNullOrEmpty(ch) && index + 1 < Length)
+            await FocusInput(index + 1);
+    }
+
+    private async Task OnKeyDown(int index, KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Backspace":
+                if (!string.IsNullOrEmpty(_chars[index]))
+                {
+                    _chars[index] = "";
+                    await CommitValue();
+                }
+                else if (index > 0)
+                {
+                    await FocusInput(index - 1);
+                }
+                break;
+            case "ArrowLeft" when index > 0:
+                await FocusInput(index - 1);
+                break;
+            case "ArrowRight" when index + 1 < Length:
+                await FocusInput(index + 1);
+                break;
+        }
+    }
+
+    private async Task OnFocus(int index)
+    {
+        await SelectInput(index);
+    }
+
+    private async Task DistributePaste(string text)
+    {
+        var filtered = text.Where(IsValidChar).Take(Length).ToArray();
+        if (filtered.Length == 0) return;
+
+        for (var i = 0; i < filtered.Length; i++)
+            _chars[i] = filtered[i].ToString();
+
+        await CommitValue();
+
+        var focusIdx = Math.Min(filtered.Length, Length - 1);
+        await FocusInput(focusIdx);
+    }
+
+    private async Task CommitValue()
+    {
+        var next = string.Concat(_chars);
+        if (next.Length == 0) next = null!;
+        await SetValueAsync(next);
+
+        if (next?.Length == Length && OnComplete.HasDelegate)
+            await OnComplete.InvokeAsync(next);
+
+        StateHasChanged();
+    }
+
+    private async Task FocusInput(int index)
+    {
+        if ((uint)index >= (uint)Length) return;
+        await JS.InvokeVoidAsync("eval",
+            $"document.getElementById('{InputId(index)}')?.focus()");
+    }
+
+    private async Task SelectInput(int index)
+    {
+        if ((uint)index >= (uint)Length) return;
+        await JS.InvokeVoidAsync("eval",
+            $"document.getElementById('{InputId(index)}')?.select()");
+    }
+
+    private async Task ClearDomInput(int index)
+    {
+        await JS.InvokeVoidAsync("eval",
+            $"document.getElementById('{InputId(index)}').value = ''");
+    }
+
+    private async Task SyncDom()
+    {
+        // Force re-render to sync DOM values after paste
+        StateHasChanged();
+    }
+
+    private bool IsValidChar(char c) =>
+        DigitsOnly ? char.IsDigit(c) : char.IsLetterOrDigit(c);
+
+    private string InputId(int index) => $"{_baseId}-{index}";
+
+    private string GetInputType() => Secret ? "password" : "text";
+
+    private string InputMode => DigitsOnly ? "numeric" : "text";
+
+    private string RootClass
+    {
+        get
+        {
+            var cls = new List<string>(2) { "sgc-pin-input" };
+            if (!string.IsNullOrWhiteSpace(CssClass)) cls.Add(CssClass!);
+            return string.Join(' ', cls);
+        }
+    }
+
+    private string InputClass(int index)
+    {
+        var cls = new List<string> { "sgc-pin-box" };
+        if (!string.IsNullOrEmpty(_chars[index])) cls.Add("sgc-filled");
+        if (HasValidationErrors) cls.Add("sgc-invalid");
+        return string.Join(' ', cls);
+    }
+}
