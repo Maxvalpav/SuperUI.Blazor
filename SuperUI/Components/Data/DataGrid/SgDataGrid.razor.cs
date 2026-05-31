@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using SuperUI.Localization;
+using SuperUI.Base.Utilities;
 using System.Collections;
 using SuperUI.Enums;
 using SortDirection = SuperUI.Enums.SgDataGridSortDirection;
@@ -183,6 +184,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     private IEnumerable<TItem>? _prevItems;
     private DotNetObjectReference<SgDataGrid<TItem>>? _selfRef;
     private IJSObjectReference? _module;
+    private CancellationTokenSource? _lifetimeCts;
     private bool _disposing;
     private int _selectionVersion;
 
@@ -287,6 +289,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
     [Inject] private ILogger<SgDataGrid<TItem>> Logger { get; set; } = default!;
+    [Inject] private SgJsModuleCache ModuleCache { get; set; } = default!;
 
     private Action? _localeChangedHandler;
 
@@ -944,7 +947,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
             _hasRendered = true;
             try
             {
-                var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
+                var module = await ModuleCache.GetAsync(JS, "./_content/SuperUI/superui.js", GetLifetimeToken());
                 if (_disposing)
                 {
                     // Component was disposed while we awaited the import — clean up locally.
@@ -4927,6 +4930,12 @@ private static object? ConvertFromString(string? text, Type type)
         }
     }
 
+    private CancellationToken GetLifetimeToken()
+    {
+        _lifetimeCts ??= new CancellationTokenSource();
+        return _lifetimeCts.Token;
+    }
+
     private static string EscapeCsv(string? value)
     {
         var text = value ?? string.Empty;
@@ -6077,6 +6086,9 @@ private static object? ConvertFromString(string? text, Type type)
         }
         catch (ObjectDisposedException) { }
 
+        _lifetimeCts?.Cancel();
+        _lifetimeCts?.Dispose();
+
         if (_module is not null && _selfRef is not null)
         {
             try
@@ -6107,20 +6119,6 @@ private static object? ConvertFromString(string? text, Type type)
         var selfRef = _selfRef;
         _selfRef = null;
         selfRef?.Dispose();
-
-        if (_module is not null)
-        {
-            try
-            {
-                await _module.DisposeAsync();
-            }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException) { }
-            catch (Exception ex)
-            {
-                Logger.LogDebug(ex, "SgDataGrid: JS module DisposeAsync failed");
-            }
-        }
 
         // Release all accumulated state so it doesn't survive the component on a long-lived
         // Blazor Server circuit. The fields are readonly, so we Clear() instead of reassigning.
