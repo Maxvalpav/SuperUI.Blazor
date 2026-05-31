@@ -196,7 +196,7 @@ public sealed class LocalizationService : ISuperUILocalizer
             {
                 foreach (var kv in domainKeys)
                 {
-                    target.TryAdd(kv.Key, kv.Value);
+                    target[kv.Key] = kv.Value;
                 }
             }
         }
