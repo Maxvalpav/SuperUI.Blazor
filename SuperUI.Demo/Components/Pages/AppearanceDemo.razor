@@ -1,0 +1,99 @@
+@page "/appearance-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+@using SuperUI.Services
+@using SuperUI.Themes
+@inject SgThemeService ThemeService
+
+<PageTitle>Appearance — SuperUI</PageTitle>
+
+<SgCard Variant="SgCardVariant.Default" HeaderContent="@_headerContent">
+    <ChildContent>
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Semibold">Управление внешним видом</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Компонент <code>SgAppearanceSettings</code> позволяет пользователям настраивать цветовую схему (светлая, темная, авто) и выбирать одну из доступных тем оформления.
+                </SgTypography>
+            </div>
+
+            <SgRow Space="SgSize.Lg">
+                <SgCol Md="6">
+                    <SgCard Title="Встроенный в страницу" Variant="SgCardVariant.Outlined">
+                        <div style="max-width: 360px; border: 1px solid var(--sg-divider); border-radius: var(--sg-radius-lg); overflow: hidden;">
+                            <SgAppearanceSettings />
+                        </div>
+                    </SgCard>
+                </SgCol>
+                <SgCol Md="6">
+                    <SgCard Title="Примеры использования" Variant="SgCardVariant.Outlined">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <div>
+                                <SgTypography Weight="SgTypographyWeight.Medium">В выпадающем меню (Dropdown)</SgTypography>
+                                <div class="mt-2">
+                                    <SgThemeSwitcher />
+                                </div>
+                            </div>
+                            
+                            <SgDivider />
+                            
+                            <div>
+                                <SgTypography Weight="SgTypographyWeight.Medium">В боковой панели (Drawer)</SgTypography>
+                                <div class="mt-2">
+                                    <SgButton OnClick="() => _showDrawer = true">Открыть настройки</SgButton>
+                                </div>
+                            </div>
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        <div class="demo-section mt-4">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Semibold">Текущее состояние</SgTypography>
+            </div>
+            <SgAlert Variant="SgAlertVariant.Info">
+                <SgStack Vertical Space="SgSize.Sm">
+                    <div><strong>Текущая тема:</strong> @ThemeService.CurrentTheme.Name (@ThemeService.CurrentTheme.Id)</div>
+                    <div><strong>Режим:</strong> @ThemeService.CurrentMode</div>
+                </SgStack>
+            </SgAlert>
+        </div>
+    </ChildContent>
+</SgCard>
+
+<SgDrawer Title="Настройки внешнего вида" @bind-Visible="_showDrawer" Placement="SgPlacement.Right" Size="360px">
+    <SgAppearanceSettings OnChange="() => _showDrawer = false" />
+</SgDrawer>
+
+@code {
+    private bool _showDrawer;
+
+    private RenderFragment _headerContent => __builder => {
+        <SgStack Horizontal Align="SgAlignItems.Center" Space="SgSize.Md">
+            <div style="width:40px;height:40px;border-radius:10px;background:var(--sg-color-primary-subtle);display:flex;align-items:center;justify-content:center;">
+                <SgIcon Icon="@SgIcons.Palette" Size="20px" Color="var(--sg-color-primary)" />
+            </div>
+            <div>
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Appearance</SgTypography>
+                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Настройка тем и цветовых режимов</SgTypography>
+            </div>
+        </SgStack>
+    };
+
+    protected override void OnInitialized()
+    {
+        ThemeService.ThemeChanged += HandleThemeChanged;
+    }
+
+    private void HandleThemeChanged(IThemeDefinition theme, string mode)
+    {
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        ThemeService.ThemeChanged -= HandleThemeChanged;
+    }
+}

@@ -26,77 +26,15 @@
         </button>
     </TriggerContent>
 
-    <HeaderContent>
-        <div class="sgc-theme-switcher-header">
-            <div class="sgc-theme-switcher-header-main">
-                <div class="sgc-theme-switcher-eyebrow">@Localizer["Theme_Appearance"]</div>
-                <div class="sgc-theme-switcher-title">@ThemeService.CurrentTheme.Name</div>
-            </div>
-            <button type="button" 
-                    class="sgc-theme-reset-btn" 
-                    @onclick="ResetToDefaultAsync"
-                    title="@Localizer["Theme_ResetToDefault"]">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-            </button>
-        </div>
-    </HeaderContent>
-
     <ChildContent>
-        <div class="sgc-theme-switcher-modes">
-            <button type="button" 
-                    class="sgc-theme-mode-btn @(ThemeService.CurrentMode == "light" ? "is-active" : "")"
-                    @onclick='() => SetModeAsync("light")'
-                    title="@Localizer["Theme_LightModeTitle"]">
-                <span class="sgc-theme-mode-icon"><SgIcon Icon="@SgIcons.Sun" Size="14px" /></span>
-                <span class="sgc-theme-mode-text">@Localizer["Theme_LightMode"]</span>
-            </button>
-            <button type="button" 
-                    class="sgc-theme-mode-btn @(ThemeService.CurrentMode == "dark" ? "is-active" : "")"
-                    @onclick='() => SetModeAsync("dark")'
-                    title="@Localizer["Theme_DarkModeTitle"]">
-                <span class="sgc-theme-mode-icon"><SgIcon Icon="@SgIcons.Moon" Size="14px" /></span>
-                <span class="sgc-theme-mode-text">@Localizer["Theme_DarkMode"]</span>
-            </button>
-            <button type="button" 
-                    class="sgc-theme-mode-btn @(ThemeService.CurrentMode == "auto" ? "is-active" : "")"
-                    @onclick='() => SetModeAsync("auto")'
-                    title="@Localizer["Theme_AutoModeTitle"]">
-                <span class="sgc-theme-mode-icon"><SgIcon Icon="@SgIcons.Monitor" Size="14px" /></span>
-                <span class="sgc-theme-mode-text">@Localizer["Theme_AutoMode"]</span>
-            </button>
-        </div>
-
-        <div class="sgc-theme-switcher-divider"></div>
-
-        <div class="sgc-theme-switcher-section">@Localizer["Theme_Collection"]</div>
-        <div class="sgc-theme-grid">
-            @foreach (var theme in ThemeService.GetAvailableThemes())
-            {
-                <button type="button" 
-                        class="sgc-theme-grid-item @(ThemeService.CurrentTheme.Id == theme.Id ? "is-active" : "")"
-                        @onclick='() => SetThemeAsync(theme.Id)'
-                        title="@theme.Description">
-                    <div class="sgc-theme-grid-preview" style="--p-color: @theme.Light.ColorPrimary; --s-color: @theme.Light.Surface;">
-                        <div class="sgc-theme-grid-preview-primary"></div>
-                        <div class="sgc-theme-grid-preview-surface"></div>
-                        @if (ThemeService.CurrentTheme.Id == theme.Id)
-                        {
-                            <span class="sgc-theme-grid-check">
-                                <SgIcon Icon="@SgIcons.Check" Size="10px" />
-                            </span>
-                        }
-                    </div>
-                    <span class="sgc-theme-grid-name">@theme.Name</span>
-                </button>
-            }
-        </div>
+        <SgAppearanceSettings OnChange="CloseAsync" />
     </ChildContent>
 
-    <FooterContent>
+    @* <FooterContent>
         <div class="sgc-theme-switcher-footer">
             <SgButton Variant="SgButtonVariant.Default" Size="SgSize.Sm" OnClick="CloseAsync">@Localizer["Theme_Close"]</SgButton>
         </div>
-    </FooterContent>
+    </FooterContent> *@
 </SgDropdown>
 
 @code {
@@ -106,25 +44,6 @@
     {
         await ThemeService.InitializeAsync();
         ThemeService.ThemeChanged += HandleThemeChanged;
-    }
-
-    private async Task SetModeAsync(string mode)
-    {
-        await ThemeService.SetModeAsync(mode);
-        await CloseAsync();
-    }
-
-    private async Task SetThemeAsync(string themeId)
-    {
-        await ThemeService.SetThemeAsync(themeId);
-        await CloseAsync();
-    }
-
-    private async Task ResetToDefaultAsync()
-    {
-        await ThemeService.SetThemeAsync("superui-default");
-        await ThemeService.SetModeAsync("light");
-        await CloseAsync();
     }
 
     private Task CloseAsync() => _dropdown?.CloseAsync() ?? Task.CompletedTask;

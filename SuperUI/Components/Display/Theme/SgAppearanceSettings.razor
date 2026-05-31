@@ -1,0 +1,111 @@
+@namespace SuperUI.Components
+@using SuperUI.Services
+@using SuperUI.Themes
+@using SuperUI.Localization
+@inject SgThemeService ThemeService
+@inject ISuperUILocalizer Localizer
+@implements IAsyncDisposable
+
+<div class="sgc-appearance-settings">
+    <div class="sgc-appearance-header">
+        <div class="sgc-appearance-header-main">
+            <div class="sgc-appearance-eyebrow">@Localizer["Theme_Appearance"]</div>
+            <div class="sgc-appearance-title">@ThemeService.CurrentTheme.Name</div>
+        </div>
+        <button type="button" 
+                class="sgc-appearance-reset-btn" 
+                @onclick="ResetToDefaultAsync"
+                title="@Localizer["Theme_ResetToDefault"]">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+        </button>
+    </div>
+
+    <div class="sgc-appearance-modes">
+        <button type="button" 
+                class="sgc-appearance-mode-btn @(ThemeService.CurrentMode == "light" ? "is-active" : "")"
+                @onclick='() => SetModeAsync("light")'
+                title="@Localizer["Theme_LightModeTitle"]">
+            <span class="sgc-appearance-mode-text">@Localizer["Theme_LightMode"]</span>
+            <span class="sgc-appearance-mode-icon"><SgIcon Icon="@SgIcons.Sun" Size="14px" /></span>
+        </button>
+        <button type="button" 
+                class="sgc-appearance-mode-btn @(ThemeService.CurrentMode == "dark" ? "is-active" : "")"
+                @onclick='() => SetModeAsync("dark")'
+                title="@Localizer["Theme_DarkModeTitle"]">
+            <span class="sgc-appearance-mode-text">@Localizer["Theme_DarkMode"]</span>
+            <span class="sgc-appearance-mode-icon"><SgIcon Icon="@SgIcons.Moon" Size="14px" /></span>
+        </button>
+        <button type="button" 
+                class="sgc-appearance-mode-btn @(ThemeService.CurrentMode == "auto" ? "is-active" : "")"
+                @onclick='() => SetModeAsync("auto")'
+                title="@Localizer["Theme_AutoModeTitle"]">
+            <span class="sgc-appearance-mode-text">@Localizer["Theme_AutoMode"]</span>
+            <span class="sgc-appearance-mode-icon"><SgIcon Icon="@SgIcons.Monitor" Size="14px" /></span>
+        </button>
+    </div>
+
+    <div class="sgc-appearance-divider"></div>
+
+    <div class="sgc-appearance-section">@Localizer["Theme_Collection"]</div>
+    <div class="sgc-appearance-grid">
+        @foreach (var theme in ThemeService.GetAvailableThemes())
+        {
+            <button type="button" 
+                    class="sgc-appearance-grid-item @(ThemeService.CurrentTheme.Id == theme.Id ? "is-active" : "")"
+                    @onclick='() => SetThemeAsync(theme.Id)'
+                    title="@theme.Description">
+                <span class="sgc-appearance-grid-name">@theme.Name</span>
+                <div class="sgc-appearance-grid-preview" style="--p-color: @theme.Light.ColorPrimary; --s-color: @theme.Light.Surface;">
+                    <div class="sgc-appearance-grid-preview-primary"></div>
+                    <div class="sgc-appearance-grid-preview-surface"></div>
+                    @if (ThemeService.CurrentTheme.Id == theme.Id)
+                    {
+                        <span class="sgc-appearance-grid-check">
+                            <SgIcon Icon="@SgIcons.Check" Size="10px" />
+                        </span>
+                    }
+                </div>
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnChange { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ThemeService.InitializeAsync();
+        ThemeService.ThemeChanged += HandleThemeChanged;
+    }
+
+    private async Task SetModeAsync(string mode)
+    {
+        await ThemeService.SetModeAsync(mode);
+        await OnChange.InvokeAsync();
+    }
+
+    private async Task SetThemeAsync(string themeId)
+    {
+        await ThemeService.SetThemeAsync(themeId);
+        await OnChange.InvokeAsync();
+    }
+
+    private async Task ResetToDefaultAsync()
+    {
+        await ThemeService.SetThemeAsync("superui-default");
+        await ThemeService.SetModeAsync("light");
+        await OnChange.InvokeAsync();
+    }
+
+    private void HandleThemeChanged(IThemeDefinition theme, string mode)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ThemeService.ThemeChanged -= HandleThemeChanged;
+        await Task.CompletedTask;
+    }
+}
