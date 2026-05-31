@@ -1,6 +1,5 @@
 @namespace SuperUI.Components
 @inherits SgComponentBase
-@implements IAsyncDisposable
 
 @if (!string.IsNullOrEmpty(Href))
 {
@@ -64,6 +63,7 @@ else
     private int _countdownValue;
     private CancellationTokenSource? _countdownCts;
     private string? _confirmText;
+    private CancellationTokenSource? _dangerConfirmCts;
 
     [CascadingParameter] public SgButtonGroup? ButtonGroup { get; set; }
 
@@ -260,8 +260,15 @@ else
         if (!string.IsNullOrEmpty(ConfirmText) && !_dangerConfirmActive)
         {
             _dangerConfirmActive = true;
+            _dangerConfirmCts?.Cancel();
+            _dangerConfirmCts?.Dispose();
+            _dangerConfirmCts = new CancellationTokenSource();
             StateHasChanged();
-            await Task.Delay(3000);
+            try
+            {
+                await Task.Delay(3000, _dangerConfirmCts.Token);
+            }
+            catch (TaskCanceledException) { return; }
             _dangerConfirmActive = false;
             StateHasChanged();
             if (DebounceInterval > 0)
@@ -318,8 +325,12 @@ else
 
     public override async ValueTask DisposeAsync()
     {
+        _dangerConfirmCts?.Cancel();
+        _dangerConfirmCts?.Dispose();
         _countdownCts?.Cancel();
         _countdownCts?.Dispose();
         await _debouncer.DisposeAsync();
     }
 }
+
+
