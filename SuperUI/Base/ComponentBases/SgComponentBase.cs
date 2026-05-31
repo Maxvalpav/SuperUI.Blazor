@@ -20,7 +20,7 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public string? Style { get; set; }
     [Parameter] public string? Id { get; set; }
-    [Parameter(CaptureUnmatchedValues = true)] public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     [CascadingParameter] protected HostEnvironmentContext? Host { get; set; }
 
@@ -81,7 +81,7 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
     protected CssBuilder Css(string? rootClass = null) => CssBuilder.Default(rootClass).AddClass(CssClass).AddClassFromAttributes(AdditionalAttributes);
     protected StyleBuilder Styles() => StyleBuilder.Default(Style).AddStyleFromAttributes(AdditionalAttributes);
 
-    protected IReadOnlyDictionary<string, object>? AttributesWithoutClassAndStyle
+    protected Dictionary<string, object>? AttributesWithoutClassAndStyle
     {
         get
         {
