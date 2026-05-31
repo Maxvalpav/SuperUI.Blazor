@@ -64,9 +64,6 @@ public partial class SgTextArea : IDisposable
     /// <summary>Expands the field to fill its container width.</summary>
     [Parameter] public bool Block { get; set; } = true;
 
-    /// <summary>Additional CSS class for the outer field wrapper.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
     // ── Behavior ─────────────────────────────────────────────────────────
 
     /// <summary>If true, updates the value on every keystroke. If false, waits for blur/change.</summary>
