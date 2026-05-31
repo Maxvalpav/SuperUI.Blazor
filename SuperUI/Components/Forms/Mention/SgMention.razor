@@ -1,0 +1,384 @@
+@namespace SuperUI.Components
+@using SuperUI.Enums
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="@GetRootClasses()" @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+    <div class="sgc-mention-wrap">
+        <textarea class="sgc-mention-input @(IsInvalid ? "sgc-invalid" : "")"
+                  @ref="_inputRef"
+                  value="@Value"
+                  @oninput="OnInputAsync"
+                  @onkeydown="OnKeyDownAsync"
+                  @onblur="OnBlurAsync"
+                  placeholder="@Placeholder"
+                  disabled="@Disabled"
+                  readonly="@ReadOnly"
+                  rows="@Rows"
+                  maxlength="@MaxLength"
+                  aria-label="@(Label ?? "Mention input")"></textarea>
+
+        @if (_dropdownVisible && _filteredOptions.Count > 0)
+        {
+            <div class="sgc-mention-dropdown"
+                 @onmouseleave="() => _highlightedIndex = -1">
+                @{
+                    var group = "";
+                    for (var i = 0; i < _filteredOptions.Count; i++)
+                    {
+                        var opt = _filteredOptions[i];
+                        if (opt.Group is not null && opt.Group != group)
+                        {
+                            group = opt.Group;
+                            <div class="sgc-mention-group">@group</div>
+                        }
+                        <div class="sgc-mention-item @(i == _highlightedIndex ? "sgc-highlighted" : "")"
+                             @onclick="() => SelectOptionAsync(opt)"
+                             @onmousedown:preventDefault>
+                            @if (!string.IsNullOrEmpty(opt.ImageUrl))
+                            {
+                                <img class="sgc-mention-img" src="@opt.ImageUrl" alt="" />
+                            }
+                            <span class="sgc-mention-text">@opt.DisplayText</span>
+                        </div>
+                    }
+                }
+            </div>
+        }
+        else if (_dropdownVisible)
+        {
+            <div class="sgc-mention-dropdown sgc-mention-empty">
+                @(string.IsNullOrEmpty(_searchText) ? "Keep typing..." : "No matches")
+            </div>
+        }
+    </div>
+    @if (IsInvalid && !string.IsNullOrEmpty(_validationError))
+    {
+        <div class="sgc-validation-error">@_validationError</div>
+    }
+</div>
+
+@code {
+    private ElementReference _inputRef;
+    private bool _initialized;
+    private string _searchText = "";
+    private int _highlightedIndex;
+    private List<SgMentionOption> _filteredOptions = new();
+    private bool _dropdownVisible;
+    private string? _validationError;
+    private CancellationTokenSource? _debounceCts;
+
+    // ── Parameters ──
+
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public int Rows { get; set; } = 3;
+    [Parameter] public int MaxLength { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public string? ValidationError { get; set; }
+    [Parameter] public bool IsInvalid { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    [Parameter] public string Triggers { get; set; } = "@";
+    [Parameter] public IReadOnlyList<SgMentionOption>? Options { get; set; }
+    [Parameter] public int DebounceMs { get; set; } = 200;
+    [Parameter] public int MinSearchLength { get; set; } = 0;
+    [Parameter] public bool CaseSensitive { get; set; }
+    [Parameter] public EventCallback<SgMentionOption> OnMentionSelected { get; set; }
+    [Parameter] public EventCallback OnDropdownOpen { get; set; }
+    [Parameter] public EventCallback OnDropdownClose { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            _initialized = true;
+        if (_dropdownVisible)
+            PositionDropdown();
+    }
+
+    // ── Input handling ──
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        var newValue = e.Value?.ToString() ?? "";
+        if (newValue != Value)
+        {
+            Value = newValue;
+            await ValueChanged.InvokeAsync(Value);
+        }
+
+        _debounceCts?.Cancel();
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(DebounceMs, token);
+            if (!token.IsCancellationRequested)
+                await InvokeAsync(CheckTrigger);
+        });
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "ArrowDown" || e.Key == "ArrowUp")
+        {
+            if (!_dropdownVisible) return;
+            var dir = e.Key == "ArrowDown" ? 1 : -1;
+            var count = _filteredOptions.Count;
+            if (count == 0) return;
+            _highlightedIndex = (_highlightedIndex + dir + count) % count;
+            ScrollIntoView();
+            return;
+        }
+
+        if (e.Key is "Enter" or "Tab")
+        {
+            if (_dropdownVisible && _filteredOptions.Count > 0 && _highlightedIndex >= 0)
+            {
+                await SelectOptionAsync(_filteredOptions[_highlightedIndex]);
+            }
+            return;
+        }
+
+        if (e.Key == "Escape" && _dropdownVisible)
+        {
+            HideDropdown();
+            return;
+        }
+    }
+
+    private async Task OnBlurAsync()
+    {
+        await Task.Delay(200);
+        if (_dropdownVisible)
+            HideDropdown();
+    }
+
+    // ── Trigger detection ──
+
+    private void CheckTrigger()
+    {
+        if (!_initialized || string.IsNullOrEmpty(Value)) return;
+
+        var pos = GetCursorPos();
+        if (pos <= 0) { HideDropdown(); return; }
+
+        // Walk backwards from cursor to find trigger
+        var trigger = '\0';
+        var start = -1;
+        for (var p = pos - 1; p >= 0; p--)
+        {
+            var c = Value[p];
+            if (Triggers.Contains(c))
+            {
+                trigger = c;
+                start = p + 1; // search text starts after trigger
+                break;
+            }
+            if (c is ' ' or '\n' or '\r') break;
+        }
+
+        if (start < 0 || start >= pos)
+        {
+            HideDropdown();
+            return;
+        }
+
+        var searchText = Value[start..pos];
+        _searchText = searchText;
+        FilterOptions();
+
+        if (_dropdownVisible)
+            PositionDropdown();
+    }
+
+    private void FilterOptions()
+    {
+        if (Options is null || Options.Count == 0)
+        {
+            _filteredOptions = new();
+            _dropdownVisible = false;
+            return;
+        }
+
+        var search = _searchText ?? "";
+        if (search.Length < MinSearchLength || string.IsNullOrEmpty(search))
+        {
+            // Show all options when search is empty (just typed trigger)
+            _filteredOptions = Options.ToList();
+        }
+        else
+        {
+            var comparison = CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+            _filteredOptions = Options
+                .Where(o => o.DisplayText.Contains(search, comparison) || o.Value.Contains(search, comparison))
+                .ToList();
+        }
+
+        _highlightedIndex = 0;
+        var wasVisible = _dropdownVisible;
+        _dropdownVisible = _filteredOptions.Count > 0;
+
+        if (_dropdownVisible && !wasVisible)
+            _ = OnDropdownOpen.InvokeAsync();
+        else if (!_dropdownVisible && wasVisible)
+            _ = OnDropdownClose.InvokeAsync();
+    }
+
+    // ── Selection ──
+
+    private async Task SelectOptionAsync(SgMentionOption option)
+    {
+        if (!_initialized) return;
+
+        try
+        {
+            var cursorInfo = await JS.InvokeAsync<string>("eval", @"
+                (function() {
+                    const i = document.querySelector('.sgc-mention-input');
+                    if (!i) return '';
+                    const pos = i.selectionStart;
+                    const val = i.value;
+                    for (let p = pos - 1; p >= 0; p--) {
+                        const c = val[p];
+                        if (c === '@' || c === '#' || c === ':') {
+                            return JSON.stringify({ trigger: c, start: p, end: pos });
+                        }
+                        if (c === ' ' || c === '\n') break;
+                    }
+                    return '';
+                })()
+            ");
+
+            if (string.IsNullOrEmpty(cursorInfo)) return;
+            var info = System.Text.Json.JsonSerializer.Deserialize<CursorInfo>(cursorInfo);
+            if (info is null) return;
+
+            var mentionText = $"{info.Trigger}{option.DisplayText}";
+
+            await JS.InvokeVoidAsync("eval", $@"
+                (function() {{
+                    const i = document.querySelector('.sgc-mention-input');
+                    if (!i) return;
+                    const before = i.value.substring(0, {info.Start});
+                    const after = i.value.substring({info.End});
+                    i.value = before + '{mentionText.Replace("'", "\\'")}' + after;
+                    const pos = {info.Start} + '{mentionText.Replace("'", "\\'")}'.length;
+                    i.setSelectionRange(pos, pos);
+                    i.focus();
+                    i.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                }})()
+            ");
+
+            var newValue = await JS.InvokeAsync<string>("eval",
+                "document.querySelector('.sgc-mention-input')?.value ?? ''");
+
+            if (newValue != Value)
+            {
+                Value = newValue;
+                await ValueChanged.InvokeAsync(Value);
+            }
+
+            _dropdownVisible = false;
+            _filteredOptions = new();
+            await OnMentionSelected.InvokeAsync(option);
+        }
+        catch { }
+    }
+
+    // ── Dropdown positioning ──
+
+    private void PositionDropdown()
+    {
+        try
+        {
+            _ = JS.InvokeVoidAsync("eval", @"
+                (function() {
+                    const i = document.querySelector('.sgc-mention-input');
+                    const d = document.querySelector('.sgc-mention-dropdown');
+                    if (!i || !d) return;
+
+                    const pos = i.selectionStart;
+
+                    // Create a mirror to measure cursor position
+                    const style = getComputedStyle(i);
+                    const m = document.createElement('div');
+                    m.style.cssText = 'position:fixed;top:-9999px;left:-9999px;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;visibility:hidden;font:' + style.font + ';font-size:' + style.fontSize + ';font-family:' + style.fontFamily + ';letter-spacing:' + style.letterSpacing + ';line-height:' + style.lineHeight + ';padding:' + style.padding + ';border:' + style.border + ';box-sizing:border-box;width:' + i.clientWidth + 'px;';
+                    m.textContent = i.value.substring(0, pos) + '|';
+                    document.body.appendChild(m);
+
+                    const marker = m.querySelector('|') || m.lastChild;
+                    const span = document.createElement('span');
+                    span.textContent = '|';
+                    m.appendChild(span);
+
+                    const spanRect = span.getBoundingClientRect();
+                    const inputRect = i.getBoundingClientRect();
+                    document.body.removeChild(m);
+
+                    d.style.position = 'fixed';
+                    d.style.left = Math.max(0, Math.min(spanRect.left, window.innerWidth - 220)) + 'px';
+                    d.style.top = (spanRect.top + 24) + 'px';
+                    d.style.display = 'block';
+                })()
+            ");
+        }
+        catch { }
+    }
+
+    private int GetCursorPos()
+    {
+        // Approximate cursor position: last position in current value
+        // This is a fallback; the actual position is measured in JS
+        return Value?.Length ?? 0;
+    }
+
+    private void HideDropdown()
+    {
+        _dropdownVisible = false;
+        _filteredOptions = new();
+        _ = OnDropdownClose.InvokeAsync();
+    }
+
+    private void ScrollIntoView()
+    {
+        StateHasChanged();
+    }
+
+    // ── CSS ──
+
+    private string GetRootClasses()
+    {
+        var cls = new List<string>(4) { "sgc-mention", "sgc-field" };
+        if (_dropdownVisible) cls.Add("sgc-mention-open");
+        if (!string.IsNullOrEmpty(CssClass)) cls.Add(CssClass!);
+        if (Disabled) cls.Add("sgc-disabled");
+        if (ReadOnly) cls.Add("sgc-readonly");
+        return string.Join(' ', cls);
+    }
+
+    // ── Dispose ──
+
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+    }
+
+    private class CursorInfo
+    {
+        public char Trigger { get; set; }
+        public int Start { get; set; }
+        public int End { get; set; }
+    }
+}
