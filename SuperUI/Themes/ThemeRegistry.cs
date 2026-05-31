@@ -31,6 +31,21 @@ public sealed class ThemeRegistry
         Register(new FractalisTheme());
         Register(new CosmosTheme());
         Register(new GordianTheme());
+        // ═══ Flagship ✦ — новые 14 тем ═══
+        Register(new CalyxTheme());
+        Register(new ApexTheme());
+        Register(new MediciTheme());
+        Register(new ZenTheme());
+        Register(new AetherTheme());
+        Register(new OasisTheme());
+        Register(new NeoTheme());
+        Register(new ClarityTheme());
+        Register(new ElementTheme());
+        Register(new RadiusTheme());
+        Register(new FluxTheme());
+        Register(new MuseTheme());
+        Register(new ForgeTheme());
+        Register(new PrismTheme());
     }
 
     /// <summary>Registers a new theme.</summary>

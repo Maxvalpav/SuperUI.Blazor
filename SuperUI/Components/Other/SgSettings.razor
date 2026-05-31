@@ -67,22 +67,36 @@
                         @if (Match(Localizer["Settings_Theme"]))
                         {
                             @SettingRow(Localizer["Settings_Theme"], null,
-                                @<div class="sgc-theme-grid" role="radiogroup" aria-label="@Localizer["Settings_Theme"]">
-                                    @foreach (var theme in _themes)
+                                @<div role="radiogroup" aria-label="@Localizer["Settings_Theme"]">
+                                    @{
+                                        var grouped = _themes.GroupBy(t => t.Category).OrderBy(g => g.Key switch
+                                        {
+                                            "Flagship" => 0, "Core" => 1, "Nature" => 2, "Precision" => 3,
+                                            "Art" => 4, "Minimal" => 5, "Elegant" => 6, "Special" => 7, "Persona" => 8,
+                                            _ => 9
+                                        });
+                                    }
+                                    @foreach (var group in grouped)
                                     {
-                                        var isActive = ThemeService.CurrentTheme.Id == theme.Id;
-                                        <button type="button"
-                                                role="radio"
-                                                aria-checked="@(isActive ? "true" : "false")"
-                                                class="sgc-theme-card @(isActive ? "sgc-active" : "")"
-                                                @onclick="() => OnPickThemeAsync(theme)">
-                                            <span class="sgc-theme-preview" style="background: @theme.Primitives.Primary500;"></span>
-                                            <span class="sgc-theme-name">@theme.Name</span>
-                                            @if (isActive)
+                                        <div class="sgc-theme-group-label">@group.Key</div>
+                                        <div class="sgc-theme-grid">
+                                            @foreach (var theme in group)
                                             {
-                                                <span class="sgc-theme-check" aria-hidden="true">✓</span>
+                                                var isActive = ThemeService.CurrentTheme.Id == theme.Id;
+                                                <button type="button"
+                                                        role="radio"
+                                                        aria-checked="@(isActive ? "true" : "false")"
+                                                        class="sgc-theme-card @(isActive ? "sgc-active" : "")"
+                                                        @onclick="() => OnPickThemeAsync(theme)">
+                                                    <span class="sgc-theme-preview" style="background: @theme.Primitives.Primary500;"></span>
+                                                    <span class="sgc-theme-name">@theme.Name</span>
+                                                    @if (isActive)
+                                                    {
+                                                        <span class="sgc-theme-check" aria-hidden="true">✓</span>
+                                                    }
+                                                </button>
                                             }
-                                        </button>
+                                        </div>
                                     }
                                 </div>)
                         }
@@ -727,6 +741,18 @@
     .sgc-setting-row { grid-template-columns: 1fr; gap: 8px; }
     .sgc-setting-control { justify-content: flex-start; min-width: 0; }
 }
+
+/* ── Theme group label ──────────────────────────────────────────────── */
+.sgc-theme-group-label {
+    padding: 12px 0 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sg-fg-muted);
+    opacity: 0.7;
+}
+.sgc-theme-group-label:first-of-type { padding-top: 4px; }
 
 /* ── Theme cards ────────────────────────────────────────────────────── */
 .sgc-theme-grid {

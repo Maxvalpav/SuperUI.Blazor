@@ -38,6 +38,9 @@ public interface IThemeDefinition
     /// <summary>Additional CSS for this theme.</summary>
     string? AdditionalCss { get; }
 
+    /// <summary>Category for grouping in theme picker. Default "Core".</summary>
+    string Category { get; }
+
     /// <summary>Generates complete CSS string for this theme.</summary>
     string GenerateCss();
 }

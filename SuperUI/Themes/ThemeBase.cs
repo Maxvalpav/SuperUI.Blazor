@@ -27,6 +27,7 @@ public abstract class ThemeBase : IThemeDefinition
     public IThemeTypography? Typography => _typography ??= CreateTypography();
 
     public virtual string? AdditionalCss => null;
+    public virtual string Category => "Core";
 
     protected abstract IThemePrimitives CreatePrimitives();
     protected abstract IThemeSemantic CreateLight();
