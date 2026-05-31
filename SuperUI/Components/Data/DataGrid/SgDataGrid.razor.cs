@@ -301,7 +301,14 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        _localeChangedHandler = () => { try { InvokeAsync(StateHasChanged); } catch { } };
+        _localeChangedHandler = () =>
+        {
+            if (_disposing) return;
+            try { InvokeAsync(StateHasChanged); }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            catch (TaskCanceledException) { }
+        };
         Localizer.OnLocaleChanged += _localeChangedHandler;
     }
 
@@ -6055,6 +6062,14 @@ private static object? ConvertFromString(string? text, Type type)
             _pendingRuleValueDebounceCts?.Cancel();
             _pendingRuleValueDebounceCts?.Dispose();
             _pendingRuleValueDebounceCts = null;
+
+            _scrollDebounceCts?.Cancel();
+            _scrollDebounceCts?.Dispose();
+            _scrollDebounceCts = null;
+
+            _groupBuildCts?.Cancel();
+            _groupBuildCts?.Dispose();
+            _groupBuildCts = null;
         }
         catch (ObjectDisposedException) { }
 
