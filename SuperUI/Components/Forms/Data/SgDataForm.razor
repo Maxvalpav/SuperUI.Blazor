@@ -1,5 +1,6 @@
 @namespace SuperUI.Components
 @typeparam TModel where TModel : class
+@implements IDisposable
 @using System.ComponentModel
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
@@ -405,6 +406,12 @@
             _ = OnModelChanged.InvokeAsync(Model);
     }
 
+    void IDisposable.Dispose()
+    {
+        if (_editContext is not null)
+            _editContext.OnFieldChanged -= OnFieldChanged;
+    }
+
     private List<FieldDefinition> BuildFields()
     {
         var include = IncludeFields is null ? null : new HashSet<string>(IncludeFields, StringComparer.OrdinalIgnoreCase);
@@ -595,6 +602,8 @@
     {
         if (_snapshot is not null)
             CopyValues(_snapshot, Model);
+        if (_editContext is not null)
+            _editContext.OnFieldChanged -= OnFieldChanged;
         _editContext = new EditContext(Model);
         _editContext.OnFieldChanged += OnFieldChanged;
         _isDirty = false;
