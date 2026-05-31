@@ -1,0 +1,501 @@
+@page "/api-parser-demo"
+@using SuperUI.Components
+@using System.Text.Json
+@inject NavigationManager NavigationManager
+
+<PageTitle>Component API Parser — SuperUI</PageTitle>
+
+<div class="parser-demo">
+    <div class="parser-header">
+        <div class="parser-header-icon">
+            <SgIcon Icon="@SgIcons.FileText" Size="24px" />
+        </div>
+        <div>
+            <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">
+                Component API Parser
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                @_status
+            </SgTypography>
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <SgAlert Variant="@SgAlertVariant.Danger" Closable Visible="true">@_error</SgAlert>
+    }
+
+    @if (_components is not null && _components.Count > 0)
+    {
+        <div class="parser-layout">
+            <div class="parser-sidebar">
+                <input @ref="_searchInput" type="text" class="parser-search"
+                       @bind="_search" @bind:after="OnSearchChanged"
+                       placeholder="Search components..." />
+
+                <div class="parser-component-list">
+                    @foreach (var comp in _filteredComponents)
+                    {
+                        var isSelected = comp == _selected;
+                        <div class="parser-component-item @(isSelected ? "selected" : "")"
+                             @onclick="() => SelectComponent(comp)"
+                             @onkeydown="() => {}"
+                             role="button"
+                             tabindex="0">
+                            <div class="parser-item-name">@comp.Name</div>
+                            <div class="parser-item-meta">
+                                <span class="parser-tag @(comp.UsesJsInterop ? "tag-js" : "tag-pure")">
+                                    @(comp.UsesJsInterop ? "JS" : "C#")
+                                </span>
+                                @if (comp.HasDemo)
+                                {
+                                    <span class="parser-tag tag-demo">demo</span>
+                                }
+                                <span class="parser-item-type">@comp.Parameters.Count params</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="parser-main">
+                @if (_selected is not null)
+                {
+                    <div class="parser-detail">
+                        <div class="parser-detail-header">
+                            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                                @_selected.Name
+                            </SgTypography>
+                            <div class="parser-detail-meta">
+                                <span class="parser-meta-item">📁 @_selected.FilePath</span>
+                                <span class="parser-meta-item">📄 @_selected.FileKind</span>
+                                <span class="parser-meta-item">📏 @_selected.LineCount lines</span>
+                            </div>
+                        </div>
+
+                        @if (_selected.Inherits is not null)
+                        {
+                            <div class="parser-section">
+                                <div class="parser-section-title">Inheritance</div>
+                                <div class="parser-code-inline">@_selected.Inherits</div>
+                                @if (_selected.Implements.Count > 0)
+                                {
+                                    <div style="margin-top:4px;">
+                                        @foreach (var impl in _selected.Implements)
+                                        {
+                                            <span class="parser-tag tag-interface">@impl</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @if (_selected.UsesJsInterop)
+                        {
+                            <div class="parser-section">
+                                <div class="parser-section-title">JS Interop</div>
+                                <div class="parser-code-inline">@_selected.ModulePath</div>
+                                @if (_selected.HasJsInvokable)
+                                {
+                                    <div style="margin-top:4px;">
+                                        <div style="font-size:12px;color:var(--sg-text-muted);margin-bottom:4px;">[JSInvokable] methods:</div>
+                                        @foreach (var m in _selected.JsInvokableMethods)
+                                        {
+                                            <span class="parser-tag tag-jsinvoke">@m</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        <div class="parser-section">
+                            <div class="parser-section-title">Parameters (@_selected.Parameters.Count)</div>
+                            @if (_selected.Parameters.Count > 0)
+                            {
+                                <div class="parser-table-wrap">
+                                    <table class="parser-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Type</th>
+                                                <th>Default</th>
+                                                <th>Documentation</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var p in _selected.Parameters)
+                                            {
+                                                <tr>
+                                                    <td><code>@p.Name</code></td>
+                                                    <td><code>@p.Type</code></td>
+                                                    <td>@(p.DefaultValue ?? "-")</td>
+                                                    <td class="parser-doc">@p.DocComment</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">No Blazor parameters</SgTypography>
+                            }
+                        </div>
+
+                        <div class="parser-section">
+                            <div class="parser-section-title">Events (@_selected.Events.Count)</div>
+                            @if (_selected.Events.Count > 0)
+                            {
+                                <div class="parser-table-wrap">
+                                    <table class="parser-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Type</th>
+                                                <th>Documentation</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var e in _selected.Events)
+                                            {
+                                                <tr>
+                                                    <td><code>@e.Name</code></td>
+                                                    <td><code>@e.Type</code></td>
+                                                    <td class="parser-doc">@e.DocComment</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">None</SgTypography>
+                            }
+                        </div>
+
+                        @if (_selected.EnumsUsed.Count > 0)
+                        {
+                            <div class="parser-section">
+                                <div class="parser-section-title">Enums Used</div>
+                                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                    @foreach (var en in _selected.EnumsUsed)
+                                    {
+                                        <span class="parser-tag tag-enum">@en</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <div class="parser-section">
+                            <div class="parser-section-title">Raw JSON</div>
+                            <pre class="parser-json">@_rawJson</pre>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="parser-empty">
+                        <SgIcon Icon="@SgIcons.ArrowUp" Size="32px" Color="var(--sg-text-muted)" />
+                        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)">
+                            Select a component from the list
+                        </SgTypography>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private ElementReference _searchInput;
+    private string _search = "";
+    private string _status = "Loading component catalog...";
+    private string? _error;
+    private string? _rawJson;
+    private List<ComponentInfo>? _components;
+    private List<ComponentInfo> _filteredComponents => _components?
+        .Where(c => string.IsNullOrEmpty(_search) ||
+                    c.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    (c.FilePath?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false))
+        .OrderBy(c => c.Name)
+        .ToList() ?? new();
+
+    private ComponentInfo? _selected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(NavigationManager.BaseUri) };
+            var json = await http.GetStringAsync("sample-data/component-catalog.json");
+            _components = JsonSerializer.Deserialize<List<ComponentInfo>>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new();
+            _status = $"{_components.Count} components indexed";
+        }
+        catch (Exception ex)
+        {
+            _status = "Error loading catalog";
+            _error = $"Failed to load component catalog: {ex.Message}";
+        }
+    }
+
+    private void OnSearchChanged()
+    {
+        StateHasChanged();
+    }
+
+    private void SelectComponent(ComponentInfo comp)
+    {
+        _selected = comp;
+        _rawJson = JsonSerializer.Serialize(comp, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        });
+    }
+
+    private class ComponentInfo
+    {
+        public string Name { get; set; } = "";
+        public string Namespace { get; set; } = "";
+        public string? Inherits { get; set; }
+        public List<string> Implements { get; set; } = new();
+        public bool UsesJsInterop { get; set; }
+        public string? ModulePath { get; set; }
+        public bool HasJsInvokable { get; set; }
+        public List<string> JsInvokableMethods { get; set; } = new();
+        public string FileKind { get; set; } = "";
+        public bool HasCss { get; set; }
+        public bool HasDemo { get; set; }
+        public bool HasTests { get; set; }
+        public List<ParameterInfo> Parameters { get; set; } = new();
+        public List<ParameterInfo> Events { get; set; } = new();
+        public List<string> EnumsUsed { get; set; } = new();
+        public string? FilePath { get; set; }
+        public int LineCount { get; set; }
+    }
+
+    private class ParameterInfo
+    {
+        public string Name { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string? DefaultValue { get; set; }
+        public string? DocComment { get; set; }
+        public bool Required { get; set; }
+    }
+}
+
+<style>
+    .parser-demo {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        height: calc(100vh - 100px);
+    }
+    .parser-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+        background: var(--sg-surface, #fff);
+        border-radius: 12px;
+        border: 1px solid var(--sg-border, #e5e7eb);
+    }
+    .parser-header-icon {
+        width: 44px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        color: #fff;
+    }
+    .parser-layout {
+        display: flex;
+        gap: 16px;
+        flex: 1;
+        min-height: 0;
+    }
+    .parser-sidebar {
+        width: 280px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background: var(--sg-surface, #fff);
+        border-radius: 12px;
+        border: 1px solid var(--sg-border, #e5e7eb);
+        padding: 12px;
+    }
+    .parser-search {
+        width: 100%;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--sg-border, #d1d5db);
+        font-size: 13px;
+        background: var(--sg-bg, #f9fafb);
+        color: var(--sg-fg, #111827);
+        outline: none;
+        box-sizing: border-box;
+    }
+    .parser-search:focus {
+        border-color: var(--sg-primary, #6366f1);
+        box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
+    }
+    .parser-component-list {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .parser-component-item {
+        padding: 8px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .parser-component-item:hover {
+        background: var(--sg-bg-subtle, #f3f4f6);
+    }
+    .parser-component-item.selected {
+        background: rgba(99,102,241,0.1);
+        border: 1px solid rgba(99,102,241,0.3);
+    }
+    .parser-item-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--sg-fg, #111827);
+    }
+    .parser-item-meta {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin-top: 3px;
+        font-size: 11px;
+    }
+    .parser-item-type {
+        color: var(--sg-text-muted, #6b7280);
+        margin-left: auto;
+    }
+    .parser-tag {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .tag-pure { background: #dbeafe; color: #1d4ed8; }
+    .tag-js { background: #fef3c7; color: #b45309; }
+    .tag-demo { background: #d1fae5; color: #059669; }
+    .tag-interface { background: #e0e7ff; color: #4338ca; font-size: 11px; }
+    .tag-jsinvoke { background: #fce7f3; color: #be185d; font-size: 11px; }
+    .tag-enum { background: #e0e7ff; color: #4338ca; font-size: 11px; }
+
+    .parser-main {
+        flex: 1;
+        min-width: 0;
+        overflow-y: auto;
+        background: var(--sg-surface, #fff);
+        border-radius: 12px;
+        border: 1px solid var(--sg-border, #e5e7eb);
+        padding: 20px;
+    }
+    .parser-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 12px;
+        opacity: 0.5;
+    }
+    .parser-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    .parser-detail-header {
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--sg-border, #e5e7eb);
+    }
+    .parser-detail-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--sg-text-muted, #6b7280);
+    }
+    .parser-meta-item {
+        white-space: nowrap;
+    }
+    .parser-section {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .parser-section-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--sg-fg, #111827);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .parser-code-inline {
+        font-family: monospace;
+        font-size: 13px;
+        padding: 6px 10px;
+        background: var(--sg-bg-subtle, #f3f4f6);
+        border-radius: 6px;
+        color: var(--sg-fg, #111827);
+    }
+    .parser-table-wrap {
+        overflow-x: auto;
+    }
+    .parser-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .parser-table th, .parser-table td {
+        text-align: left;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--sg-border, #e5e7eb);
+    }
+    .parser-table th {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--sg-text-muted, #6b7280);
+        background: var(--sg-bg-subtle, #f9fafb);
+    }
+    .parser-table code {
+        font-size: 12px;
+        background: var(--sg-bg-subtle, #f3f4f6);
+        padding: 1px 5px;
+        border-radius: 3px;
+    }
+    .parser-doc {
+        color: var(--sg-text-muted, #6b7280);
+        font-size: 12px;
+        max-width: 300px;
+    }
+    .parser-json {
+        font-size: 11px;
+        line-height: 1.5;
+        background: #1e1e2e;
+        color: #cdd6f4;
+        padding: 16px;
+        border-radius: 8px;
+        overflow-x: auto;
+        max-height: 400px;
+        overflow-y: auto;
+        margin: 0;
+    }
+</style>
