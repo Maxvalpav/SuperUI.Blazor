@@ -2,14 +2,13 @@
 @implements IAsyncDisposable
 @inject SgRagService RagService
 
-<CascadingValue Value="RagService" Name="RagService">
-    <CascadingValue Value="_readyState" Name="RagReadyState">
-        @ChildContent
-    </CascadingValue>
+<CascadingValue Value="_context" IsFixed="false">
+    @ChildContent
 </CascadingValue>
 
 @code {
     private SgRagReadyState _readyState = new();
+    private SgRagContext _context = default!;
     private bool _initialized;
     private bool _isDisposed;
 
@@ -34,6 +33,7 @@
 
     protected override void OnInitialized()
     {
+        _context = new SgRagContext(RagService, _readyState);
         RagService.OnStateChanged += HandleStateChanged;
     }
 
@@ -57,6 +57,7 @@
     private void HandleStateChanged(SgRagReadyState state)
     {
         _readyState = state;
+        _context = new SgRagContext(RagService, state);
         InvokeAsync(async () =>
         {
             StateHasChanged();

@@ -231,6 +231,15 @@ public record SgRagReadyState
     public SgRagLlmProviderKind LlmProvider { get; init; }
 }
 
+/// <summary>
+/// Typed RAG cascade payload supplied by <c>SgRagProvider</c> and consumed by RAG child
+/// components. Replaces the previous string-named cascades (<c>"RagService"</c> /
+/// <c>"RagReadyState"</c>), which silently broke the UI on a name typo.
+/// </summary>
+/// <param name="Service">The shared <see cref="SgRagService"/> instance.</param>
+/// <param name="ReadyState">Current readiness of the embedding model, LLM, and vector DB.</param>
+public sealed record SgRagContext(SgRagService Service, SgRagReadyState ReadyState);
+
 /// <summary>Collection metadata.</summary>
 public class SgRagCollectionInfo
 {
