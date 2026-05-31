@@ -209,13 +209,15 @@
 
 ### Фаза 2 — публичный контракт (3–5 дней)
 
-- [ ] **F2-1** Переименовать LangGraph-компоненты: `SgLangGraphProvider`, `SgLangGraphChat`, `SgLangGraphVisualizer`, `SgLangGraphStateInspector`, `SgLangGraphCheckpointManager`, `SgLangGraphToolExecutor`, `SgLangGraphInterrupter`. Перенести под `Components/AI/Experimental/LangGraph/`. Пометить `[Experimental("SUPERUI_LANGGRAPH")]`.
-- [ ] **F2-2** Сделать code-behind `*.razor.cs` для LangGraph-компонентов (`LangGraphProvider`, `GraphStreamingChat` минимум).
-- [ ] **F2-3** XML-доки: проход по всем `[Parameter]` / событиям / public type'ам в `AI/Llm/` и `AI/Rag/`. Перепроверить, что CS1591 включено и считается за warning.
-- [ ] **F2-4** Перенести инлайн `<style>` блоки LangGraph и `.razor.css` файлы `SgChat`/`SgPuterChat`/`SgRag*` в `wwwroot/superui-components.css`.
-- [ ] **F2-5** Унифицировать namespace `AI/Llm/`: один `SuperUI.Components.Llm` для всего.
-- [ ] **F2-6** Локализация: пропустить hardcoded ru-строки через `ISuperUILocalizer` (`SgLlmEmptyState`, `LangGraph/GraphStreamingChat`, `LangGraph/HumanInTheLoopInterrupter`).
-- [ ] **F2-7** `SgRagProvider`: заменить `CascadingValue Name="RagService"` на типизированный `SgRagContext` record.
+- [x] **F2-1** Переименованы LangGraph-компоненты в `Sg*` + перенос под `Components/AI/Experimental/LangGraph/` + `[Experimental("SUPERUI_LANGGRAPH")]`. *(сделано ранее)*
+- [ ] **F2-2** Code-behind `*.razor.cs` для LangGraph — НЕ сделано (логика всё ещё в `@code` блоках).
+- [ ] **F2-3** XML-доки / CS1591 — **отложено**. CS1591 подавлён глобально (`SuperUI.csproj` `<NoWarn>$(NoWarn);CS1591</NoWarn>`); без него вся библиотека даёт ~5654 warning'ов (не только AI). Это отдельный крупный проект по всей библиотеке, не часть AI-аудита.
+- [x] **F2-4** Инлайн `<style>` блоки AI перенесены в `wwwroot/superui-components.css` (LangGraph ×5, Llm ×24, SgRagChat inline=0 — был ложноположительный: `<style>` внутри C#-строки `BuildHtmlExport`). **`.razor.css` scoped-файлы (9 шт., ~2342 строки) НЕ тронуты** — scoped→global рискует сломать стили, отложено. *(коммиты `1e5151b`, `38b6c8f`, `783b291`)*
+- [x] **F2-5** Namespace `AI/Llm/` унифицирован в `SuperUI.Components.Llm` (24 razor + 3 cs). Demo `_Imports` получил `@using SuperUI.Components.Llm`. *(коммиты на ветке `ai-audit-phase2`)*
+- [x] **F2-6** Локализация LangGraph: добавлены ключи `LangGraph_Thinking/InputPlaceholder/Send/WantsToAct` (en+ru), `SgLangGraphChat`/`SgLangGraphInterrupter` через `ISuperUILocalizer`. `SgLlmEmptyState` уже был локализован ранее.
+- [x] **F2-7** `SgRagProvider`: строковые каскады `"RagService"`/`"RagReadyState"` заменены типизированным `sealed record SgRagContext(Service, ReadyState)`; все 7 консьюмеров мигрированы (computed `_ragService`/`_readyState` поверх `_ctx`).
+
+> **Примечание (2026-05-31):** работа велась на ветке `ai-audit-phase2`, каждый шаг коммитился сразу — в репозитории параллельно работал другой процесс, делавший `git reset --hard` и коммитивший свои компоненты (`SgPinInput`, `SgImageEditor`, `SgMention` и др.). Библиотека (`SuperUI.csproj`) собирается чисто. Demo на момент завершения падал на ЧУЖОМ незакоммиченном `SgMention.razor` (не связано с AI).
 
 ### Фаза 3 — UX (1 неделя)
 
