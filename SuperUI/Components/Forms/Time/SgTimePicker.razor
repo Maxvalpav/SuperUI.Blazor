@@ -239,6 +239,7 @@
     private IJSObjectReference? _module;
     private IJSObjectReference? _clockInstance;
     private DotNetObjectReference<SgTimePicker>? _selfRef;
+    private bool _disposed;
 
     private SgEditContextBinder<TimeSpan?>? _binder;
 
@@ -820,7 +821,8 @@
                 await JS.InvokeVoidAsync("eval",
                     $"(function(){{var m=document.getElementById('{_popupId}'),t=document.querySelector('[aria-labelledby={_labelId}]')?.querySelector('.sgc-combo-control');if(!m||!t)return;var r=t.getBoundingClientRect();m.style.position='fixed';m.style.top=(r.bottom+2)+'px';m.style.left=r.left+'px';m.style.width=Math.max(r.width,200)+'px';}})()");
             }
-            catch { }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
         }
         else if (!_open && UsePortal)
         {
@@ -829,15 +831,18 @@
                 await JS.InvokeVoidAsync("eval",
                     $"(function(){{var m=document.getElementById('{_popupId}');if(m){{m.style.position='';m.style.top='';m.style.left='';m.style.width='';}}}})()");
             }
-            catch { }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
         }
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
         if (_clockInstance != null)
         {
-            try { await _clockInstance.InvokeVoidAsync("dispose"); } catch { }
+            try { await _clockInstance.InvokeVoidAsync("dispose"); } catch (JSDisconnectedException) { } catch (TaskCanceledException) { }
             await _clockInstance.DisposeAsync();
         }
         if (_module != null) await _module.DisposeAsync();

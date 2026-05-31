@@ -56,9 +56,9 @@
             </div>
         }
     </div>
-    @if (IsInvalid && !string.IsNullOrEmpty(_validationError))
+    @if (IsInvalid && !string.IsNullOrEmpty(ValidationError))
     {
-        <div class="sgc-validation-error">@_validationError</div>
+        <div class="sgc-validation-error">@ValidationError</div>
     }
 </div>
 
@@ -69,7 +69,6 @@
     private int _highlightedIndex;
     private List<SgMentionOption> _filteredOptions = new();
     private bool _dropdownVisible;
-    private string? _validationError;
     private CancellationTokenSource? _debounceCts;
 
     // ── Parameters ──
@@ -293,7 +292,8 @@
             _filteredOptions = new();
             await OnMentionSelected.InvokeAsync(option);
         }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
     }
 
     // ── Dropdown positioning ──
@@ -333,7 +333,8 @@
                 })()
             ");
         }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
     }
 
     private int GetCursorPos()

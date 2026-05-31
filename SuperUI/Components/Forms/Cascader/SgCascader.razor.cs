@@ -287,10 +287,8 @@ public sealed partial class SgCascader : IAsyncDisposable
                 var placementStr = GetPlacementString();
                 await _jsModule.InvokeVoidAsync("attach", _rootRef, _dotNetRef, placementStr, _menuId);
             }
-            catch
-            {
-                // JS module not available (e.g., during testing)
-            }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
         }
 
         if (_open)
@@ -299,7 +297,8 @@ public sealed partial class SgCascader : IAsyncDisposable
             {
                 await _jsModule!.InvokeVoidAsync("repositionMenu", _rootRef);
             }
-            catch { }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
         }
     }
 
@@ -958,7 +957,9 @@ public sealed partial class SgCascader : IAsyncDisposable
                 await _jsModule.InvokeVoidAsync("detach", _rootRef);
                 await _jsModule.DisposeAsync();
             }
-            catch { }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
         }
     }
 }

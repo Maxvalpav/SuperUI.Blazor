@@ -3,8 +3,10 @@
 @using SuperUI.Enums
 @using SuperUI.Localization
 @using SuperUI.Services
+@using SuperUI.Themes
 @inject SgPageTabsService TabsService
 @inject SgSettingsService SettingsService
+@inject SgThemeService ThemeService
 @inject NavigationManager NavigationManager
 @inject ISuperUILocalizer Localizer
 @implements IDisposable
@@ -29,6 +31,7 @@
                 </ChildContent>
                 <ActionsContent>
                    @*  <SgLanguageSwitcher /> *@
+                    <span class="sui-theme-name-display">@ThemeService.CurrentTheme.Name</span>
                     <SgNotificationBell />
                     <div style="width: 1px; height: 20px; background: var(--sui-border); margin: 0 4px;"></div>
                     <SgThemeSwitcher />
@@ -64,6 +67,7 @@
                 </LeadingContent>
                 <ActionsContent>
                    @*  <SgLanguageSwitcher /> *@
+                    <span class="sui-theme-name-display">@ThemeService.CurrentTheme.Name</span>
                     <SgNotificationBell />
                     <div style="width: 1px; height: 20px; background: var(--sui-border); margin: 0 4px;"></div>
                     <SgThemeSwitcher />
@@ -133,9 +137,15 @@
     {
         NavigationManager.LocationChanged += OnLocationChanged;
         SettingsService.OnSettingsChanged += OnSettingsChanged;
+        ThemeService.ThemeChanged += OnThemeChanged;
         // Initial page
         _isBackTopDemo = NavigationManager.Uri.Contains("/backtop-demo", StringComparison.OrdinalIgnoreCase);
         UpdateTabs(NavigationManager.Uri);
+    }
+
+    private void OnThemeChanged(IThemeDefinition theme, string mode)
+    {
+        StateHasChanged();
     }
 
     protected override async Task OnInitializedAsync()
@@ -188,6 +198,7 @@
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
         SettingsService.OnSettingsChanged -= OnSettingsChanged;
+        ThemeService.ThemeChanged -= OnThemeChanged;
     }
 
     private Task ToggleNavAsync() =>

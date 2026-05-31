@@ -30,7 +30,6 @@ public partial class SgTextArea : IDisposable
     private string _errorId => _id + "-err";
     private ElementReference _textareaRef;
     private IJSObjectReference? _module;
-    private bool _isDisposed;
     private bool _focused;
     private string? _pasteValue;
 
@@ -396,11 +395,11 @@ public partial class SgTextArea : IDisposable
 
     private async Task CallAutoResizeAsync()
     {
-        if (_isDisposed) return;
+        if (_disposed) return;
         try
         {
             _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
-            if (_isDisposed) return;
+            if (_disposed) return;
             await _module.InvokeVoidAsync("autoResizeTextarea", _textareaRef, Rows, MaxRows);
         }
         catch (JSException) { }
@@ -434,9 +433,11 @@ public partial class SgTextArea : IDisposable
 
     public override void Dispose()
     {
-        _isDisposed = true;
+        if (_disposed) return;
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();
+        if (_module is not null)
+            _ = _module.DisposeAsync();
         base.Dispose();
     }
 }
