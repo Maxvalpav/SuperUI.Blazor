@@ -28,7 +28,7 @@ export function scrollToElement(selector) {
 
 export function observeWindow(dotnetRef) {
     const handler = () => {
-        dotnetRef.invokeMethodAsync('OnWindowChanged');
+        try { dotnetRef?.invokeMethodAsync('OnWindowChanged')?.catch(() => {}); } catch {}
     };
     window.addEventListener('resize', handler);
     window.addEventListener('scroll', handler);

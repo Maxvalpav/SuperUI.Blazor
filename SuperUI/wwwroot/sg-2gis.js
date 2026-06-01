@@ -22,9 +22,17 @@ async function _ensure2Gis() {
         _loading = false;
         while (_queue.length) _queue.shift()(window.mapgl);
     };
+    script.onerror = () => {
+        _loading = false;
+        while (_queue.length) _queue.shift()(Promise.reject(new Error('Failed to load 2GIS MapGL')));
+    };
     document.head.appendChild(script);
 
-    return new Promise(resolve => _queue.push(resolve));
+    return new Promise((resolve, reject) => {
+        _queue.push((res) => {
+            if (res instanceof Error) reject(res); else resolve(res);
+        });
+    });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -60,21 +68,21 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
     // ── Event listeners ──
     map.on('click', (e) => {
         if (e.target) return; // Ignore if clicked on marker/other object
-        dotnetRef.invokeMethodAsync('HandleMapClick', {
+        try { dotnetRef?.invokeMethodAsync('HandleMapClick', {
             longitude: e.lngLat[0],
             latitude: e.lngLat[1]
-        });
+        })?.catch(() => {}); } catch {}
     });
 
     map.on('moveend', () => {
         const center = map.getCenter();
-        dotnetRef.invokeMethodAsync('HandleViewChanged', {
+        try { dotnetRef?.invokeMethodAsync('HandleViewChanged', {
             centerLon: center[0],
             centerLat: center[1],
             zoom: map.getZoom(),
             rotation: map.getRotation(),
             pitch: map.getPitch()
-        });
+        })?.catch(() => {}); } catch {}
     });
 
     // ── Initial data ──
@@ -100,14 +108,14 @@ export function updateMarkers(instanceId, markers) {
             label: m.title ? { text: m.title, offset: [0, -40] } : undefined,
         });
         marker.on('click', () => {
-            inst.dotnetRef.invokeMethodAsync('HandleMarkerClick', {
+            try { inst.dotnetRef?.invokeMethodAsync('HandleMarkerClick', {
                 markerId: m.id,
                 title: m.title,
                 description: m.description,
                 longitude: m.longitude,
                 latitude: m.latitude,
                 data: m.data
-            });
+            })?.catch(() => {}); } catch {}
         });
         inst.markers.set(m.id, marker);
     });

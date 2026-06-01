@@ -106,6 +106,14 @@ function _showTip(tip, x, y, html) {
     tip.style.opacity = '1';
 }
 
+// Escape user/data values before interpolating into tooltip HTML (XSS guard).
+function _esc(v) {
+    if (v == null) return '';
+    return String(v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function _hideTip(tip) { tip.style.opacity = '0'; }
 
 // ── Floor plan builder ────────────────────────────────────────────────────────
@@ -274,9 +282,10 @@ function _buildFloorPlan(Konva, stage, layer, plan, dotnetRef, opts) {
             rect.shadowOpacity(0.35);
             stage.container().style.cursor = 'pointer';
             const pos = stage.getPointerPosition();
-            const occ = room.currentOccupancy != null ? `<br/>👥 ${room.currentOccupancy}/${room.capacity ?? '?'}` : '';
+            if (!pos) return;
+            const occ = room.currentOccupancy != null ? `<br/>👥 ${_esc(room.currentOccupancy)}/${_esc(room.capacity ?? '?')}` : '';
             _showTip(tip, pos.x, pos.y,
-                `<b>${room.name}</b><br/>${room.type} · ${room.status}${occ}`);
+                `<b>${_esc(room.name)}</b><br/>${_esc(room.type)} · ${_esc(room.status)}${occ}`);
             layer.batchDraw();
         });
         group.on('mouseleave', () => {

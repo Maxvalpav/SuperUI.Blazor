@@ -58,6 +58,15 @@ function _theme() {
     };
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function _esc(v) {
+    if (v == null) return '';
+    return String(v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // ── Tooltip ───────────────────────────────────────────────────────────────────
 
 function _makeTooltip(container) {
@@ -147,7 +156,7 @@ function _drawBar(d3, svg, data, opts, width, height, horizontal, dotnet) {
                         .attr('y', y0(label)).attr('x', x(offset))
                         .attr('height', y0.bandwidth()).attr('width', opts.animate ? 0 : x(d.value))
                         .attr('fill', colors[ci % colors.length]).attr('rx', 3)
-                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${d.label}</strong><br/>${d.group || ''}: ${_fmt(d.value, opts)}`))
+                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${_esc(d.label)}</strong><br/>${_esc(d.group || '')}: ${_esc(_fmt(d.value, opts))}`))
                         .on('mouseout', () => _hideTip(tip))
                         .on('click', () => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.label, value: d.value, group: d.group, index: i }))
                         .transition().duration(opts.animate ? opts.animationDuration : 0).attr('width', x(d.value));
@@ -160,7 +169,7 @@ function _drawBar(d3, svg, data, opts, width, height, horizontal, dotnet) {
                         .attr('y', y0(label) + y1(d.group || 'default')).attr('x', 0)
                         .attr('height', y1.bandwidth()).attr('width', opts.animate ? 0 : x(d.value))
                         .attr('fill', colors[ci % colors.length]).attr('rx', 2)
-                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${d.label}</strong><br/>${d.group || ''}: ${_fmt(d.value, opts)}`))
+                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${_esc(d.label)}</strong><br/>${_esc(d.group || '')}: ${_esc(_fmt(d.value, opts))}`))
                         .on('mouseout', () => _hideTip(tip))
                         .on('click', () => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.label, value: d.value, group: d.group, index: i }))
                         .transition().duration(opts.animate ? opts.animationDuration : 0).attr('width', x(d.value));
@@ -171,7 +180,7 @@ function _drawBar(d3, svg, data, opts, width, height, horizontal, dotnet) {
                     .attr('y', y0(label)).attr('x', 0)
                     .attr('height', y0.bandwidth()).attr('width', opts.animate ? 0 : x(d.value))
                     .attr('fill', colors[0]).attr('rx', 3)
-                    .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${d.label}</strong>: ${_fmt(d.value, opts)}`))
+                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${_esc(d.label)}</strong>: ${_esc(_fmt(d.value, opts))}`))
                     .on('mouseout', () => _hideTip(tip))
                     .on('click', () => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.label, value: d.value, group: null, index: 0 }))
                     .transition().duration(opts.animate ? opts.animationDuration : 0).attr('width', x(d.value));
@@ -209,7 +218,7 @@ function _drawBar(d3, svg, data, opts, width, height, horizontal, dotnet) {
                         .attr('x', x0(label)).attr('y', opts.animate ? H : y(offset + d.value))
                         .attr('width', x0.bandwidth()).attr('height', opts.animate ? 0 : barH)
                         .attr('fill', colors[ci % colors.length]).attr('rx', 3)
-                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${d.label}</strong><br/>${d.group || ''}: ${_fmt(d.value, opts)}`))
+                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${_esc(d.label)}</strong><br/>${_esc(d.group || '')}: ${_esc(_fmt(d.value, opts))}`))
                         .on('mouseout', () => _hideTip(tip))
                         .on('click', () => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.label, value: d.value, group: d.group, index: i }))
                         .transition().duration(opts.animate ? opts.animationDuration : 0)
@@ -224,7 +233,7 @@ function _drawBar(d3, svg, data, opts, width, height, horizontal, dotnet) {
                         .attr('x', x0(label) + x1(d.group || 'default')).attr('y', opts.animate ? H : y(d.value))
                         .attr('width', x1.bandwidth()).attr('height', opts.animate ? 0 : barH)
                         .attr('fill', colors[ci % colors.length]).attr('rx', 2)
-                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${d.label}</strong><br/>${d.group || ''}: ${_fmt(d.value, opts)}`))
+                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${_esc(d.label)}</strong><br/>${_esc(d.group || '')}: ${_esc(_fmt(d.value, opts))}`))
                         .on('mouseout', () => _hideTip(tip))
                         .on('click', () => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.label, value: d.value, group: d.group, index: i }))
                         .transition().duration(opts.animate ? opts.animationDuration : 0)
@@ -237,7 +246,7 @@ function _drawBar(d3, svg, data, opts, width, height, horizontal, dotnet) {
                     .attr('x', x0(label)).attr('y', opts.animate ? H : y(d.value))
                     .attr('width', x0.bandwidth()).attr('height', opts.animate ? 0 : barH)
                     .attr('fill', colors[0]).attr('rx', 3)
-                    .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${d.label}</strong>: ${_fmt(d.value, opts)}`))
+                        .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${_esc(d.label)}</strong>: ${_esc(_fmt(d.value, opts))}`))
                     .on('mouseout', () => _hideTip(tip))
                     .on('click', () => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.label, value: d.value, group: null, index: 0 }))
                     .transition().duration(opts.animate ? opts.animationDuration : 0)
@@ -322,7 +331,7 @@ function _drawLine(d3, svg, data, opts, width, height, isArea, dotnet) {
                 .attr('cx', d => x(d.label)).attr('cy', d => y(d.value))
                 .attr('r', 4).attr('fill', color).attr('stroke', t.bg).attr('stroke-width', 2)
                 .style('cursor', 'pointer')
-                .on('mouseover', (ev, d) => _showTip(tip, ev, `<strong>${d.label}</strong>${grp !== 'default' ? '<br/>' + grp : ''}: ${_fmt(d.value, opts)}`))
+                .on('mouseover', (ev, d) => _showTip(tip, ev, `<strong>${_esc(d.label)}</strong>${grp !== 'default' ? '<br/>' + _esc(grp) : ''}: ${_esc(_fmt(d.value, opts))}`))
                 .on('mouseout', () => _hideTip(tip))
                 .on('click', (ev, d) => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.label, value: d.value, group: d.group, index: grpData.indexOf(d) }));
         }
@@ -361,7 +370,7 @@ function _drawPie(d3, svg, data, opts, width, height, isDonut, dotnet) {
         .on('mouseover', function(ev, d) {
             d3.select(this).transition().duration(150).attr('d', arcHover);
             const pct = total > 0 ? ((d.data.value / total) * 100).toFixed(1) : 0;
-            _showTip(tip, ev, `<strong>${d.data.label}</strong><br/>${_fmt(d.data.value, opts)} (${pct}%)`);
+            _showTip(tip, ev, `<strong>${_esc(d.data.label)}</strong><br/>${_esc(_fmt(d.data.value, opts))} (${_esc(pct)}%)`);
         })
         .on('mouseout', function() {
             d3.select(this).transition().duration(150).attr('d', arc);
@@ -432,7 +441,7 @@ function _drawScatter(d3, svg, data, opts, width, height, dotnet) {
         .attr('fill', d => colors[groups.indexOf(d.group || 'default') % colors.length])
         .attr('opacity', 0.8).attr('stroke', t.bg).attr('stroke-width', 1.5)
         .style('cursor', 'pointer')
-        .on('mouseover', (ev, d) => _showTip(tip, ev, `<strong>${d.label}</strong>: ${_fmt(d.value, opts)}`))
+        .on('mouseover', (ev, d) => _showTip(tip, ev, `<strong>${_esc(d.label)}</strong>: ${_esc(_fmt(d.value, opts))}`))
         .on('mouseout', () => _hideTip(tip))
         .on('click', (ev, d) => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.label, value: d.value, group: d.group, index: data.indexOf(d) }))
         .transition().duration(opts.animate ? opts.animationDuration : 0).attr('r', 5);
@@ -473,7 +482,7 @@ function _drawForce(d3, svg, graphData, opts, width, height, dotnet) {
         .style('font-size', '11px').style('fill', t.text).style('pointer-events', 'none');
 
     const tip = _makeTooltip(d3.select(svg.node().parentElement));
-    node.on('mouseover', (ev, d) => _showTip(tip, ev, `<strong>${d.label}</strong>${d.value ? ': ' + _fmt(d.value, opts) : ''}`))
+    node.on('mouseover', (ev, d) => _showTip(tip, ev, `<strong>${_esc(d.label)}</strong>${d.value ? ': ' + _esc(_fmt(d.value, opts)) : ''}`))
         .on('mouseout', () => _hideTip(tip))
         .on('click', (ev, d) => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.label, value: d.value || 0, group: d.group, index: graphData.nodes.indexOf(d) }));
 
@@ -508,7 +517,7 @@ function _drawTreemap(d3, svg, data, opts, width, height, dotnet) {
         .attr('fill', d => colors[groups.indexOf(d.data.group || 'default') % colors.length])
         .attr('opacity', opts.animate ? 0 : 0.85).attr('rx', 3)
         .style('cursor', 'pointer')
-        .on('mouseover', (ev, d) => _showTip(tip, ev, `<strong>${d.data.label}</strong>: ${_fmt(d.data.value, opts)}`))
+        .on('mouseover', (ev, d) => _showTip(tip, ev, `<strong>${_esc(d.data.label)}</strong>: ${_esc(_fmt(d.data.value, opts))}`))
         .on('mouseout', () => _hideTip(tip))
         .on('click', (ev, d) => dotnet && dotnet.invokeMethodAsync('OnDataPointClickedAsync', { label: d.data.label, value: d.data.value, group: d.data.group, index: data.indexOf(d.data) }))
         .transition().duration(opts.animate ? opts.animationDuration : 0).attr('opacity', 0.85);
@@ -574,7 +583,7 @@ function _drawRadar(d3, svg, data, opts, width, height, dotnet) {
             g.append('circle').attr('cx', px).attr('cy', py).attr('r', 4)
                 .attr('fill', color).attr('stroke', t.bg).attr('stroke-width', 1.5)
                 .style('cursor', 'pointer')
-                .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${axes[i]}</strong>${grp !== 'default' ? ' · ' + grp : ''}: ${_fmt(grpData[i], opts)}`))
+                .on('mouseover', (ev) => _showTip(tip, ev, `<strong>${_esc(axes[i])}</strong>${grp !== 'default' ? ' · ' + _esc(grp) : ''}: ${_esc(_fmt(grpData[i], opts))}`))
                 .on('mouseout', () => _hideTip(tip));
         });
     });
@@ -722,7 +731,11 @@ export function exportPng(containerId) {
         a.download = `chart-${Date.now()}.png`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
     };
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)));
+    function base64Decode(str) {
+        try { return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')); }
+        catch { try { return atob(str); } catch { return str; } }
+    }
+    img.src = 'data:image/svg+xml;base64,' + btoa(base64Decode(encodeURIComponent(svgStr)));
 }
 
 export function dispose(containerId) {

@@ -42,7 +42,7 @@ export async function initTerminal(container, options, dotNetHelper) {
     const terminalId = Math.random().toString(36).substr(2, 9);
     
     term.onData(data => {
-        dotNetHelper.invokeMethodAsync('OnDataReceived', data);
+        try { dotNetHelper?.invokeMethodAsync('OnDataReceived', data)?.catch(() => {}); } catch {}
     });
 
     const resizeObserver = new ResizeObserver(() => {

@@ -1,3 +1,5 @@
+console.warn('[sg-langgraph] This is a stub implementation. Real LangGraph integration requires the LangGraph platform.');
+
 /**
  * sg-langgraph.js - SuperUI LangGraph.js Bridge
  * Wraps LangGraph.js for use in Blazor.
@@ -64,13 +66,13 @@ class LangGraphInstance {
             
             console.log(`[LangGraph] Instance ${this.instanceId} initialized with config:`, this.config);
             
-            await this.dotNetRef.invokeMethodAsync("OnInitializedInternal", {
+            try { this.dotNetRef?.invokeMethodAsync("OnInitializedInternal", {
                 nodes: this.config.nodes || [],
                 edges: this.config.edges || []
-            });
+            })?.catch(() => {}); } catch {}
         } catch (error) {
             console.error("[LangGraph] Initialization failed:", error);
-            await this.dotNetRef.invokeMethodAsync("OnErrorInternal", error.message);
+            try { this.dotNetRef?.invokeMethodAsync("OnErrorInternal", error.message)?.catch(() => {}); } catch {}
         }
     }
 
@@ -92,35 +94,36 @@ class LangGraphInstance {
                 visitedNodes.add(currentNodeId);
 
                 // 1. Notify UI about current node
-                await this.dotNetRef.invokeMethodAsync("OnStepInternal", {
+                try { this.dotNetRef?.invokeMethodAsync("OnStepInternal", {
                     node: currentNodeId,
                     state: this.currentState,
                     content: null
-                });
+                })?.catch(() => {}); } catch {}
 
                 // 2. Execute node logic in C#
                 // C# will return updated state and optional content
-                const result = await this.dotNetRef.invokeMethodAsync("OnNodeExecuteInternal", currentNodeId, this.currentState);
+                let result;
+                try { result = await this.dotNetRef?.invokeMethodAsync("OnNodeExecuteInternal", currentNodeId, this.currentState)?.catch(() => {}); } catch {}
                 
                 if (result) {
                     if (result.state) this.currentState = result.state;
                     
                     // 3. Notify UI about step completion with content
-                    await this.dotNetRef.invokeMethodAsync("OnStepInternal", {
+                    try { this.dotNetRef?.invokeMethodAsync("OnStepInternal", {
                         node: currentNodeId,
                         state: this.currentState,
                         content: result.content
-                    });
+                    })?.catch(() => {}); } catch {}
 
                     // 4. Handle Interruption if requested by C#
                     if (result.interrupt) {
                         const interruptResponse = await new Promise(resolve => {
                             this.interruptResolve = resolve;
-                            this.dotNetRef.invokeMethodAsync("OnInterruptInternal", {
+                            try { this.dotNetRef?.invokeMethodAsync("OnInterruptInternal", {
                                 node: currentNodeId,
                                 message: result.interrupt.message,
                                 data: result.interrupt.data
-                            });
+                            })?.catch(() => {}); } catch {}
                         });
                         
                         // Merge interrupt response back into state
@@ -133,15 +136,15 @@ class LangGraphInstance {
             }
 
             // Final step
-            await this.dotNetRef.invokeMethodAsync("OnStepInternal", {
+            try { this.dotNetRef?.invokeMethodAsync("OnStepInternal", {
                 node: "__end__",
                 state: this.currentState,
                 content: "Workflow completed."
-            });
+            })?.catch(() => {}); } catch {}
 
         } catch (error) {
             console.error("[LangGraph] Execution error:", error);
-            await this.dotNetRef.invokeMethodAsync("OnErrorInternal", error.message);
+            try { this.dotNetRef?.invokeMethodAsync("OnErrorInternal", error.message)?.catch(() => {}); } catch {}
         }
     }
 

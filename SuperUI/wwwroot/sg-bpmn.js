@@ -85,7 +85,7 @@ export async function initBpmn(dotNetRef, containerRef, containerId, mode, xml, 
                     if (instance) {
                         instance.lastXml = newXml;
                     }
-                    dotNetRef.invokeMethodAsync('OnXmlChangedAsync', newXml);
+                    try { dotNetRef?.invokeMethodAsync('OnXmlChangedAsync', newXml)?.catch(() => {}); } catch {}
                 } catch (e) {
                     console.error('Failed to save XML:', e);
                 }
@@ -95,20 +95,20 @@ export async function initBpmn(dotNetRef, containerRef, containerId, mode, xml, 
         eventBus.on('element.click', (event) => {
             const info = _createElementInfo(event.element);
             if (info) {
-                dotNetRef.invokeMethodAsync('OnElementClickedAsync', info);
+                try { dotNetRef?.invokeMethodAsync('OnElementClickedAsync', info)?.catch(() => {}); } catch {}
             }
         });
 
         eventBus.on('element.dblclick', (event) => {
             const info = _createElementInfo(event.element);
             if (info) {
-                dotNetRef.invokeMethodAsync('OnElementDblClickedAsync', info);
+                try { dotNetRef?.invokeMethodAsync('OnElementDblClickedAsync', info)?.catch(() => {}); } catch {}
             }
         });
 
         eventBus.on('selection.changed', (event) => {
             const info = event.newSelection?.[0] ? _createElementInfo(event.newSelection[0]) : null;
-            dotNetRef.invokeMethodAsync('OnSelectionChangedAsync', info);
+            try { dotNetRef?.invokeMethodAsync('OnSelectionChangedAsync', info)?.catch(() => {}); } catch {}
         });
 
         if (xml && xml.trim().length > 0) {

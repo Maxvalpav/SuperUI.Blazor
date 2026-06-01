@@ -1,5 +1,13 @@
 // SgLeaflet - Leaflet.js Integration Module for SuperUI Blazor
 
+// Escape data values before interpolating into popup HTML (XSS guard).
+function _esc(v) {
+    if (v == null) return '';
+    return String(v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 const _instances = new Map();
 const _loaded    = new Set();
 
@@ -74,13 +82,13 @@ function _tileLayerConfig(opts) {
             };
         case 'Stamen_Toner':
             return {
-                url: 'https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png',
-                options: { attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>', maxZoom: 20 }
+                url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                options: { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>', subdomains: 'abcd', maxZoom: 20 }
             };
         case 'Stamen_Watercolor':
             return {
-                url: 'https://stamen-tiles.a.ssl.fastly.net/watercolor/{z}/{x}/{y}.jpg',
-                options: { attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>', maxZoom: 18 }
+                url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                options: { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>', subdomains: 'abcd', maxZoom: 20 }
             };
         case 'Esri_WorldImagery':
             return {
@@ -283,8 +291,8 @@ function _addMarkers(L, group, markers, opts, dotnetRef) {
         const marker = L.marker([m.latitude, m.longitude], { icon });
 
         if (opts.showPopup !== false && (m.title || m.description)) {
-            const html = `<div class="sg-leaflet-popup-title">${m.title ?? ''}</div>` +
-                         (m.description ? `<div class="sg-leaflet-popup-desc">${m.description}</div>` : '') +
+            const html = `<div class="sg-leaflet-popup-title">${_esc(m.title ?? '')}</div>` +
+                         (m.description ? `<div class="sg-leaflet-popup-desc">${_esc(m.description)}</div>` : '') +
                          `<div class="sg-leaflet-popup-coords">${m.latitude.toFixed(5)}, ${m.longitude.toFixed(5)}</div>`;
             marker.bindPopup(html, { maxWidth: 240 });
         }

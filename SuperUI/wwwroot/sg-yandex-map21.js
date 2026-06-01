@@ -142,7 +142,7 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
             try { dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', {
                 markerId: String(m.id), title: m.title ?? null, description: m.description ?? null,
                 latitude: m.latitude, longitude: m.longitude, data: m.data ?? null,
-            }); } catch {}
+            })?.catch(() => {}); } catch {}
         });
         map.geoObjects.add(pm);
         markerObjs.push({ pm, data: m });
@@ -173,11 +173,11 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
     // ── Events ──
     map.events.add('click', e => {
         const c = e.get('coords');
-        try { dotnetRef.invokeMethodAsync('OnMapClickedAsync', { latitude: c[0], longitude: c[1] }); } catch {}
+        try { dotnetRef.invokeMethodAsync('OnMapClickedAsync', { latitude: c[0], longitude: c[1] })?.catch(() => {}); } catch {}
     });
     map.events.add('boundschange', () => {
         const c = map.getCenter();
-        try { dotnetRef.invokeMethodAsync('OnViewChangedAsync', { centerLat: c[0], centerLon: c[1], zoom: map.getZoom() }); } catch {}
+        try { dotnetRef.invokeMethodAsync('OnViewChangedAsync', { centerLat: c[0], centerLon: c[1], zoom: map.getZoom() })?.catch(() => {}); } catch {}
     });
 
     // ── Resize ──
@@ -230,7 +230,7 @@ export function addMarker(instanceId, m) {
         try { inst.dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', {
             markerId: String(m.id), title: m.title ?? null, description: m.description ?? null,
             latitude: m.latitude, longitude: m.longitude, data: m.data ?? null,
-        }); } catch {}
+        })?.catch(() => {}); } catch {}
     });
     inst.map.geoObjects.add(pm);
     inst.markerObjs.push({ pm, data: m });

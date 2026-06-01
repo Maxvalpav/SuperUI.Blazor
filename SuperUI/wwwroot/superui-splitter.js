@@ -26,7 +26,7 @@ export function attach(bar, first, vertical, min, max, dotnet, disabled) {
         if (e.button !== 0) return;
         isDragging = true;
         bar.classList.add('active');
-        dotnet.invokeMethodAsync('SetDragging', true);
+        try { dotnet?.invokeMethodAsync('SetDragging', true)?.catch(() => {}); } catch {}
 
         startX = e.clientX;
         startY = e.clientY;
@@ -62,8 +62,8 @@ export function attach(bar, first, vertical, min, max, dotnet, disabled) {
         document.body.style.userSelect = '';
         bar.releasePointerCapture(e.pointerId);
 
-        dotnet.invokeMethodAsync('SetSize', currentSize);
-        dotnet.invokeMethodAsync('SetDragging', false);
+        try { dotnet?.invokeMethodAsync('SetSize', currentSize)?.catch(() => {}); } catch {}
+        try { dotnet?.invokeMethodAsync('SetDragging', false)?.catch(() => {}); } catch {}
     }
 
     function onKeyDown(e) {
@@ -85,12 +85,12 @@ export function attach(bar, first, vertical, min, max, dotnet, disabled) {
         if (vertical) first.style.height = newSize + 'px';
         else first.style.width = newSize + 'px';
 
-        dotnet.invokeMethodAsync('SetSize', newSize);
+        try { dotnet?.invokeMethodAsync('SetSize', newSize)?.catch(() => {}); } catch {}
     }
 
     function onDoubleClick(e) {
         if (e.target === bar || e.target.closest('.sgc-split-handle')) {
-            dotnet.invokeMethodAsync('OnReset');
+            try { dotnet?.invokeMethodAsync('OnReset')?.catch(() => {}); } catch {}
         }
     }
 
@@ -168,7 +168,7 @@ export function attachBars(barElements, paneElements, vertical, minSizes, maxSiz
         state.currentSize = state.startSize;
 
         bars[index].classList.add('active');
-        dotnet.invokeMethodAsync('SetDragging', true);
+        try { dotnet?.invokeMethodAsync('SetDragging', true)?.catch(() => {}); } catch {}
 
         document.addEventListener('pointermove', onPointerMove);
         document.addEventListener('pointerup', onPointerUp);
@@ -201,8 +201,8 @@ export function attachBars(barElements, paneElements, vertical, minSizes, maxSiz
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
 
-        dotnet.invokeMethodAsync('SetSizes', sizes);
-        dotnet.invokeMethodAsync('SetDragging', false);
+        try { dotnet?.invokeMethodAsync('SetSizes', sizes)?.catch(() => {}); } catch {}
+        try { dotnet?.invokeMethodAsync('SetDragging', false)?.catch(() => {}); } catch {}
 
         state.activeIndex = -1;
     }
@@ -225,7 +225,7 @@ export function attachBars(barElements, paneElements, vertical, minSizes, maxSiz
         const newSize = clamp(snapped, minVals[index] || 0, maxVals[index] || 9999);
 
         setPaneSize(index, newSize);
-        dotnet.invokeMethodAsync('SetSizes', sizes);
+        try { dotnet?.invokeMethodAsync('SetSizes', sizes)?.catch(() => {}); } catch {}
     }
 
     // Attach events to each bar

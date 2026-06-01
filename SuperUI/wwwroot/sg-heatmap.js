@@ -24,7 +24,6 @@ async function _ensureHeatmapJs() {
 export async function init(dotnetRef) {
     _dotnetRef = dotnetRef;
     window.addEventListener('click', _handleGlobalClick);
-    console.log('[SgHeatmap] Tracker initialized');
 }
 
 function _handleGlobalClick(e) {
@@ -56,20 +55,18 @@ function _handleGlobalClick(e) {
 
 function _flushClicks() {
     if (_dotnetRef && _clicks.length > 0) {
-        _dotnetRef.invokeMethodAsync('SaveClicks', _clicks);
+        try { _dotnetRef?.invokeMethodAsync('SaveClicks', _clicks)?.catch(() => {}); } catch {}
         _clicks = [];
     }
 }
 
 export function startTracking() {
     _isTracking = true;
-    console.log('[SgHeatmap] Tracking started');
 }
 
 export function stopTracking() {
     _isTracking = false;
     _flushClicks();
-    console.log('[SgHeatmap] Tracking stopped');
 }
 
 export async function showHeatmap(data) {
@@ -111,7 +108,6 @@ export async function showHeatmap(data) {
         data: data || []
     });
 
-    console.log('[SgHeatmap] Heatmap overlay shown on', parent.className, 'with', data.length, 'points');
 }
 
 export function hideHeatmap() {
@@ -122,7 +118,6 @@ export function hideHeatmap() {
         _overlay = null;
         _heatmapInstance = null;
     }
-    console.log('[SgHeatmap] Heatmap overlay hidden');
 }
 
 export function dispose() {

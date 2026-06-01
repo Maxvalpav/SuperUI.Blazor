@@ -31,13 +31,17 @@ async function loadDependencies() {
         }
     })();
 
+    excalidrawReady = excalidrawReady.catch((err) => {
+        excalidrawReady = null;
+        throw err;
+    });
+
     return excalidrawReady;
 }
 
 let instances = new Map();
 
 export async function initExcalidraw(container, dotNetHelper, options) {
-    console.log('[SgExcalidraw] Initializing for container:', container.id);
     try {
         await loadDependencies();
 
@@ -61,9 +65,8 @@ export async function initExcalidraw(container, dotNetHelper, options) {
 
             React.useEffect(() => {
                 if (excalidrawAPI) {
-                    console.log('[SgExcalidraw] API ready for:', container.id);
                     instances.set(container.id, excalidrawAPI);
-                    dotNetHelper.invokeMethodAsync('OnReadyCallback');
+                    try { dotNetHelper?.invokeMethodAsync('OnReadyCallback')?.catch(() => {}); } catch {}
                 }
             }, [excalidrawAPI]);
 
