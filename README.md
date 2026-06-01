@@ -15,8 +15,8 @@
 ## Screenshots
 
 |:---:|:---:|
-| ![Home](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/1.png) | ![DataGrid](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/2.png) |
-| ![Dashboard](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/3.png) | ![OrgChart](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/4.png) |
+| [![Home](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/1.png)](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/1.png) | [![DataGrid](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/2.png)](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/2.png) |
+| [![Dashboard](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/3.png)](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/3.png) | [![OrgChart](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/4.png)](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/4.png) |
 
 
 
