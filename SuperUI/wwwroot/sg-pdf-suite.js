@@ -32,6 +32,8 @@ async function ensureDependencies() {
 }
 
 let annotatorInstances = new Map();
+const sortableInstances = new WeakMap();
+const objectUrls = new Set();
 
 export async function initAnnotator(container, dotNetHelper, fileUrl) {
     await ensureDependencies();
@@ -73,6 +75,9 @@ export async function renderPage(instanceId, pageNum) {
     const page = await instance.pdf.getPage(pageNum);
     const viewport = page.getViewport({ scale: 1.5 });
     
+    // Dispose old fabric canvases before clearing
+    instance.canvases.forEach(c => { try { c.fabricCanvas?.dispose(); } catch {} });
+    instance.canvases.clear();
     // Clear container
     instance.container.innerHTML = '';
     
@@ -125,7 +130,7 @@ function syncAnnotations(instanceId, pageNum) {
     const state = instance.canvases.get(pageNum);
     if (state) {
         const json = JSON.stringify(state.fabricCanvas.toJSON());
-        instance.dotNetHelper.invokeMethodAsync('OnAnnotationsChanged', pageNum, json);
+        try { instance.dotNetHelper?.invokeMethodAsync('OnAnnotationsChanged', pageNum, json)?.catch(() => {}); } catch {}
     }
 }
 
@@ -182,7 +187,9 @@ export async function fillForm(fileUrl, fieldData) {
 
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    return URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    objectUrls.add(url);
+    return url;
 }
 
 export async function mergePdfs(fileUrls) {
@@ -198,16 +205,19 @@ export async function mergePdfs(fileUrls) {
 
     const pdfBytes = await mergedPdf.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    return URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    objectUrls.add(url);
+    return url;
 }
 
 export function initSortable(el, dotNetHelper) {
-    Sortable.create(el, {
+    const s = Sortable.create(el, {
         animation: 150,
         onEnd: (evt) => {
-            dotNetHelper.invokeMethodAsync('OnReorder', evt.oldIndex, evt.newIndex);
+            try { dotNetHelper?.invokeMethodAsync('OnReorder', evt.oldIndex, evt.newIndex)?.catch(() => {}); } catch {}
         }
     });
+    sortableInstances.set(el, s);
 }
 
 export async function extractText(fileUrl) {
@@ -262,7 +272,31 @@ export async function highlightText(instanceId, pageNum, searchTerm) {
 export function dispose(instanceId) {
     const instance = annotatorInstances.get(instanceId);
     if (instance) {
-        instance.canvases.forEach(c => c.fabricCanvas.dispose());
+        instance.canvases.forEach(c => { try { c.fabricCanvas?.dispose(); } catch {} });
+        instance.canvases.clear();
+        // Destroy Sortable instances in container
+        const sortables = instance.container.querySelectorAll('[data-sortable]');
+        sortables.forEach(el => {
+            const s = sortableInstances.get(el);
+            if (s) { try { s.destroy(); } catch {}; sortableInstances.delete(el); }
+        });
         annotatorInstances.delete(instanceId);
     }
+}
+
+export function destroySortable(el) {
+    const s = sortableInstances.get(el);
+    if (s) { try { s.destroy(); } catch {}; sortableInstances.delete(el); }
+}
+
+export function revokeObjectUrl(url) {
+    if (url && objectUrls.has(url)) {
+        try { URL.revokeObjectURL(url); } catch {}
+        objectUrls.delete(url);
+    }
+}
+
+export function revokeAllObjectUrls() {
+    objectUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch {} });
+    objectUrls.clear();
 }

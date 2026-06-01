@@ -66,7 +66,7 @@ export async function init(dotNetRef, canvasEl, instanceId) {
         lastY = e.clientY;
     });
 
-    window.addEventListener('mousemove', e => {
+    function onMouseMove(e) {
         if (!isDragging) return;
         theta -= (e.clientX - lastX) * 0.01;
         phi -= (e.clientY - lastY) * 0.01;
@@ -74,9 +74,10 @@ export async function init(dotNetRef, canvasEl, instanceId) {
         lastX = e.clientX;
         lastY = e.clientY;
         updateCamera();
-    });
-
-    window.addEventListener('mouseup', () => isDragging = false);
+    }
+    function onMouseUp() { isDragging = false; }
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
 
     canvasEl.addEventListener('wheel', e => {
         radius = Math.max(100, Math.min(2000, radius + e.deltaY * 0.5));
@@ -86,7 +87,7 @@ export async function init(dotNetRef, canvasEl, instanceId) {
 
     updateCamera();
 
-    const inst = { renderer, scene, camera, boxMeshes: [], palletGroup: new THREE.Group() };
+    const inst = { renderer, scene, camera, boxMeshes: [], palletGroup: new THREE.Group(), _onMouseMove: onMouseMove, _onMouseUp: onMouseUp };
     scene.add(inst.palletGroup);
     _scenes.set(instanceId, inst);
 
@@ -199,6 +200,24 @@ export function dispose(instanceId) {
     const inst = _scenes.get(instanceId);
     if (inst) {
         if (inst.resizeObserver) inst.resizeObserver.disconnect();
+        // Remove window event listeners
+        try { window.removeEventListener('mousemove', inst._onMouseMove); } catch {}
+        try { window.removeEventListener('mouseup', inst._onMouseUp); } catch {}
+        // Dispose Three.js geometries, materials, meshes
+        inst.scene.traverse(obj => {
+            if (obj.isMesh || obj.isLineSegments || obj.isLine) {
+                if (obj.geometry) { try { obj.geometry.dispose(); } catch {} }
+                if (obj.material) {
+                    if (Array.isArray(obj.material)) obj.material.forEach(m => { try { m.dispose(); } catch {} });
+                    else { try { obj.material.dispose(); } catch {} }
+                }
+            }
+        });
+        // Dispose box meshes
+        inst.boxMeshes.forEach(m => {
+            if (m.geometry) { try { m.geometry.dispose(); } catch {} }
+            if (m.material) { try { m.material.dispose(); } catch {} }
+        });
         inst.renderer.dispose();
     }
     _scenes.delete(instanceId);

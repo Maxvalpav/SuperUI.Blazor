@@ -473,10 +473,7 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
       const headers = _buildOpenAiHeaders(inst.llmEngine);
       // Diagnostic log — shows in DevTools console so users can confirm the key,
       // base URL and model actually reaching the provider.
-      const keyMasked = (inst.llmEngine.apiKey || '').length > 8
-        ? `${inst.llmEngine.apiKey.slice(0,6)}…${inst.llmEngine.apiKey.slice(-4)} (len=${inst.llmEngine.apiKey.length})`
-        : `(empty, len=${(inst.llmEngine.apiKey || '').length})`;
-      console.info('[sg-llm] →', { url, model: inst.llmEngine.model, sub: inst.llmEngine.sub, apiKey: keyMasked });
+      console.info('[sg-llm] →', { url, model: inst.llmEngine.model, sub: inst.llmEngine.sub });
       const response = await _fetchWithRetry(url, { method: 'POST', signal: abortCtrl.signal, headers, body: JSON.stringify(body) }, inst.llmEngine.opts || {});
       if (!response.ok) {
         const t = await response.text().catch(() => '');
@@ -704,10 +701,13 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
       }
       if (tools) body.tools = tools;
 
-      const url = `${inst.llmEngine.baseUrl.replace(/\/$/, '')}/models/${encodeURIComponent(inst.llmEngine.model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(inst.llmEngine.apiKey)}`;
+      const url = `${inst.llmEngine.baseUrl.replace(/\/$/, '')}/models/${encodeURIComponent(inst.llmEngine.model)}:streamGenerateContent?alt=sse`;
       const response = await fetch(url, {
         method: 'POST', signal: abortCtrl.signal,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': inst.llmEngine.apiKey,
+        },
         body: JSON.stringify(body),
       });
       if (!response.ok) {
@@ -776,14 +776,32 @@ export function scrollChatToBottom(selector) {
   } catch (_) {}
 }
 
+function _escapeHtml(v) {
+  return String(v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export async function renderMarkdown(text, markedSrc) {
   const src = markedSrc || 'https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js';
   await _loadScript(src);
   const marked = window.marked;
-  if (!marked) return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  if (!marked) return _escapeHtml(text);
   marked.setOptions({ gfm: true, breaks: true });
   const html = marked.parse(text || '');
-  return html.replace(/<script[\s\S]*?<\/script>/gi, '')
-             .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
-             .replace(/javascript\s*:/gi, 'nojs:');
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  const scripts = div.querySelectorAll('script, iframe, object, embed');
+  for (const el of scripts) el.remove();
+  const all = div.querySelectorAll('*');
+  for (const el of all) {
+    const attrs = el.attributes;
+    for (let i = attrs.length - 1; i >= 0; i--) {
+      const name = attrs[i].name;
+      if (name.startsWith('on') || name === 'href' && attrs[i].value.trim().toLowerCase().startsWith('javascript:')) {
+        el.removeAttribute(name);
+      }
+    }
+  }
+  return div.innerHTML;
 }

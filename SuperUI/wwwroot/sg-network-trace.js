@@ -2,6 +2,13 @@
 // Uses Leaflet.js (CDN) to render a world map with hop markers and polyline.
 
 const _instances = new Map();
+
+function _esc(v) {
+    if (v == null) return '';
+    return String(v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 const _loaded    = new Set();
 
 // ── Loader ────────────────────────────────────────────────────────────────────
@@ -136,16 +143,16 @@ export function addHop(instanceId, hop) {
         const locText  = [hop.country, hop.city].filter(Boolean).join(', ') || 'Unknown';
         const popup    = `
             <div style="font-family:system-ui,sans-serif;min-width:160px;">
-                <div style="font-weight:700;font-size:13px;margin-bottom:4px;">Хоп #${hop.hopNumber}</div>
+                <div style="font-weight:700;font-size:13px;margin-bottom:4px;">Хоп #${_esc(hop.hopNumber)}</div>
                 <div style="font-size:12px;color:#374151;margin-bottom:2px;">
-                    <span style="font-family:monospace;">${hop.ipAddress}</span>
+                    <span style="font-family:monospace;">${_esc(hop.ipAddress)}</span>
                 </div>
-                ${hop.hostName ? `<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">${hop.hostName}</div>` : ''}
+                ${hop.hostName ? `<div style="font-size:11px;color:#6b7280;margin-bottom:2px;">${_esc(hop.hostName)}</div>` : ''}
                 <div style="font-size:12px;margin-bottom:2px;">
-                    <span style="background:${_pingColor(hop.pingMs)};color:#fff;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;">${pingText}</span>
+                    <span style="background:${_pingColor(hop.pingMs)};color:#fff;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;">${_esc(pingText)}</span>
                 </div>
-                <div style="font-size:11px;color:#6b7280;">${locText}</div>
-                ${hop.isp ? `<div style="font-size:11px;color:#9ca3af;">${hop.isp}</div>` : ''}
+                <div style="font-size:11px;color:#6b7280;">${_esc(locText)}</div>
+                ${hop.isp ? `<div style="font-size:11px;color:#9ca3af;">${_esc(hop.isp)}</div>` : ''}
             </div>`;
         marker.bindPopup(popup, { maxWidth: 220 });
         marker.addTo(markerGroup);
