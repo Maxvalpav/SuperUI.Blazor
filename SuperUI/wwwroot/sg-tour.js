@@ -31,12 +31,12 @@ export function observeWindow(dotnetRef) {
         try { dotnetRef?.invokeMethodAsync('OnWindowChanged')?.catch(() => {}); } catch {}
     };
     window.addEventListener('resize', handler);
-    window.addEventListener('scroll', handler);
+    window.addEventListener('scroll', handler, { passive: true });
     
     return {
         dispose: () => {
             window.removeEventListener('resize', handler);
-            window.removeEventListener('scroll', handler);
+            window.removeEventListener('scroll', handler, { passive: true });
         }
     };
 }

@@ -106,7 +106,7 @@ export function attach(root, dotnetRef, placement, menuId) {
 
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("scroll", reposition, { passive: true, capture: true });
     window.addEventListener("resize", reposition);
 
     // Store for repositioning on menu open

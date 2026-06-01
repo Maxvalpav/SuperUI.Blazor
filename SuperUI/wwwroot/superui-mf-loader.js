@@ -1,3 +1,9 @@
+function _esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
 function _loadScript(url) {
     return new Promise((resolve, reject) => {
         const existing = document.querySelector(`script[src="${url}"]`);
@@ -59,6 +65,6 @@ export async function loadMicroFrontend(source, componentType, containerId, para
         }
     } catch (e) {
         console.error('Failed to load micro frontend module', e);
-        container.innerHTML = `<div style="color: var(--sui-danger-color); padding: 12px; border: 1px solid currentColor; border-radius: 4px;">Error: ${e.message}</div>`;
+        container.innerHTML = `<div style="color: var(--sui-danger-color); padding: 12px; border: 1px solid currentColor; border-radius: 4px;">Error: ${_esc(e.message)}</div>`;
     }
 }

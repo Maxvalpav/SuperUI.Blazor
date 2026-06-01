@@ -293,7 +293,7 @@ export function repositionDropdowns() {
 
 const _scrollHandler = repositionDropdowns;
 const _resizeHandler = repositionDropdowns;
-window.addEventListener('scroll', _scrollHandler, true);
+window.addEventListener('scroll', _scrollHandler, { passive: true, capture: true });
 window.addEventListener('resize', _resizeHandler);
 
 window.__superuiDropdown = {
