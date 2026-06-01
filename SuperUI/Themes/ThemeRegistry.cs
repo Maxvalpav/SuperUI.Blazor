@@ -12,53 +12,11 @@ public sealed class ThemeRegistry
 
     public ThemeRegistry()
     {
-        // Register built-in themes
-        Register(new NaturaTheme());
-        Register(new SolarisTheme());
-        Register(new RoyalTheme());
-        Register(new GraphiteTheme());
-        Register(new ForestTheme());
-        Register(new NeonTheme());
-        Register(new GlassTheme());
-        Register(new SignatureTheme());
-        Register(new ChronoTheme());
-        Register(new InclusTheme());
-        Register(new SylvanTheme());
-        Register(new ReaderTheme());
-        Register(new WaveTheme());
-        Register(new AureaTheme());
-        Register(new CantusTheme());
-        Register(new FractalisTheme());
-        Register(new CosmosTheme());
-        Register(new GordianTheme());
-        // ═══ Flagship ✦ — новые 14 тем ═══
-        Register(new CalyxTheme());
-        Register(new ApexTheme());
-        Register(new MediciTheme());
-        Register(new ZenTheme());
-        Register(new AetherTheme());
-        Register(new OasisTheme());
-        Register(new NeoTheme());
-        Register(new ClarityTheme());
-        Register(new ElementTheme());
-        Register(new RadiusTheme());
-        Register(new FluxTheme());
-        Register(new MuseTheme());
-        Register(new ForgeTheme());
-        Register(new PrismTheme());
-        // ═══ Science & Accessibility themes ═══
-        Register(new ClarityClinicalTheme());
-        Register(new CircadianTheme());
-        Register(new ErgoTheme());
-        Register(new BiofiliaTheme());
-        Register(new LuminaTheme());
-        // ═══ Glassmorphism themes ═══
-        Register(new GlassLightTheme());
-        Register(new GlassDarkTheme());
-        Register(new GlassTintedTheme());
-        Register(new GlassNeumorphicTheme());
-        Register(new VeiledTheme());
-        Register(new WindowTheme());
+        // Built-in themes ship as embedded JSON resources under
+        // SuperUI.Themes.json.* (see <EmbeddedResource Include="Themes\json\*.json" />
+        // in SuperUI.csproj). Loading happens at construction so consumers can
+        // immediately call GetAll()/GetDefault()/TryGet() without setup.
+        LoadEmbeddedJsonThemes();
     }
 
     /// <summary>Registers a new theme.</summary>
