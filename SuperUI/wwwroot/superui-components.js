@@ -122,7 +122,7 @@ function handleMarkdownShortcut(editor, e, dotnetRef) {
             sel.removeAllRanges();
             sel.addRange(r);
             document.execCommand('insertHTML', false, html);
-            dotnetRef.invokeMethodAsync('NotifyContentChanged').catch(()=>{});
+            try { dotnetRef.invokeMethodAsync('NotifyContentChanged').catch(()=>{}); } catch {}
             handled = true;
         };
         if (trimmed === '#') { insertAfter('<h1>&nbsp;</h1>'); }
@@ -143,7 +143,7 @@ function handleMarkdownShortcut(editor, e, dotnetRef) {
             sel.removeAllRanges();
             sel.addRange(r);
             document.execCommand('insertHTML', false, '<hr><br>');
-            dotnetRef.invokeMethodAsync('NotifyContentChanged').catch(()=>{});
+            try { dotnetRef.invokeMethodAsync('NotifyContentChanged').catch(()=>{}); } catch {}
             handled = true;
         }
     }
@@ -163,13 +163,13 @@ function createSlashMenu(editor) {
 
 function getSlashItems(dotnetRef) {
     return [
-        { icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M9 3v18"/></svg>', label: 'Table', action: () => dotnetRef.invokeMethodAsync('InsertTableCommand').catch(()=>{}) },
-        { icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>', label: 'Link', action: () => dotnetRef.invokeMethodAsync('ToggleLinkPopover').catch(()=>{}) },
-        { icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>', label: 'Image', action: () => dotnetRef.invokeMethodAsync('ToggleImagePopover').catch(()=>{}) },
+        { icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M9 3v18"/></svg>', label: 'Table', action: () => { try { dotnetRef.invokeMethodAsync('InsertTableCommand').catch(()=>{}); } catch {} } },
+        { icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>', label: 'Link', action: () => { try { dotnetRef.invokeMethodAsync('ToggleLinkPopover').catch(()=>{}); } catch {} } },
+        { icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>', label: 'Image', action: () => { try { dotnetRef.invokeMethodAsync('ToggleImagePopover').catch(()=>{}); } catch {} } },
         { icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"/><path d="M10 7l-3 13"/><path d="M14 7l1 5"/></svg>', label: 'Quote', action: () => execCommandOn(editor, 'formatBlock', 'blockquote') },
         { icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>', label: 'Code Block', action: () => execCommandOn(editor, 'formatBlock', 'pre') },
         { icon: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="6" y1="5" x2="18" y2="5" stroke-dasharray="2 3"/></svg>', label: 'Divider', action: () => execCommandOn(editor, 'insertHTML', '<hr>') },
-        { icon: '<span style="font-size:16px">😊</span>', label: 'Emoji', action: () => dotnetRef.invokeMethodAsync('ToggleEmojiPopover').catch(()=>{}) },
+        { icon: '<span style="font-size:16px">😊</span>', label: 'Emoji', action: () => { try { dotnetRef.invokeMethodAsync('ToggleEmojiPopover').catch(()=>{}); } catch {} } },
     ];
 }
 
@@ -333,10 +333,10 @@ function createFloatingToolbar(editor) {
             const text = sel ? sel.toString() : '';
             rememberRange(editor);
             const inst = editorInstances.get(editor);
-            if (inst && inst.dotnetRef) inst.dotnetRef.invokeMethodAsync('ToggleLinkPopover').catch(()=>{});
+            if (inst && inst.dotnetRef) try { inst.dotnetRef.invokeMethodAsync('ToggleLinkPopover').catch(()=>{}); } catch {}
         } else if (cmd === 'color') {
             const inst = editorInstances.get(editor);
-            if (inst && inst.dotnetRef) inst.dotnetRef.invokeMethodAsync('ToggleTextColorPopover').catch(()=>{});
+            if (inst && inst.dotnetRef) try { inst.dotnetRef.invokeMethodAsync('ToggleTextColorPopover').catch(()=>{}); } catch {}
         } else {
             document.execCommand(cmd, false, null);
             editor.focus();
@@ -546,7 +546,7 @@ function addImageResizeHandles(editor) {
                 document.removeEventListener('mouseup', onMouseUp);
                 const inst = editorInstances.get(editor);
                 if (inst && inst.dotnetRef)
-                    inst.dotnetRef.invokeMethodAsync('NotifyContentChanged').catch(()=>{});
+                    try { inst.dotnetRef.invokeMethodAsync('NotifyContentChanged').catch(()=>{}); } catch {}
             }
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);

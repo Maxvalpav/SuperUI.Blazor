@@ -287,7 +287,7 @@ export async function initChart(dotnetRef, canvasRef, config, sources) {
                 dataPointIndex: index,
                 value,
                 label
-            });
+            })?.catch(() => {});
         } catch { }
     };
 
@@ -394,7 +394,7 @@ export async function updateChart(chartId, config) {
                     dataPointIndex: index,
                     value,
                     label
-                });
+                })?.catch(() => {});
             } catch { }
         } : null;
 

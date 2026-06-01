@@ -219,7 +219,7 @@ export function init(canvas, container, dotNet) {
             try {
                 state.dotNet.invokeMethodAsync('OnColumnResized', state.columns
                     .filter(c => c.property !== '__selection')
-                    .map(c => ({ property: c.property, width: c.width })));
+                    .map(c => ({ property: c.property, width: c.width })))?.catch(() => {});
             } catch { }
         }
     };
@@ -271,11 +271,11 @@ export function init(canvas, container, dotNet) {
             const { col, drawX } = hit;
             try {
                 if (col.property === '__selection') {
-                    state.dotNet.invokeMethodAsync('OnToggleSelectAll');
+                    state.dotNet.invokeMethodAsync('OnToggleSelectAll')?.catch(() => {});
                 } else if (x > drawX + col.width - 45 && x < drawX + col.width - 25) {
-                    state.dotNet.invokeMethodAsync('OnShowFilter', col.property, drawX, state.headerHeight, state.width, state.height);
+                    state.dotNet.invokeMethodAsync('OnShowFilter', col.property, drawX, state.headerHeight, state.width, state.height)?.catch(() => {});
                 } else {
-                    state.dotNet.invokeMethodAsync('OnHeaderClick', col.property);
+                    state.dotNet.invokeMethodAsync('OnHeaderClick', col.property)?.catch(() => {});
                 }
             } catch { }
             return;
@@ -287,9 +287,9 @@ export function init(canvas, container, dotNet) {
         const row = state.data[rowIndex];
         try {
             if (isGroupRow(row)) {
-                state.dotNet.invokeMethodAsync('ToggleGroupCollapsed', row._groupPath);
+                state.dotNet.invokeMethodAsync('ToggleGroupCollapsed', row._groupPath)?.catch(() => {});
             } else {
-                state.dotNet.invokeMethodAsync('OnRowClickInternal', rowIndex, e.shiftKey, e.ctrlKey || e.metaKey);
+                state.dotNet.invokeMethodAsync('OnRowClickInternal', rowIndex, e.shiftKey, e.ctrlKey || e.metaKey)?.catch(() => {});
             }
         } catch { }
     };
@@ -308,7 +308,7 @@ export function init(canvas, container, dotNet) {
         const cellY = (rowIndex * state.rowHeight) - state.scrollTop + state.headerHeight;
         try {
             state.dotNet.invokeMethodAsync('OnRowDoubleClickInternal',
-                rowIndex, col.property, drawX, cellY, col.width, state.rowHeight);
+                rowIndex, col.property, drawX, cellY, col.width, state.rowHeight)?.catch(() => {});
         } catch { }
     };
 
