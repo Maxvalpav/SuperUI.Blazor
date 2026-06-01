@@ -26,13 +26,9 @@
 
 ## Screenshots
 
-| Home — Natura UI | DataGrid — Natura Dark | Dashboard — Calyx |
-|:---:|:---:|:---:|
-| ![Home](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/home-natura-ui-light.png) | ![DataGrid](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/datagrid-natura-dark.png) | ![Dashboard](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/dashboard-calyx-light.png) |
-
-| Scheduler — Neon Dark | Charts — Solaris Dark |
 |:---:|:---:|
-| ![Scheduler](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/scheduler-neon-dark.png) | ![Charts](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/charts-solaris-dark.png) |
+| ![Home](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/1.png) | ![DataGrid](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/2.png) |
+| ![Dashboard](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/3.png) | ![OrgChart](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/main/docs/screenshots/4.png) |
 
 
 
