@@ -62,17 +62,17 @@ export async function chat(message, model, stream, dotnetRef) {
         if (stream) {
             for await (const part of response) {
                 if (part?.text) {
-                    await dotnetRef.invokeMethodAsync('OnTokenReceivedCallback', part.text);
+                    try { dotnetRef?.invokeMethodAsync('OnTokenReceivedCallback', part.text)?.catch(() => {}); } catch {}
                 }
             }
-            await dotnetRef.invokeMethodAsync('OnChatCompleteCallback', '');
+            try { dotnetRef?.invokeMethodAsync('OnChatCompleteCallback', '')?.catch(() => {}); } catch {}
         } else {
             return response.message.content;
         }
     } catch (err) {
         console.error('[sg-puter] Chat error:', err);
         if (dotnetRef) {
-            await dotnetRef.invokeMethodAsync('OnErrorCallback', err.message || err.toString());
+            try { dotnetRef?.invokeMethodAsync('OnErrorCallback', err.message || err.toString())?.catch(() => {}); } catch {}
         }
         throw err;
     }

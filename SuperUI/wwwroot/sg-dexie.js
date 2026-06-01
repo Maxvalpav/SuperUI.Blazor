@@ -3,7 +3,8 @@
  * Wraps Dexie.js for IndexedDB management in Blazor.
  */
 
-import 'https://unpkg.com/dexie@latest/dist/dexie.js';
+// Pinned version (never use @latest in a published package — non-reproducible builds + supply-chain risk).
+import 'https://unpkg.com/dexie@4.0.8/dist/dexie.js';
 
 const _databases = new Map();
 
@@ -53,9 +54,14 @@ export async function query(dbName, tableName, filter) {
     
     let collection = db.table(tableName);
     if (filter) {
-        // Simple key-value filter for demo
-        for (const [key, value] of Object.entries(filter)) {
-            collection = collection.where(key).equals(value);
+        const entries = Object.entries(filter);
+        for (let i = 0; i < entries.length; i++) {
+            const [key, value] = entries[i];
+            if (i === 0) {
+                collection = collection.where(key).equals(value);
+            } else {
+                collection = collection.and(item => item[key] === value);
+            }
         }
     }
     return await collection.toArray();

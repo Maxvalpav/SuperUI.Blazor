@@ -1,5 +1,13 @@
 // SgGoogleMap — Google Maps JavaScript API wrapper for SuperUI Blazor
 
+// Escape data values before interpolating into InfoWindow HTML (XSS guard).
+function _esc(v) {
+    if (v == null) return '';
+    return String(v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 const _instances = new Map();
 let   _gmapsLoading = false;
 let   _gmapsReady   = false;
@@ -119,8 +127,8 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
         marker.addListener('click', () => {
             infoWindow.setContent(`
                 <div style="font-family:var(--sg-font,system-ui);padding:4px 2px;min-width:120px">
-                    <div style="font-weight:600;font-size:13px;margin-bottom:2px">${m.title ?? ''}</div>
-                    ${m.description ? `<div style="font-size:11px;color:#6b7280">${m.description}</div>` : ''}
+                    <div style="font-weight:600;font-size:13px;margin-bottom:2px">${_esc(m.title ?? '')}</div>
+                    ${m.description ? `<div style="font-size:11px;color:#6b7280">${_esc(m.description)}</div>` : ''}
                     <div style="font-size:10px;color:#9ca3af;margin-top:4px;font-family:monospace">${m.latitude.toFixed(5)}, ${m.longitude.toFixed(5)}</div>
                 </div>`);
             infoWindow.open(map, marker);
@@ -144,15 +152,17 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
     });
 
     // ── Polygons ──
+    const polygonObjs = [];
     (polygons ?? []).forEach(p => {
         const path = p.coordinates.map(c => ({ lat: c.latitude, lng: c.longitude }));
-        new google.maps.Polygon({
+        const poly = new google.maps.Polygon({
             paths: path, map,
             fillColor: p.fillColor ?? 'rgba(37,99,235,0.2)',
             fillOpacity: 0.25,
             strokeColor: p.strokeColor ?? '#2563eb',
             strokeWeight: p.strokeWidth ?? 2,
         });
+        polygonObjs.push(poly);
     });
 
     // ── Map click ──
@@ -174,7 +184,7 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
         ro.observe(containerRef);
     }
 
-    _instances.set(instanceId, { map, markerObjs, polylineObjs, infoWindow, google, dotnetRef, ro });
+    _instances.set(instanceId, { map, markerObjs, polylineObjs, polygonObjs, infoWindow, google, dotnetRef, ro });
 }
 
 export function setCenter(instanceId, lat, lon, zoom) {
@@ -334,12 +344,12 @@ function _renderDirectionsResult(inst, result, google, map, instanceId, fromLat,
 
     const bounds = result.routes[0].bounds;
     if (bounds) map.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
-    _addWaypointMarker(google, map, fromLat, fromLon, '#2563eb', 'A');
-    _addWaypointMarker(google, map, toLat,   toLon,   '#dc2626', 'B');
+    _addWaypointMarker(inst, google, map, fromLat, fromLon, '#2563eb', 'A');
+    _addWaypointMarker(inst, google, map, toLat,   toLon,   '#dc2626', 'B');
     return { ok: true, straight: false, selectedIndex: 0, routes };
 }
 
-function _addWaypointMarker(google, map, lat, lng, color, letter) {
+function _addWaypointMarker(inst, google, map, lat, lng, color, letter) {
     const size = 28;
     const cv = document.createElement('canvas');
     cv.width = size; cv.height = size;
@@ -351,11 +361,13 @@ function _addWaypointMarker(google, map, lat, lng, color, letter) {
     ctx.font = `bold ${size * 0.45}px sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(letter, size/2, size/2);
-    new google.maps.Marker({
+    const marker = new google.maps.Marker({
         position: { lat, lng }, map,
         icon: { url: cv.toDataURL(), scaledSize: new google.maps.Size(size, size), anchor: new google.maps.Point(size/2, size/2) },
         zIndex: 20,
     });
+    if (!inst._waypointMarkers) inst._waypointMarkers = [];
+    inst._waypointMarkers.push(marker);
 }
 
 export function selectRoute(instanceId, idx) {
@@ -406,7 +418,17 @@ export function disposeMap(instanceId) {
     const inst = _instances.get(instanceId);
     if (!inst) return;
     try { inst.ro?.disconnect(); } catch {}
+    // Close InfoWindow
+    try { inst.infoWindow?.close(); } catch {}
+    // Remove map event listeners
+    try { google.maps.event.clearInstanceListeners(inst.map); } catch {}
+    // Clear markers
     try { inst.markerObjs.forEach(m => m.setMap(null)); } catch {}
+    // Clear polylines
     try { Object.values(inst.polylineObjs).forEach(p => p.setMap(null)); } catch {}
+    // Clear polygons
+    try { inst.polygonObjs?.forEach(p => p.setMap(null)); } catch {}
+    // Clear route renderers and waypoint markers
+    try { _clearRouteRenderers(inst); } catch {}
     _instances.delete(instanceId);
 }

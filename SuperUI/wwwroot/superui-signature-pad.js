@@ -163,6 +163,7 @@ export function init(canvas, dotNetRef, penColor, penWidth, bgColor, readOnly,
         resizeObserver = new ResizeObserver(() => resizeCanvas());
         resizeObserver.observe(canvas.parentElement || canvas);
     }
+    canvas._sgResizeObserver = resizeObserver;
 
     canvas._handlers = { start, draw, stop, onTouchStart, onTouchMove };
 
@@ -360,13 +361,13 @@ export function dispose(canvas) {
         try { canvas.removeEventListener('touchend', h.stop); } catch {}
         try { canvas.removeEventListener('touchcancel', h.stop); } catch {}
     }
-    if (canvas._resizeObserver) {
-        try { canvas._resizeObserver.disconnect(); } catch {}
+    if (canvas._sgResizeObserver) {
+        try { canvas._sgResizeObserver.disconnect(); } catch {}
     }
     for (const key of ['_handlers', '_clear', '_getDataUrl', '_getTrimmedDataUrl', '_isEmpty',
         '_getStrokeCount', '_undo', '_redo', '_download', '_copy', '_setPenColor',
         '_setPenWidth', '_setReadOnly', '_setBgColor', '_resize', '_loadImage',
-        '_replay', '_resizeObserver']) {
+        '_replay', '_sgResizeObserver']) {
         canvas[key] = null;
     }
 }

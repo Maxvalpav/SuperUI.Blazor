@@ -1,60 +1,70 @@
 // SgVehicleTracker — Smooth GPS animation for transport monitoring
 // Uses Turf.js for geo-calculations and requestAnimationFrame for smooth interpolation
 
-let _map = null;
-let _vehicles = new Map(); // id -> { marker, currentPos, targetPos, startTime, duration, bearing }
-let _animationFrameId = null;
-
+const _instances = new Map();
 const TURF_URL = 'https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js';
+
+function _esc(v) {
+    if (v == null) return '';
+    return String(v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 async function _ensureTurf() {
     if (window.turf) return window.turf;
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = TURF_URL;
         script.async = true;
         script.onload = () => resolve(window.turf);
+        script.onerror = () => reject(new Error(`Failed to load script: ${TURF_URL}`));
         document.head.appendChild(script);
     });
 }
 
 export async function init(containerId, initialLat, initialLon, zoom) {
     await _ensureTurf();
-    
-    // Check if Leaflet is available (standard in SuperUI)
+
     if (!window.L) {
         console.error('[SgVehicleTracker] Leaflet (L) not found. Make sure leaflet.js is loaded.');
         return;
     }
 
-    _map = L.map(containerId).setView([initialLat, initialLon], zoom);
+    const map = L.map(containerId).setView([initialLat, initialLon], zoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
-    }).addTo(_map);
+    }).addTo(map);
 
-    _startAnimationLoop();
+    const vehicles = new Map();
+    const animFrame = { id: null };
+    _startAnimationLoop(vehicles, animFrame);
+    _instances.set(containerId, { map, vehicles, animationFrameId: animFrame });
 }
 
-export function updateVehicle(id, lat, lon, durationMs, label, iconUrl) {
+export function updateVehicle(containerId, id, lat, lon, durationMs, label, iconUrl) {
+    const inst = _instances.get(containerId);
+    if (!inst) return;
+
     const turf = window.turf;
     if (!turf) return;
 
-    let v = _vehicles.get(id);
-    const newPos = [lon, lat]; // turf uses [lon, lat]
+    const { vehicles, map } = inst;
+    let v = vehicles.get(id);
+    const newPos = [lon, lat];
 
     if (!v) {
-        // Create new vehicle
         const icon = L.divIcon({
             className: 'sg-vehicle-icon',
-            html: `<div class="sg-vehicle-container" id="vehicle-${id}">
-                     <img src="${iconUrl || 'https://cdn-icons-png.flaticon.com/512/3202/3202926.png'}" style="width: 32px; height: 32px; transition: transform 0.2s;"/>
-                     <div class="sg-vehicle-label">${label || id}</div>
+            html: `<div class="sg-vehicle-container" id="vehicle-${_esc(id)}">
+                     <img src="${_esc(iconUrl || 'https://cdn-icons-png.flaticon.com/512/3202/3202926.png')}" style="width: 32px; height: 32px; transition: transform 0.2s;"/>
+                     <div class="sg-vehicle-label">${_esc(label || id)}</div>
                    </div>`,
             iconSize: [32, 32],
             iconAnchor: [16, 16]
         });
 
-        const marker = L.marker([lat, lon], { icon }).addTo(_map);
+        const marker = L.marker([lat, lon], { icon }).addTo(map);
         v = {
             id,
             marker,
@@ -64,63 +74,60 @@ export function updateVehicle(id, lat, lon, durationMs, label, iconUrl) {
             duration: durationMs,
             bearing: 0
         };
-        _vehicles.set(id, v);
+        vehicles.set(id, v);
     } else {
-        // Update existing vehicle
         v.startTime = performance.now();
         v.duration = durationMs;
         v.targetPos = newPos;
-        
-        // Calculate bearing using turf
+
         const from = turf.point(v.currentPos);
         const to = turf.point(v.targetPos);
         v.bearing = turf.bearing(from, to);
     }
 }
 
-function _startAnimationLoop() {
+function _startAnimationLoop(vehicles, animFrame) {
     const turf = window.turf;
-    
+
     const animate = (time) => {
-        _vehicles.forEach((v) => {
+        vehicles.forEach((v) => {
             const elapsed = time - v.startTime;
             const progress = Math.min(elapsed / v.duration, 1);
 
             if (progress < 1) {
-                // Interpolate position using turf
                 const from = turf.point(v.currentPos);
                 const to = turf.point(v.targetPos);
                 const distance = turf.distance(from, to);
-                
+
                 if (distance > 0) {
                     const interpolated = turf.along(turf.lineString([v.currentPos, v.targetPos]), distance * progress);
                     const coords = interpolated.geometry.coordinates;
                     v.marker.setLatLng([coords[1], coords[0]]);
-                    
-                    // Update rotation
-                    const img = document.querySelector(`#vehicle-${v.id} img`);
+
+                    const img = document.querySelector(`#vehicle-${CSS.escape(v.id)} img`);
                     if (img) {
                         img.style.transform = `rotate(${v.bearing}deg)`;
                     }
                 }
             } else {
-                // Animation finished for this step
                 v.currentPos = v.targetPos;
                 v.marker.setLatLng([v.targetPos[1], v.targetPos[0]]);
             }
         });
 
-        _animationFrameId = requestAnimationFrame(animate);
+        animFrame.id = requestAnimationFrame(animate);
     };
 
-    _animationFrameId = requestAnimationFrame(animate);
+    animFrame.id = requestAnimationFrame(animate);
 }
 
-export function dispose() {
-    if (_animationFrameId) cancelAnimationFrame(_animationFrameId);
-    if (_map) {
-        _map.remove();
-        _map = null;
+export function dispose(containerId) {
+    const inst = _instances.get(containerId);
+    if (!inst) return;
+    if (inst.animationFrameId?.id) cancelAnimationFrame(inst.animationFrameId.id);
+    if (inst.map) {
+        inst.map.remove();
     }
-    _vehicles.clear();
+    inst.vehicles.clear();
+    _instances.delete(containerId);
 }

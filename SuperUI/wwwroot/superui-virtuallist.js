@@ -6,7 +6,7 @@ function attachObservers(container, dotnet, topSentinel, bottomSentinel, useInte
     container._sgViewportObserver = new IntersectionObserver((entries) => {
         const entry = entries[0];
         if (!entry || !container._sgDotNet) return;
-        container._sgDotNet.invokeMethodAsync('OnViewportVisibilityChanged', entry.isIntersecting);
+        try { container._sgDotNet?.invokeMethodAsync('OnViewportVisibilityChanged', entry.isIntersecting)?.catch(() => {}); } catch {}
     }, { threshold: 0.01 });
 
     // We split observers if endThreshold > 0 to apply rootMargin only to the bottom sentinel
@@ -14,14 +14,14 @@ function attachObservers(container, dotnet, topSentinel, bottomSentinel, useInte
         container._sgTopObserver = new IntersectionObserver((entries) => {
             if (!container._sgDotNet) return;
             for (const entry of entries) {
-                container._sgDotNet.invokeMethodAsync('OnEdgeIntersectionChanged', 'start', entry.isIntersecting);
+                try { container._sgDotNet?.invokeMethodAsync('OnEdgeIntersectionChanged', 'start', entry.isIntersecting)?.catch(() => {}); } catch {}
             }
         }, { root: container, threshold: 0.01 });
 
         container._sgBottomObserver = new IntersectionObserver((entries) => {
             if (!container._sgDotNet) return;
             for (const entry of entries) {
-                container._sgDotNet.invokeMethodAsync('OnEdgeIntersectionChanged', 'end', entry.isIntersecting);
+                try { container._sgDotNet?.invokeMethodAsync('OnEdgeIntersectionChanged', 'end', entry.isIntersecting)?.catch(() => {}); } catch {}
             }
         }, { 
             root: container, 
@@ -36,7 +36,7 @@ function attachObservers(container, dotnet, topSentinel, bottomSentinel, useInte
             if (!container._sgDotNet) return;
             for (const entry of entries) {
                 const edge = entry.target === topSentinel ? 'start' : 'end';
-                container._sgDotNet.invokeMethodAsync('OnEdgeIntersectionChanged', edge, entry.isIntersecting);
+                try { container._sgDotNet?.invokeMethodAsync('OnEdgeIntersectionChanged', edge, entry.isIntersecting)?.catch(() => {}); } catch {}
             }
         }, {
             root: container,
@@ -78,7 +78,7 @@ export function init(container, dotnet, topSentinel, bottomSentinel, useIntersec
     const notifyScroll = () => {
         container._sgScrollFrame = null;
         if (!container._sgDotNet) return;
-        container._sgDotNet.invokeMethodAsync('OnScroll', container.scrollTop);
+        try { container._sgDotNet?.invokeMethodAsync('OnScroll', container.scrollTop)?.catch(() => {}); } catch {}
     };
 
     const onScroll = () => {
@@ -102,7 +102,7 @@ export function init(container, dotnet, topSentinel, bottomSentinel, useIntersec
             }
         }
         if (updates.length > 0 && container._sgDotNet) {
-            container._sgDotNet.invokeMethodAsync('OnItemsResized', updates);
+            try { container._sgDotNet?.invokeMethodAsync('OnItemsResized', updates)?.catch(() => {}); } catch {}
         }
     });
 

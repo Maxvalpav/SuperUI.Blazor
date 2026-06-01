@@ -1,3 +1,10 @@
+function _esc(v) {
+    if (v == null) return '';
+    return String(v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 let maps = new Map();
 
 export function initTracerouteMap(containerId, options) {
@@ -52,10 +59,10 @@ export function updateHops(containerId, hops) {
         }).addTo(map);
 
         marker.bindPopup(`
-            <b>Hop ${hop.hopIndex}: ${hop.ip}</b><br/>
-            Location: ${hop.city}, ${hop.country}<br/>
-            ISP: ${hop.isp}<br/>
-            Latency: ${hop.latencyMs.toFixed(1)} ms
+            <b>Hop ${_esc(hop.hopIndex)}: ${_esc(hop.ip)}</b><br/>
+            Location: ${_esc(hop.city)}, ${_esc(hop.country)}<br/>
+            ISP: ${_esc(hop.isp)}<br/>
+            Latency: ${_esc(hop.latencyMs.toFixed(1))} ms
         `);
 
         state.markers.push(marker);

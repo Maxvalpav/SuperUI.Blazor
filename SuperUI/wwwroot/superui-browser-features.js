@@ -98,10 +98,10 @@ let mqQueryList = null;
 export function observeMediaQuery(query, dotNetRef) {
     mqObserverRef = dotNetRef;
     mqQueryList = window.matchMedia(query);
-    const handler = (e) => dotNetRef.invokeMethodAsync('OnMatchChanged', e.matches);
+    const handler = (e) => { try { dotNetRef?.invokeMethodAsync('OnMatchChanged', e.matches)?.catch(() => {}); } catch {} };
     mqQueryList.addEventListener('change', handler);
     mqQueryList._handler = handler;
-    dotNetRef.invokeMethodAsync('OnMatchChanged', mqQueryList.matches);
+    try { dotNetRef?.invokeMethodAsync('OnMatchChanged', mqQueryList.matches)?.catch(() => {}); } catch {}
 }
 
 export function unobserveMediaQuery() {
@@ -132,7 +132,7 @@ export function registerShortcut(keys, dotNetRef) {
         if (match) {
             e.preventDefault();
             e.stopPropagation();
-            dotNetRef.invokeMethodAsync('OnShortcutExecuted');
+            try { dotNetRef?.invokeMethodAsync('OnShortcutExecuted')?.catch(() => {}); } catch {}
         }
     };
     document.addEventListener('keydown', shortcutHandler);
@@ -161,7 +161,7 @@ const intersectionObservers = new Map();
 export function observeIntersection(element, threshold, rootMargin, once, dotNetRef) {
     const cb = (entries) => {
         const entry = entries[0];
-        dotNetRef.invokeMethodAsync('OnVisibilityChanged', entry.isIntersecting, entry.intersectionRatio);
+        try { dotNetRef?.invokeMethodAsync('OnVisibilityChanged', entry.isIntersecting, entry.intersectionRatio)?.catch(() => {}); } catch {}
         if (once && entry.isIntersecting) {
             unobserveIntersection(element);
         }
@@ -193,7 +193,7 @@ export function initLocalStorageWatcher(key, dotNetRef) {
     localStorageKey = key;
     localStorageHandler = (e) => {
         if (e.key === key) {
-            dotNetRef.invokeMethodAsync('OnStorageChanged', e.newValue || '');
+            try { dotNetRef?.invokeMethodAsync('OnStorageChanged', e.newValue || '')?.catch(() => {}); } catch {}
         }
     };
     window.addEventListener('storage', localStorageHandler);
@@ -230,7 +230,7 @@ export function listenFullscreenChange(dotNetRef) {
     stopListeningFullscreen();
     fullscreenRef = dotNetRef;
     fullscreenHandler = () => {
-        dotNetRef.invokeMethodAsync('OnFullscreenChanged', !!document.fullscreenElement);
+        try { dotNetRef?.invokeMethodAsync('OnFullscreenChanged', !!document.fullscreenElement)?.catch(() => {}); } catch {}
     };
     document.addEventListener('fullscreenchange', fullscreenHandler);
 }
@@ -259,12 +259,12 @@ export function initFocusTracker(scope, dotNetRef) {
         const target = e.target;
         const selector = target.id ? '#' + target.id : target.tagName.toLowerCase() +
             (target.className ? '.' + target.className.split(' ').filter(c => c).join('.') : '');
-        dotNetRef.invokeMethodAsync('OnFocusedIn', selector);
+        try { dotNetRef?.invokeMethodAsync('OnFocusedIn', selector)?.catch(() => {}); } catch {}
     };
     focusOutHandler = (e) => {
         const related = e.relatedTarget;
         if (!related || (scope && !related.closest(scope))) {
-            dotNetRef.invokeMethodAsync('OnFocusedOut');
+            try { dotNetRef?.invokeMethodAsync('OnFocusedOut')?.catch(() => {}); } catch {}
         }
     };
     root.addEventListener('focusin', focusInHandler);
@@ -410,12 +410,12 @@ export async function observeComputePressure(dotNetRef) {
         pressureObserver = new ComputePressureObserver(async (records) => {
             const lastRecord = records[records.length - 1];
             // Support both old and new event naming for compatibility
-            await dotNetRef.invokeMethodAsync('OnPressureUpdate', lastRecord.state);
-            await dotNetRef.invokeMethodAsync('HandlePressureChanged', records.map(r => ({
+            try { dotNetRef?.invokeMethodAsync('OnPressureUpdate', lastRecord.state)?.catch(() => {}); } catch {}
+            try { dotNetRef?.invokeMethodAsync('HandlePressureChanged', records.map(r => ({
                 source: r.source,
                 state: r.state,
                 factors: r.factors
-            })));
+            })))?.catch(() => {}); } catch {}
         });
         await pressureObserver.observe('cpu');
         return true;
@@ -516,7 +516,7 @@ export function initBroadcastChannel(name, dotNetRef) {
     if (channels.has(name)) return;
     const channel = new BroadcastChannel(name);
     channel.onmessage = (event) => {
-        dotNetRef.invokeMethodAsync('OnMessageReceived', event.data);
+        try { dotNetRef?.invokeMethodAsync('OnMessageReceived', event.data)?.catch(() => {}); } catch {}
     };
     channels.set(name, channel);
 }
@@ -791,10 +791,10 @@ export async function startIdleDetection(dotNetRef, threshold = 61000) {
 
     idleDetector = new IdleDetector();
     idleDetector.addEventListener('change', () => {
-        dotNetRef.invokeMethodAsync('OnIdleStateChanged', {
+        try { dotNetRef?.invokeMethodAsync('OnIdleStateChanged', {
             user: idleDetector.userState,
             screen: idleDetector.screenState
-        });
+        })?.catch(() => {}); } catch {}
     });
 
     await idleDetector.start({ threshold });
@@ -842,7 +842,7 @@ export async function createPasskey(options) {
 export async function requestLock(name, dotNetRef) {
     if (!navigator.locks) return false;
     navigator.locks.request(name, async (lock) => {
-        await dotNetRef.invokeMethodAsync('OnLockAcquired', name);
+        try { dotNetRef?.invokeMethodAsync('OnLockAcquired', name)?.catch(() => {}); } catch {}
         // Keep the lock until signaled or component disposed
         return new Promise(resolve => {
             window[`_lockResolve_${name}`] = resolve;
@@ -1021,7 +1021,7 @@ export function initNavigation(dotNetRef) {
         
         event.intercept({
             async handler() {
-                await dotNetRef.invokeMethodAsync('OnNavigateStarted', url.pathname);
+                try { dotNetRef?.invokeMethodAsync('OnNavigateStarted', url.pathname)?.catch(() => {}); } catch {}
                 // The actual Blazor navigation will happen after this
             }
         });
@@ -1039,12 +1039,12 @@ export async function createOffer(dotNetRef) {
     
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            dotNetRef.invokeMethodAsync('OnIceCandidate', JSON.stringify(event.candidate));
+            try { dotNetRef?.invokeMethodAsync('OnIceCandidate', JSON.stringify(event.candidate))?.catch(() => {}); } catch {}
         }
     };
     
     const dataChannel = peerConnection.createDataChannel("chat");
-    dataChannel.onmessage = (e) => dotNetRef.invokeMethodAsync('OnP2PMessage', e.data);
+    dataChannel.onmessage = (e) => { try { dotNetRef?.invokeMethodAsync('OnP2PMessage', e.data)?.catch(() => {}); } catch {} };
     
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
@@ -1057,11 +1057,11 @@ export function initPresentationReceiver(dotNetRef) {
     
     navigator.presentation.receiver.connectionList.then(list => {
         list.connections.forEach(conn => {
-            conn.onmessage = (e) => dotNetRef.invokeMethodAsync('OnPresentationMessage', e.data);
+            conn.onmessage = (e) => { try { dotNetRef?.invokeMethodAsync('OnPresentationMessage', e.data)?.catch(() => {}); } catch {} };
         });
         
         list.onconnectionavailable = (event) => {
-            event.connection.onmessage = (e) => dotNetRef.invokeMethodAsync('OnPresentationMessage', e.data);
+            event.connection.onmessage = (e) => { try { dotNetRef?.invokeMethodAsync('OnPresentationMessage', e.data)?.catch(() => {}); } catch {} };
         };
     });
     return true;
@@ -1075,10 +1075,10 @@ export function checkFileLaunch(dotNetRef) {
             for (const fileHandle of launchParams.files) {
                 const file = await fileHandle.getFile();
                 const content = await file.text();
-                dotNetRef.invokeMethodAsync('OnFileLaunched', {
+                try { dotNetRef?.invokeMethodAsync('OnFileLaunched', {
                     name: file.name,
                     content: content
-                });
+                })?.catch(() => {}); } catch {}
             }
         });
         return true;
@@ -1105,14 +1105,14 @@ export async function scanNfc(dotNetRef) {
         await ndef.scan();
         ndef.onreading = (event) => {
             const { serialNumber, message } = event;
-            dotNetRef.invokeMethodAsync('OnNfcRead', {
+            try { dotNetRef?.invokeMethodAsync('OnNfcRead', {
                 serialNumber,
                 records: message.records.map(r => ({
                     recordType: r.recordType,
                     mediaType: r.mediaType,
                     data: new TextDecoder().decode(r.data)
                 }))
-            });
+            })?.catch(() => {}); } catch {}
         };
         return true;
     } catch (e) {
@@ -1231,7 +1231,7 @@ export function setupVirtualKeyboard(dotNetRef) {
         navigator.virtualKeyboard.overlaysContent = true;
         navigator.virtualKeyboard.addEventListener('geometrychange', (event) => {
             const { x, y, width, height } = event.target.boundingRect;
-            dotNetRef.invokeMethodAsync('OnKeyboardGeometryChanged', { x, y, width, height });
+            try { dotNetRef?.invokeMethodAsync('OnKeyboardGeometryChanged', { x, y, width, height })?.catch(() => {}); } catch {}
         });
         return true;
     }
@@ -1246,12 +1246,12 @@ export async function requestMidiAccess(dotNetRef) {
     try {
         midiAccess = await navigator.requestMIDIAccess();
         midiAccess.onstatechange = (e) => {
-            dotNetRef.invokeMethodAsync('OnMidiStateChanged', {
+            try { dotNetRef?.invokeMethodAsync('OnMidiStateChanged', {
                 name: e.port.name,
                 manufacturer: e.port.manufacturer,
                 state: e.port.state,
                 type: e.port.type
-            });
+            })?.catch(() => {}); } catch {}
         };
         return true;
     } catch (e) {
@@ -1274,7 +1274,7 @@ export function initClickOutside(element, dotNetRef, excludeSelector) {
         if (!dotNetRef) return;
         if (!element || element === e.target || element.contains(e.target)) return;
         if (excludeSelector && e.target.closest(excludeSelector)) return;
-        dotNetRef.invokeMethodAsync('OnOutsideClick', e.clientX, e.clientY);
+        try { dotNetRef?.invokeMethodAsync('OnOutsideClick', e.clientX, e.clientY)?.catch(() => {}); } catch {}
     };
     document.addEventListener('click', clickOutsideHandler, true);
 }
@@ -1307,9 +1307,9 @@ export function initLongPress(element, duration, dotNetRef) {
     longPressDuration = duration || 500;
 
     const start = (e) => {
-        dotNetRef.invokeMethodAsync('OnPressStarted');
+        try { dotNetRef?.invokeMethodAsync('OnPressStarted')?.catch(() => {}); } catch {}
         longPressTimer = setTimeout(() => {
-            dotNetRef.invokeMethodAsync('OnLongPressFired');
+            try { dotNetRef?.invokeMethodAsync('OnLongPressFired')?.catch(() => {}); } catch {}
             longPressTimer = null;
         }, longPressDuration);
     };
@@ -1318,7 +1318,7 @@ export function initLongPress(element, duration, dotNetRef) {
             clearTimeout(longPressTimer);
             longPressTimer = null;
         }
-        dotNetRef.invokeMethodAsync('OnPressEnded');
+        try { dotNetRef?.invokeMethodAsync('OnPressEnded')?.catch(() => {}); } catch {}
     };
 
     longPressHandlers = { start, end };
@@ -1365,7 +1365,7 @@ export function initFileDrop(element, dotNetRef) {
 
 function onFileDragEnter(e) {
     e.preventDefault();
-    if (fileDropRef) fileDropRef.invokeMethodAsync('OnDragEntered');
+    if (fileDropRef) { try { fileDropRef?.invokeMethodAsync('OnDragEntered')?.catch(() => {}); } catch {} }
 }
 
 function onFileDragOver(e) {
@@ -1374,7 +1374,7 @@ function onFileDragOver(e) {
 
 function onFileDragLeave(e) {
     e.preventDefault();
-    if (fileDropRef) fileDropRef.invokeMethodAsync('OnDragLeft');
+    if (fileDropRef) { try { fileDropRef?.invokeMethodAsync('OnDragLeft')?.catch(() => {}); } catch {} }
 }
 
 function onFileDrop(e) {
@@ -1385,7 +1385,7 @@ function onFileDrop(e) {
     const reader = new FileReader();
     reader.onload = () => {
         if (fileDropRef) {
-            fileDropRef.invokeMethodAsync('OnFileDropped', file.name, file.size, file.type, reader.result);
+            try { fileDropRef?.invokeMethodAsync('OnFileDropped', file.name, file.size, file.type, reader.result)?.catch(() => {}); } catch {}
         }
     };
     reader.readAsDataURL(file);
@@ -1415,12 +1415,12 @@ export function initElementSize(element, dotNetRef) {
         const entry = entries[0];
         if (!entry) return;
         const { inlineSize, blockSize } = entry.borderBoxSize?.[0] || { inlineSize: entry.contentRect.width, blockSize: entry.contentRect.height };
-        dotNetRef.invokeMethodAsync('OnSizeChangedInternal', inlineSize, blockSize);
+        try { dotNetRef?.invokeMethodAsync('OnSizeChangedInternal', inlineSize, blockSize)?.catch(() => {}); } catch {}
     });
     elementSizeObserver.observe(element);
     // Fire initial size
     const rect = element.getBoundingClientRect();
-    dotNetRef.invokeMethodAsync('OnSizeChangedInternal', rect.width, rect.height);
+    try { dotNetRef?.invokeMethodAsync('OnSizeChangedInternal', rect.width, rect.height)?.catch(() => {}); } catch {}
 }
 
 export function disposeElementSize() {
@@ -1450,7 +1450,7 @@ export function initScrollSpy(selector, rootMargin, dotNetRef) {
         const visible = entries.filter(e => e.isIntersecting);
         if (visible.length > 0) {
             const top = visible.reduce((a, b) => a.boundingClientRect.top < b.boundingClientRect.top ? a : b);
-            dotNetRef.invokeMethodAsync('OnActiveChangedInternal', top.target.id || null);
+            try { dotNetRef?.invokeMethodAsync('OnActiveChangedInternal', top.target.id || null)?.catch(() => {}); } catch {}
         }
     };
 
@@ -1503,7 +1503,7 @@ export function initTextSelect(scope, dotNetRef) {
     textSelectHandler = () => {
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed || !sel.toString().trim()) {
-            dotNetRef.invokeMethodAsync('OnTextSelected', null);
+            try { dotNetRef?.invokeMethodAsync('OnTextSelected', null)?.catch(() => {}); } catch {}
             return;
         }
         const text = sel.toString().trim();
@@ -1514,14 +1514,14 @@ export function initTextSelect(scope, dotNetRef) {
             let node = sel.anchorNode;
             while (node && node !== document) {
                 if (node === scopeEl) {
-                    dotNetRef.invokeMethodAsync('OnTextSelected', text);
+                    try { dotNetRef?.invokeMethodAsync('OnTextSelected', text)?.catch(() => {}); } catch {}
                     return;
                 }
                 node = node.parentNode;
             }
-            dotNetRef.invokeMethodAsync('OnTextSelected', null);
+            try { dotNetRef?.invokeMethodAsync('OnTextSelected', null)?.catch(() => {}); } catch {}
         } else {
-            dotNetRef.invokeMethodAsync('OnTextSelected', text);
+            try { dotNetRef?.invokeMethodAsync('OnTextSelected', text)?.catch(() => {}); } catch {}
         }
     };
 
@@ -1544,16 +1544,16 @@ export function loadScript(url, dotNetRef) {
     // Check if already loaded
     const existing = document.querySelector(`script[src="${url}"]`);
     if (existing) {
-        if (dotNetRef) dotNetRef.invokeMethodAsync('OnScriptLoaded');
+        if (dotNetRef) { try { dotNetRef?.invokeMethodAsync('OnScriptLoaded')?.catch(() => {}); } catch {} }
         return;
     }
     const script = document.createElement('script');
     script.src = url;
     script.onload = () => {
-        if (dotNetRef) dotNetRef.invokeMethodAsync('OnScriptLoaded');
+        if (dotNetRef) { try { dotNetRef?.invokeMethodAsync('OnScriptLoaded')?.catch(() => {}); } catch {} }
     };
     script.onerror = () => {
-        if (dotNetRef) dotNetRef.invokeMethodAsync('OnScriptError', url);
+        if (dotNetRef) { try { dotNetRef?.invokeMethodAsync('OnScriptError', url)?.catch(() => {}); } catch {} }
     };
     document.head.appendChild(script);
 }

@@ -1,6 +1,8 @@
 let activeDotNetRef = null;
 let mediaRecorder = null;
 let recordedChunks = [];
+let displayStream = null;
+let recordedBlobUrl = null;
 
 export async function startRecording(root, dotNetRef, options = {}) {
     if (!root || !dotNetRef) return;
@@ -33,10 +35,11 @@ export async function startRecording(root, dotNetRef, options = {}) {
     // 2. Video Recording (New logic using html2canvas or getDisplayMedia)
     if (options.recordVideo) {
         try {
-            let stream = await navigator.mediaDevices.getDisplayMedia({
+            displayStream = await navigator.mediaDevices.getDisplayMedia({
                 video: { cursor: "always" },
                 audio: options.recordAudio // This captures system/tab audio
             });
+            let stream = displayStream;
 
             // If we also want microphone audio, we need to merge tracks
             if (options.recordAudio) {
@@ -67,11 +70,15 @@ export async function startRecording(root, dotNetRef, options = {}) {
                 if (recordedChunks.length > 0) {
                     const blob = new Blob(recordedChunks, { type: 'video/webm' });
                     const url = URL.createObjectURL(blob);
+                    recordedBlobUrl = url;
                     if (dotNetRef) {
                         dotNetRef.invokeMethodAsync('HandleVideoCaptured', url);
                     }
                 }
-                stream.getTracks().forEach(track => track.stop());
+                if (displayStream) {
+                    displayStream.getTracks().forEach(track => track.stop());
+                    displayStream = null;
+                }
             };
 
             mediaRecorder.start();
@@ -96,6 +103,17 @@ export function stopRecording(root) {
         mediaRecorder.stop();
     }
 
+    if (displayStream) {
+        displayStream.getTracks().forEach(track => track.stop());
+        displayStream = null;
+    }
+
+    if (recordedBlobUrl) {
+        URL.revokeObjectURL(recordedBlobUrl);
+        recordedBlobUrl = null;
+    }
+
+    recordedChunks = [];
     activeDotNetRef = null;
 }
 

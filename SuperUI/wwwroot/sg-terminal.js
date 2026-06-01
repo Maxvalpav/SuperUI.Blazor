@@ -2,7 +2,14 @@ let terminals = new Map();
 
 export async function initTerminal(container, options, dotNetHelper) {
     if (!window.Terminal) {
-        await loadXterm();
+        try { await loadXterm(); } catch {
+            container.innerHTML = '<div style="color:var(--sui-danger-color,#dc3545);padding:12px;border:1px solid;border-radius:4px;">Failed to load xterm.js from CDN</div>';
+            return null;
+        }
+        if (!window.Terminal) {
+            container.innerHTML = '<div style="color:var(--sui-danger-color,#dc3545);padding:12px;border:1px solid;border-radius:4px;">xterm.js loaded but Terminal not found</div>';
+            return null;
+        }
     }
 
     const termOptions = {
@@ -42,7 +49,7 @@ export async function initTerminal(container, options, dotNetHelper) {
     const terminalId = Math.random().toString(36).substr(2, 9);
     
     term.onData(data => {
-        dotNetHelper.invokeMethodAsync('OnDataReceived', data);
+        try { dotNetHelper?.invokeMethodAsync('OnDataReceived', data)?.catch(() => {}); } catch {}
     });
 
     const resizeObserver = new ResizeObserver(() => {
@@ -96,6 +103,7 @@ async function loadXterm() {
         ];
 
         let loaded = 0;
+        let rejected = false;
         scripts.forEach(src => {
             const script = document.createElement('script');
             script.src = src;
@@ -103,7 +111,9 @@ async function loadXterm() {
                 loaded++;
                 if (loaded === scripts.length) resolve();
             };
-            script.onerror = reject;
+            script.onerror = () => {
+                if (!rejected) { rejected = true; reject(new Error(`Failed to load ${src}`)); }
+            };
             document.head.appendChild(script);
         });
     });

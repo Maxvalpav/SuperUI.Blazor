@@ -17,7 +17,7 @@ export async function initRecorder(dotNetRef, instanceId, sources) {
         });
     } catch (error) {
         console.error('Failed to initialize recorder:', error);
-        await dotNetRef.invokeMethodAsync('OnErrorAsync', error.message || 'Initialization failed', 'initialization');
+        try { dotNetRef?.invokeMethodAsync('OnErrorAsync', error.message || 'Initialization failed', 'initialization')?.catch(() => {}); } catch {}
     }
 }
 
@@ -77,14 +77,14 @@ export async function requestPermissions(instanceId, video, audio, videoConstrai
             .filter(d => d.kind === 'audioinput')
             .map(d => ({ deviceId: d.deviceId, label: d.label || `Microphone ${d.deviceId.slice(0, 8)}...` }));
 
-        await recorder.dotNetRef.invokeMethodAsync('OnPermissionGrantedAsync', videoDevices, audioDevices);
+        try { recorder.dotNetRef?.invokeMethodAsync('OnPermissionGrantedAsync', videoDevices, audioDevices)?.catch(() => {}); } catch {}
 
     } catch (error) {
         console.error('Failed to get permissions:', error);
-        await recorder.dotNetRef.invokeMethodAsync('OnErrorAsync',
+        try { recorder.dotNetRef?.invokeMethodAsync('OnErrorAsync',
             error.message || 'Permission denied',
-            error.name === 'NotAllowedError' ? 'permission_denied' : 'permission_error');
-        await recorder.dotNetRef.invokeMethodAsync('OnPermissionDeniedAsync');
+            error.name === 'NotAllowedError' ? 'permission_denied' : 'permission_error')?.catch(() => {}); } catch {}
+        try { recorder.dotNetRef?.invokeMethodAsync('OnPermissionDeniedAsync')?.catch(() => {}); } catch {}
     }
 }
 
@@ -141,8 +141,8 @@ export async function startRecording(instanceId, mimeType, bitsPerSecond, timeSl
 
             const reader = new FileReader();
             reader.onload = async () => {
-                await recorder.dotNetRef.invokeMethodAsync('OnStopAsync',
-                    reader.result, duration, blob.size, blob.type);
+                try { recorder.dotNetRef?.invokeMethodAsync('OnStopAsync',
+                    reader.result, duration, blob.size, blob.type)?.catch(() => {}); } catch {}
             };
             reader.readAsDataURL(blob);
         };
@@ -156,12 +156,12 @@ export async function startRecording(instanceId, mimeType, bitsPerSecond, timeSl
         }
 
         recorder.recorder.start(timeSlice || 100);
-        await recorder.dotNetRef.invokeMethodAsync('OnStartAsync', new Date().toISOString());
+        try { recorder.dotNetRef?.invokeMethodAsync('OnStartAsync', new Date().toISOString())?.catch(() => {}); } catch {}
 
     } catch (error) {
         console.error('Failed to start recording:', error);
-        await recorder.dotNetRef.invokeMethodAsync('OnErrorAsync',
-            error.message || 'Failed to start recording', 'start_error');
+        try { recorder.dotNetRef?.invokeMethodAsync('OnErrorAsync',
+            error.message || 'Failed to start recording', 'start_error')?.catch(() => {}); } catch {}
     }
 }
 
@@ -172,7 +172,7 @@ export async function pauseRecording(instanceId) {
     try {
         recorder.recorder.pause();
         recorder.isPaused = true;
-        await recorder.dotNetRef.invokeMethodAsync('OnPauseAsync');
+        try { recorder.dotNetRef?.invokeMethodAsync('OnPauseAsync')?.catch(() => {}); } catch {}
     } catch (error) {
         console.error('Failed to pause recording:', error);
     }
@@ -185,7 +185,7 @@ export async function resumeRecording(instanceId) {
     try {
         recorder.recorder.resume();
         recorder.isPaused = false;
-        await recorder.dotNetRef.invokeMethodAsync('OnResumeAsync');
+        try { recorder.dotNetRef?.invokeMethodAsync('OnResumeAsync')?.catch(() => {}); } catch {}
     } catch (error) {
         console.error('Failed to resume recording:', error);
     }
@@ -201,8 +201,8 @@ export async function stopRecording(instanceId) {
         }
     } catch (error) {
         console.error('Failed to stop recording:', error);
-        await recorder.dotNetRef.invokeMethodAsync('OnErrorAsync',
-            error.message || 'Failed to stop recording', 'stop_error');
+        try { recorder.dotNetRef?.invokeMethodAsync('OnErrorAsync',
+            error.message || 'Failed to stop recording', 'stop_error')?.catch(() => {}); } catch {}
     }
 }
 
@@ -230,7 +230,7 @@ export async function resetRecorder(instanceId) {
             videoElement.srcObject = null;
         }
 
-        await recorder.dotNetRef.invokeMethodAsync('OnResetAsync');
+        try { recorder.dotNetRef?.invokeMethodAsync('OnResetAsync')?.catch(() => {}); } catch {}
     } catch (error) {
         console.error('Failed to reset recorder:', error);
     }

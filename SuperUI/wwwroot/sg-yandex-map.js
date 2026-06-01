@@ -92,18 +92,15 @@ function _tryLoadV3(apiKey, lang) {
 
 function _tryLoadV21(apiKey, lang) {
     return new Promise((resolve, reject) => {
-        if (window.ymaps && window.ymaps.Map) { console.log('[Yandex] Using cached ymaps v2.1'); resolve(window.ymaps); return; }
-        console.log('[Yandex] Loading v2.1 API, key:', apiKey ? '***' : 'none');
+        if (window.ymaps && window.ymaps.Map) { resolve(window.ymaps); return; }
         const s = document.createElement('script');
         s.id = 'sg-ymaps21-loader';
         const key = apiKey ? `&apikey=${apiKey}` : '';
         s.src = `https://api-maps.yandex.ru/2.1/?lang=${lang}${key}`;
         s.type = 'text/javascript';
         s.onload = () => {
-            console.log('[Yandex] v2.1 script loaded, checking ymaps...');
             if (!window.ymaps) { reject(new Error('ymaps not found after script load')); return; }
             window.ymaps.ready(() => {
-                console.log('[Yandex] v2.1 ready, Map available:', !!window.ymaps.Map);
                 resolve(window.ymaps);
             });
         };
@@ -222,7 +219,7 @@ function _initMapV3(dotnetRef, containerRef, instanceId, opts, markers, polyline
         img.style.cssText = 'width:36px;height:44px;display:block;';
         el.appendChild(img);
         el.addEventListener('click', () => {
-            try { dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', { markerId: String(m.id), title: m.title ?? null, description: m.description ?? null, latitude: m.latitude, longitude: m.longitude, data: m.data ?? null }); } catch {}
+            try { dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', { markerId: String(m.id), title: m.title ?? null, description: m.description ?? null, latitude: m.latitude, longitude: m.longitude, data: m.data ?? null })?.catch(() => {}); } catch {}
         });
         const marker = new YMapMarker({ coordinates: [m.longitude, m.latitude], anchor: [0.5, 1] }, el);
         markersCollection.addChild(marker);
@@ -248,11 +245,11 @@ function _initMapV3(dotnetRef, containerRef, instanceId, opts, markers, polyline
         onClick: (obj, event) => {
             if (obj) return;
             const c = event.coordinates;
-            try { dotnetRef.invokeMethodAsync('OnMapClickedAsync', { latitude: c[1], longitude: c[0] }); } catch {}
+            try { dotnetRef.invokeMethodAsync('OnMapClickedAsync', { latitude: c[1], longitude: c[0] })?.catch(() => {}); } catch {}
         },
         onUpdate: () => {
             const loc = map.location;
-            try { dotnetRef.invokeMethodAsync('OnViewChangedAsync', { centerLat: loc.center[1], centerLon: loc.center[0], zoom: loc.zoom }); } catch {}
+            try { dotnetRef.invokeMethodAsync('OnViewChangedAsync', { centerLat: loc.center[1], centerLon: loc.center[0], zoom: loc.zoom })?.catch(() => {}); } catch {}
         },
     });
     map.addChild(listener);
@@ -269,7 +266,6 @@ function _initMapV3(dotnetRef, containerRef, instanceId, opts, markers, polyline
 // ── Init v2.1 ─────────────────────────────────────────────────────────────────
 
 function _initMapV21(dotnetRef, containerRef, instanceId, opts, markers, polylines, polygons, ymaps) {
-    console.log('[Yandex] initMapV21 starting, container:', containerRef?.id || 'no-id');
     const mapTypeMap = { satellite: 'yandex#satellite', hybrid: 'yandex#hybrid', map: 'yandex#map' };
     const mapType = mapTypeMap[opts.mapType] ?? 'yandex#map';
 
@@ -286,7 +282,6 @@ function _initMapV21(dotnetRef, containerRef, instanceId, opts, markers, polylin
             type:   mapType,
             controls: opts.showControls ? ['zoomControl', 'fullscreenControl', 'geolocationControl'] : [],
         }, { suppressMapOpenBlock: true });
-        console.log('[Yandex] Map created successfully');
     } catch (e) {
         console.error('[Yandex] Map creation failed:', e);
         throw e;
@@ -299,7 +294,7 @@ function _initMapV21(dotnetRef, containerRef, instanceId, opts, markers, polylin
             { balloonContentHeader: m.title ?? '', hintContent: m.title ?? '' },
             { iconLayout: 'default#image', iconImageHref: iconUrl, iconImageSize: [36, 44], iconImageOffset: [-18, -44] });
         pm.events.add('click', () => {
-            try { dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', { markerId: String(m.id), title: m.title ?? null, description: m.description ?? null, latitude: m.latitude, longitude: m.longitude, data: m.data ?? null }); } catch {}
+            try { dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', { markerId: String(m.id), title: m.title ?? null, description: m.description ?? null, latitude: m.latitude, longitude: m.longitude, data: m.data ?? null })?.catch(() => {}); } catch {}
         });
         map.geoObjects.add(pm);
         markerObjs.push({ marker: pm, data: m });
@@ -321,11 +316,11 @@ function _initMapV21(dotnetRef, containerRef, instanceId, opts, markers, polylin
 
     map.events.add('click', e => {
         const c = e.get('coords');
-        try { dotnetRef.invokeMethodAsync('OnMapClickedAsync', { latitude: c[0], longitude: c[1] }); } catch {}
+        try { dotnetRef.invokeMethodAsync('OnMapClickedAsync', { latitude: c[0], longitude: c[1] })?.catch(() => {}); } catch {}
     });
     map.events.add('boundschange', () => {
         const c = map.getCenter();
-        try { dotnetRef.invokeMethodAsync('OnViewChangedAsync', { centerLat: c[0], centerLon: c[1], zoom: map.getZoom() }); } catch {}
+        try { dotnetRef.invokeMethodAsync('OnViewChangedAsync', { centerLat: c[0], centerLon: c[1], zoom: map.getZoom() })?.catch(() => {}); } catch {}
     });
 
     let ro = null;
@@ -388,7 +383,7 @@ export function addMarker(instanceId, m) {
         img.style.cssText = 'width:36px;height:44px;display:block;cursor:pointer;';
         el.appendChild(img);
         el.addEventListener('click', () => {
-            try { inst.dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', { markerId: String(m.id), title: m.title ?? null, description: m.description ?? null, latitude: m.latitude, longitude: m.longitude, data: m.data ?? null }); } catch {}
+            try { inst.dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', { markerId: String(m.id), title: m.title ?? null, description: m.description ?? null, latitude: m.latitude, longitude: m.longitude, data: m.data ?? null })?.catch(() => {}); } catch {}
         });
         const marker = new YMapMarker({ coordinates: [m.longitude, m.latitude], anchor: [0.5, 1] }, el);
         inst.markersCollection.addChild(marker);
@@ -397,7 +392,7 @@ export function addMarker(instanceId, m) {
         const iconUrl = _makeMarkerCanvas(m.color, m.icon);
         const pm = new inst.ymaps.Placemark([m.latitude, m.longitude], { hintContent: m.title ?? '' }, { iconLayout: 'default#image', iconImageHref: iconUrl, iconImageSize: [36, 44], iconImageOffset: [-18, -44] });
         pm.events.add('click', () => {
-            try { inst.dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', { markerId: String(m.id), title: m.title ?? null, description: m.description ?? null, latitude: m.latitude, longitude: m.longitude, data: m.data ?? null }); } catch {}
+            try { inst.dotnetRef.invokeMethodAsync('OnMarkerClickedAsync', { markerId: String(m.id), title: m.title ?? null, description: m.description ?? null, latitude: m.latitude, longitude: m.longitude, data: m.data ?? null })?.catch(() => {}); } catch {}
         });
         inst.map.geoObjects.add(pm);
         inst.markerObjs.push({ marker: pm, data: m });

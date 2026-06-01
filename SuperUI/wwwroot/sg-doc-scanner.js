@@ -9,7 +9,6 @@ export function loadOpenCV() {
             return;
         }
         
-        console.log('[SgDocScanner] Loading OpenCV.js from CDN...');
         const script = document.createElement('script');
         // Используем официальный CDN или стабильный jsdelivr
         script.src = 'https://docs.opencv.org/4.5.5/opencv.js'; 
@@ -19,14 +18,12 @@ export function loadOpenCV() {
         if (!window.Module) {
             window.Module = {
                 onRuntimeInitialized: () => {
-                    console.log('[SgDocScanner] OpenCV.js Runtime Initialized');
                     resolve(window.cv);
                 }
             };
         }
 
         script.onload = () => {
-            console.log('[SgDocScanner] OpenCV.js script loaded');
             // Если onRuntimeInitialized не сработал вовремя, проверяем наличие cv
             setTimeout(() => {
                 if (window.cv && window.cv.Mat) {
@@ -63,7 +60,7 @@ let _scannerState = {
 
 export async function startScanner(video, canvas) {
     try {
-        console.log('[SgDocScanner] Starting scanner...');
+        stopScanner();
         const cv = await loadOpenCV();
         _scannerState.video = video;
         _scannerState.canvas = canvas;
@@ -78,7 +75,6 @@ export async function startScanner(video, canvas) {
             video.onloadedmetadata = () => {
                 video.play();
                 _scannerState.isActive = true;
-                console.log('[SgDocScanner] Camera stream active');
                 requestAnimationFrame(() => _processFrame(cv));
                 resolve(true);
             };
@@ -90,7 +86,6 @@ export async function startScanner(video, canvas) {
 }
 
 export function stopScanner() {
-    console.log('[SgDocScanner] Stopping scanner...');
     _scannerState.isActive = false;
     if (_scannerState.stream) {
         _scannerState.stream.getTracks().forEach(track => track.stop());
@@ -197,8 +192,10 @@ export async function captureAndProcess() {
     dst.delete();
     
     // Возвращаем поток в работу (если не закрываем)
-    _scannerState.isActive = true;
-    requestAnimationFrame(() => _processFrame(cv));
+    if (_scannerState.stream) {
+        _scannerState.isActive = true;
+        requestAnimationFrame(() => _processFrame(cv));
+    }
     
     return dataUrl;
 }

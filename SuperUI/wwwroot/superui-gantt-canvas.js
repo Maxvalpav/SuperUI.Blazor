@@ -177,12 +177,12 @@ export class SgGantCanvas {
                 }
             }
             
-            this.dotNetRef.invokeMethodAsync('OnSelectionChangedInternal', Array.from(this.state.selectedTaskIds));
+            try { this.dotNetRef?.invokeMethodAsync('OnSelectionChangedInternal', Array.from(this.state.selectedTaskIds))?.catch(() => {}); } catch {}
             this.needsUpdate = true;
         } else {
             if (!e.ctrlKey) {
                 this.state.selectedTaskIds.clear();
-                this.dotNetRef.invokeMethodAsync('OnClearSelectionInternal');
+                try { this.dotNetRef?.invokeMethodAsync('OnClearSelectionInternal')?.catch(() => {}); } catch {}
             }
             
             // Start rubber band selection
@@ -300,7 +300,7 @@ export class SgGantCanvas {
 
         if (this.state.dragMode === 'selection') {
             if (this.state.isDragging) {
-                this.dotNetRef.invokeMethodAsync('OnSelectionChangedInternal', Array.from(this.state.selectedTaskIds));
+                try { this.dotNetRef?.invokeMethodAsync('OnSelectionChangedInternal', Array.from(this.state.selectedTaskIds))?.catch(() => {}); } catch {}
             }
             this.state.dragMode = null;
             this.state.isDragging = false;
@@ -316,7 +316,7 @@ export class SgGantCanvas {
                 const hit = this.hitTest(x, y);
                 
                 if (hit && hit.taskId !== this.state.dragTaskId) {
-                    this.dotNetRef.invokeMethodAsync('OnDependencyCreatedInternal', this.state.dragTaskId, hit.taskId);
+                    try { this.dotNetRef?.invokeMethodAsync('OnDependencyCreatedInternal', this.state.dragTaskId, hit.taskId)?.catch(() => {}); } catch {}
                 }
             }
             
@@ -333,10 +333,10 @@ export class SgGantCanvas {
                 const dx = finalX - this.state.dragStartX;
                 const dy = this.state.currentDragY - this.state.dragStartY;
                 
-                this.dotNetRef.invokeMethodAsync('OnTaskInteractionEndInternal', 
+                try { this.dotNetRef?.invokeMethodAsync('OnTaskInteractionEndInternal', 
                     this.state.dragTaskId, 
                     this.state.dragMode, 
-                    dx, dy);
+                    dx, dy)?.catch(() => {}); } catch {}
             }
             
             this.state.dragMode = null;
@@ -351,7 +351,7 @@ export class SgGantCanvas {
         if (e.ctrlKey) {
             e.preventDefault();
             const delta = e.deltaY > 0 ? -1 : 1;
-            this.dotNetRef.invokeMethodAsync('OnZoomFromWheel', delta);
+            try { this.dotNetRef?.invokeMethodAsync('OnZoomFromWheel', delta)?.catch(() => {}); } catch {}
         } else {
             const oldX = this.scrollX;
             const oldY = this.scrollY;
@@ -366,7 +366,7 @@ export class SgGantCanvas {
             if (oldX !== this.scrollX || oldY !== this.scrollY) {
                 this.needsUpdate = true;
                 this.syncLeftScroll();
-                this.dotNetRef.invokeMethodAsync('OnScrollInternal', this.scrollX, this.scrollY);
+                try { this.dotNetRef?.invokeMethodAsync('OnScrollInternal', this.scrollX, this.scrollY)?.catch(() => {}); } catch {}
             }
         }
     }
@@ -388,7 +388,7 @@ export class SgGantCanvas {
         const y = e.clientY - rect.top;
         const hit = this.hitTest(x, y);
         if (hit) {
-            this.dotNetRef.invokeMethodAsync('OnTaskDoubleClickInternal', hit.taskId);
+            try { this.dotNetRef?.invokeMethodAsync('OnTaskDoubleClickInternal', hit.taskId)?.catch(() => {}); } catch {}
         }
     }
 
@@ -417,7 +417,7 @@ export class SgGantCanvas {
                 break;
             case 'Delete':
                 if (this.state.selectedTaskIds.size > 0) {
-                    this.dotNetRef.invokeMethodAsync('OnDeleteSelectedInternal', Array.from(this.state.selectedTaskIds));
+                    try { this.dotNetRef?.invokeMethodAsync('OnDeleteSelectedInternal', Array.from(this.state.selectedTaskIds))?.catch(() => {}); } catch {}
                 }
                 break;
             case '+':
@@ -437,19 +437,19 @@ export class SgGantCanvas {
             case 'z':
                 if (e.ctrlKey) {
                     e.preventDefault();
-                    this.dotNetRef.invokeMethodAsync('OnUndoInternal');
+                    try { this.dotNetRef?.invokeMethodAsync('OnUndoInternal')?.catch(() => {}); } catch {}
                 }
                 break;
             case 'y':
                 if (e.ctrlKey) {
                     e.preventDefault();
-                    this.dotNetRef.invokeMethodAsync('OnRedoInternal');
+                    try { this.dotNetRef?.invokeMethodAsync('OnRedoInternal')?.catch(() => {}); } catch {}
                 }
                 break;
         }
 
         if (this.needsUpdate) {
-            this.dotNetRef.invokeMethodAsync('OnScrollInternal', this.scrollX, this.scrollY);
+            try { this.dotNetRef?.invokeMethodAsync('OnScrollInternal', this.scrollX, this.scrollY)?.catch(() => {}); } catch {}
         }
     }
 
@@ -457,7 +457,7 @@ export class SgGantCanvas {
         const oldZoom = this.zoom;
         this.zoom = Math.max(0.1, Math.min(5.0, zoom));
         if (oldZoom !== this.zoom) {
-            this.dotNetRef.invokeMethodAsync('OnZoomChangedInternal', this.zoom);
+            try { this.dotNetRef?.invokeMethodAsync('OnZoomChangedInternal', this.zoom)?.catch(() => {}); } catch {}
             this.needsUpdate = true;
         }
     }

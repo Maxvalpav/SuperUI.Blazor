@@ -56,7 +56,7 @@ export function attach(menuElement, dotnetRef) {
 
     document.addEventListener('keydown', esc, true);
     document.addEventListener('keydown', kbd, true);
-    window.addEventListener('scroll', scroll, true);
+    window.addEventListener('scroll', scroll, { passive: true, capture: true });
 
     _state.set(menuElement, { 
         esc, 

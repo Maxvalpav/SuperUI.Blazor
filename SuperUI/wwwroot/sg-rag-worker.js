@@ -7,7 +7,7 @@ let rerankerPipeline = null;
 async function loadTransformers(scriptUrl) {
   if (!transformers) {
     importScripts(scriptUrl);
-    transformers = window.transformers;
+    transformers = self.transformers;
     transformers.env.allowLocalModels = false;
   }
 }

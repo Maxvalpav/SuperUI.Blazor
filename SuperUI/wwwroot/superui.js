@@ -144,7 +144,7 @@ export function init(dotnetRef, gridRoot) {
         });
     };
     if (scrollContainer) {
-        scrollContainer.addEventListener('scroll', onScroll);
+        scrollContainer.addEventListener('scroll', onScroll, { passive: true });
         // Initial viewport height
         setTimeout(onScroll, 0);
     }
@@ -242,7 +242,7 @@ export function init(dotnetRef, gridRoot) {
         gridRoot.removeEventListener('pointerdown', onPointerDown);
         gridRoot.removeEventListener('dblclick', onDblClick);
         if (scrollContainer) {
-            scrollContainer.removeEventListener('scroll', onScroll);
+            scrollContainer.removeEventListener('scroll', onScroll, { passive: true });
         }
         gridRoot.removeEventListener('dragstart', onDragStart);
         gridRoot.removeEventListener('dragover', onDragOver);
@@ -364,6 +364,13 @@ export function downloadExcel(fileName, htmlContent) {
     setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+export function safeInvoke(ref, method, ...args) {
+    if (!ref) return;
+    try {
+        ref.invokeMethodAsync(method, ...args)?.catch(() => {});
+    } catch {}
+}
+
 export function scrollToBottom(element) {
     if (element) {
         element.scrollTop = element.scrollHeight;
@@ -461,7 +468,7 @@ export function initDataGridVirtualization(dotNetRef, gridRoot) {
         }, 16); // ~60fps
     };
     
-    scrollContainer.addEventListener('scroll', onScroll);
+    scrollContainer.addEventListener('scroll', onScroll, { passive: true });
     
     // Initial call to set viewport height and initial rows
     onScroll();
@@ -472,7 +479,7 @@ export function initDataGridVirtualization(dotNetRef, gridRoot) {
         if (scrollTimeout) {
             clearTimeout(scrollTimeout);
         }
-        scrollContainer.removeEventListener('scroll', onScroll);
+        scrollContainer.removeEventListener('scroll', onScroll, { passive: true });
     });
 }
 
@@ -532,4 +539,6 @@ export function downloadSvgAsPng(container, fileName, size) {
 
     img.src = url;
 }
+window.SuperUI = window.SuperUI || {};
+window.SuperUI.safeInvoke = safeInvoke;
 window.superuiQrCode = { downloadSvgAsPng };

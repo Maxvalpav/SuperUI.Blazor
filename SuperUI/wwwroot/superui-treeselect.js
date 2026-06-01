@@ -80,7 +80,7 @@ export function attach(root, dotnetRef, placement, matchWidth) {
 
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
     window.addEventListener("resize", onResize);
 
     root._sgTreeSelectReposition = reposition;

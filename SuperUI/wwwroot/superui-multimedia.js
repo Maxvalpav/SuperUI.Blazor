@@ -1,8 +1,10 @@
 
-let stream = null;
+const streams = new Map();
 
 export async function startCamera(videoElement, options = {}) {
     try {
+        stopCamera(videoElement);
+
         const constraints = {
             video: {
                 width: { ideal: options.width || 1280 },
@@ -12,8 +14,9 @@ export async function startCamera(videoElement, options = {}) {
             audio: false
         };
 
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        videoElement.srcObject = stream;
+        const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+        streams.set(videoElement, newStream);
+        videoElement.srcObject = newStream;
         await videoElement.play();
         return true;
     } catch (err) {
@@ -23,10 +26,13 @@ export async function startCamera(videoElement, options = {}) {
 }
 
 export function stopCamera(videoElement) {
+    const stream = streams.get(videoElement);
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
+        streams.delete(videoElement);
+    }
+    if (videoElement) {
         videoElement.srcObject = null;
-        stream = null;
     }
 }
 

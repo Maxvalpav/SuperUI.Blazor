@@ -183,20 +183,20 @@ export async function initEditor(dotnetRef, containerRef, instanceId, opts, init
         if (!inst || inst._settingValue) return;
         clearTimeout(debounce);
         debounce = setTimeout(() => {
-            try { dotnetRef.invokeMethodAsync('OnValueChangedAsync', editor.getValue()); } catch { }
+            try { dotnetRef.invokeMethodAsync('OnValueChangedAsync', editor.getValue())?.catch(() => {}); } catch { }
         }, 250);
     }));
 
     subs.push(editor.onDidChangeCursorPosition(e => {
-        try { dotnetRef.invokeMethodAsync('OnCursorPositionChangedAsync', e.position.lineNumber, e.position.column); } catch { }
+        try { dotnetRef.invokeMethodAsync('OnCursorPositionChangedAsync', e.position.lineNumber, e.position.column)?.catch(() => {}); } catch { }
     }));
 
     subs.push(editor.onDidFocusEditorText(() => {
-        try { dotnetRef.invokeMethodAsync('OnFocusAsync'); } catch { }
+        try { dotnetRef.invokeMethodAsync('OnFocusAsync')?.catch(() => {}); } catch { }
     }));
 
     subs.push(editor.onDidBlurEditorText(() => {
-        try { dotnetRef.invokeMethodAsync('OnBlurAsync'); } catch { }
+        try { dotnetRef.invokeMethodAsync('OnBlurAsync')?.catch(() => {}); } catch { }
     }));
 
     let ro = null;
@@ -233,20 +233,20 @@ export async function createDiffEditor(dotnetRef, containerRef, instanceId, orig
         if (!inst || inst._settingValue) return;
         clearTimeout(debounce);
         debounce = setTimeout(() => {
-            try { dotnetRef.invokeMethodAsync('OnValueChangedAsync', modifiedEditor.getValue()); } catch { }
+            try { dotnetRef.invokeMethodAsync('OnValueChangedAsync', modifiedEditor.getValue())?.catch(() => {}); } catch { }
         }, 250);
     }));
 
     subs.push(modifiedEditor.onDidChangeCursorPosition(e => {
-        try { dotnetRef.invokeMethodAsync('OnCursorPositionChangedAsync', e.position.lineNumber, e.position.column); } catch { }
+        try { dotnetRef.invokeMethodAsync('OnCursorPositionChangedAsync', e.position.lineNumber, e.position.column)?.catch(() => {}); } catch { }
     }));
 
     subs.push(modifiedEditor.onDidFocusEditorText(() => {
-        try { dotnetRef.invokeMethodAsync('OnFocusAsync'); } catch { }
+        try { dotnetRef.invokeMethodAsync('OnFocusAsync')?.catch(() => {}); } catch { }
     }));
 
     subs.push(modifiedEditor.onDidBlurEditorText(() => {
-        try { dotnetRef.invokeMethodAsync('OnBlurAsync'); } catch { }
+        try { dotnetRef.invokeMethodAsync('OnBlurAsync')?.catch(() => {}); } catch { }
     }));
 
     let ro = null;
@@ -270,7 +270,7 @@ export function setupMonacoSaveHandler(instanceId) {
     inst._saveDisposable?.dispose();
     const target = _editorOrDefault(inst);
     inst._saveDisposable = target.addCommand(inst.monaco.KeyMod.CtrlCmd | inst.monaco.KeyCode.KeyS, () => {
-        try { inst.dotnetRef.invokeMethodAsync('OnSaveAsync', target.getValue()); } catch { }
+        try { inst.dotnetRef.invokeMethodAsync('OnSaveAsync', target.getValue())?.catch(() => {}); } catch { }
     });
 }
 

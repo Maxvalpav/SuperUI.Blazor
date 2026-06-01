@@ -572,9 +572,9 @@ async function _parseMd(text, sources) {
   const markedSrc = sources.markedScript || 'https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js';
   await _loadScript(markedSrc);
   const html = window.marked.parse(text);
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  return div.textContent || div.innerText || '';
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  return doc.body.textContent || '';
 }
 
 function _parseHtml(text) {
@@ -1998,14 +1998,25 @@ export async function renderMarkdown(text, markedSrc) {
   return _sanitizeHtml(html);
 }
 
-// Minimal HTML sanitizer — removes script tags and inline event handlers.
-// For production use consider DOMPurify; this covers the common LLM output cases.
+// HTML sanitizer using DOM parsing — strips script tags, iframes, event handlers, and javascript: links.
 function _sanitizeHtml(html) {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
-    .replace(/\son\w+\s*=\s*[^\s>]*/gi, '')
-    .replace(/javascript\s*:/gi, 'nojs:');
+  const parser = new DOMParser();
+  const doc = parser.parseFromString('<body>' + html + '</body>', 'text/html');
+  const body = doc.body;
+  const removals = body.querySelectorAll('script, iframe, object, embed, style, link, meta');
+  for (const el of removals) el.remove();
+  const all = body.querySelectorAll('*');
+  for (const el of all) {
+    const attrs = el.attributes;
+    for (let i = attrs.length - 1; i >= 0; i--) {
+      const name = attrs[i].name;
+      const val = attrs[i].value.trim().toLowerCase();
+      if (name.startsWith('on') || (name === 'href' && val.startsWith('javascript:')) || (name === 'srcdoc')) {
+        el.removeAttribute(name);
+      }
+    }
+  }
+  return body.innerHTML;
 }
 
 function _escapeHtml(text) {
@@ -2162,11 +2173,11 @@ function _exportChatToHtml(messages) {
   html += '<h1>Chat History</h1>';
   for (const msg of messages) {
     html += `<h2>${msg.isUser ? 'User' : 'Assistant'}</h2>`;
-    html += `<p>${(msg.content || '').replace(/\n/g, '<br>')}</p>`;
+    html += `<p>${_escapeHtml(msg.content || '').replace(/\n/g, '<br>')}</p>`;
     if (msg.sources && msg.sources.length > 0) {
       html += '<h3>Sources:</h3><ul>';
       for (const src of msg.sources) {
-        html += `<li><strong>${src.document?.title || 'Document'}</strong>: ${(src.chunk?.text || '').slice(0, 100)}...</li>`;
+        html += `<li><strong>${_escapeHtml(src.document?.title || 'Document')}</strong>: ${_escapeHtml((src.chunk?.text || '').slice(0, 100))}...</li>`;
       }
       html += '</ul>';
     }

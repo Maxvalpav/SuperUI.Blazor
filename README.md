@@ -1,26 +1,14 @@
 # SuperUI
 
-<p align="center">
-  <img src="icon.png" alt="SuperUI" width="128">
-</p>
+[![NuGet](https://img.shields.io/nuget/v/SuperUI.svg?logo=nuget&label=NuGet&color=blue)](https://www.nuget.org/packages/SuperUI)
+[![Downloads](https://img.shields.io/nuget/dt/SuperUI.svg?logo=nuget&color=purple)](https://www.nuget.org/packages/SuperUI)
+[![CI](https://img.shields.io/github/actions/workflow/status/Maxvalpav/SuperUI.Blazor/build-and-publish.yml?logo=github&label=CI)](https://github.com/Maxvalpav/SuperUI.Blazor/actions/workflows/build-and-publish.yml)
+[![Demo](https://img.shields.io/badge/demo-live-success?logo=github)](https://maxvalpav.github.io/SuperUI.Blazor/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-<p align="center">
-  <a href="https://www.nuget.org/packages/SuperUI"><img src="https://img.shields.io/nuget/v/SuperUI.svg?logo=nuget&label=NuGet&color=blue" alt="NuGet"></a>
-  <a href="https://www.nuget.org/packages/SuperUI"><img src="https://img.shields.io/nuget/dt/SuperUI.svg?logo=nuget&color=purple" alt="Downloads"></a>
-  <a href="https://github.com/Maxvalpav/SuperUI.Blazor/actions/workflows/build-and-publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/Maxvalpav/SuperUI.Blazor/build-and-publish.yml?logo=github&label=CI" alt="CI"></a>
-  <a href="https://maxvalpav.github.io/SuperUI.Blazor/"><img src="https://img.shields.io/badge/demo-live-success?logo=github" alt="Demo"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
-</p>
+**90+ Blazor components** — data grid, charts, gantt, kanban, scheduler, pivot, org chart, diagram editor, forms, overlays, layout, maps, AI. Dark mode, 32 themes, localization, full IntelliSense.
 
-<p align="center">
-  <b>90+ Blazor components</b> — data grid, charts, gantt, kanban, scheduler, pivot, org chart, diagram editor, forms, overlays, layout, maps, AI. Dark mode, 32 themes, localization, full IntelliSense.
-</p>
-
-<p align="center">
-  <a href="https://maxvalpav.github.io/SuperUI.Blazor/"><b>Live demo</b></a> ·
-  <a href="https://www.nuget.org/packages/SuperUI"><b>NuGet</b></a> ·
-  <code>dotnet add package SuperUI</code>
-</p>
+[Live demo](https://maxvalpav.github.io/SuperUI.Blazor/) · [NuGet](https://www.nuget.org/packages/SuperUI) · `dotnet add package SuperUI`
 
 ---
 

@@ -196,7 +196,11 @@ export function exportPng(instanceId) {
         a.href = canvas.toDataURL('image/png'); a.download = `diagram-${Date.now()}.png`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
     };
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)));
+    function base64Decode(str) {
+        try { return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')); }
+        catch { try { return atob(str); } catch { return str; } }
+    }
+    img.src = 'data:image/svg+xml;base64,' + btoa(base64Decode(encodeURIComponent(svgStr)));
 }
 
 export async function disposeMermaid(instanceId) {

@@ -10,14 +10,12 @@ export function loadWebGazer() {
             return;
         }
         
-        console.log('[SgEyeTracker] Loading WebGazer.js...');
         const script = document.createElement('script');
         // Используем CDN версию для большей стабильности
         script.src = 'https://cdn.jsdelivr.net/npm/webgazer@2.1.0/dist/webgazer.js';
         script.async = true;
         script.onload = () => {
             if (window.webgazer) {
-                console.log('[SgEyeTracker] WebGazer.js loaded successfully');
                 resolve(window.webgazer);
             } else {
                 reject(new Error('WebGazer object not found after script load'));
@@ -48,13 +46,10 @@ export async function initEyeTracker(dotElement, dotInnerElement) {
         _dotInner = dotInnerElement;
 
         if (_isInitialized) {
-            console.log('[SgEyeTracker] WebGazer already initialized, resuming...');
             webgazer.resume();
             return true;
         }
 
-        console.log('[SgEyeTracker] Initializing WebGazer...');
-        
         // Настройка слушателя
         webgazer.setGazeListener((data, elapsedTime) => {
             if (data == null || !_dot) return;
@@ -84,7 +79,6 @@ export async function initEyeTracker(dotElement, dotInnerElement) {
         }
 
         _isInitialized = true;
-        console.log('[SgEyeTracker] WebGazer initialized and started');
         return true;
     } catch (err) {
         console.error('[SgEyeTracker] Initialization error:', err);
@@ -165,7 +159,6 @@ function resetDwell() {
 
 export function stopEyeTracker() {
     if (window.webgazer) {
-        console.log('[SgEyeTracker] Stopping WebGazer...');
         window.webgazer.pause();
         // Мы используем pause вместо end(), чтобы избежать полной выгрузки моделей
         // если пользователь захочет включить трекер снова.

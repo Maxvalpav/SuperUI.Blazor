@@ -65,7 +65,7 @@ function _setupRaycaster(THREE, renderer, camera, scene, dotnetRef) {
         const name = obj.userData?.sgName ?? obj.name ?? '';
         const data = obj.userData?.sgData ?? null;
         try {
-            dotnetRef.invokeMethodAsync('OnObjectClickedAsync', { objectName: name, data, x: pt.x, y: pt.y, z: pt.z });
+            dotnetRef.invokeMethodAsync('OnObjectClickedAsync', { objectName: name, data, x: pt.x, y: pt.y, z: pt.z })?.catch(() => {});
         } catch {}
     });
 
@@ -582,7 +582,7 @@ function _setupRaycasterWithHover(THREE, renderer, camera, scene, dotnetRef) {
                 objectName: obj.userData.sgName ?? '',
                 data:       obj.userData.sgData ?? null,
                 x: pt.x, y: pt.y, z: pt.z,
-            });
+            })?.catch(() => {});
         } catch {}
     });
 

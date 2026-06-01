@@ -384,7 +384,7 @@ export async function initECharts(dotnetRef, containerRef, instanceId, chartType
                 value:       Number(params.value ?? 0),
                 dataIndex:   params.dataIndex ?? 0,
                 seriesIndex: params.seriesIndex ?? 0,
-            });
+            })?.catch(() => {});
         } catch {}
     });
 

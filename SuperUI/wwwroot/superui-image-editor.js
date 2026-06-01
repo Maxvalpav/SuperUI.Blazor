@@ -296,6 +296,9 @@ export function init(mainCanvas, overlayCanvas, dotNetRef, options) {
     overlayCanvas.addEventListener('touchend', onMouseUp);
     overlayCanvas.addEventListener('touchcancel', onMouseUp);
 
+    // Store handler refs for dispose
+    mainCanvas._windowHandlers = { onMouseMove, onMouseUp };
+
     // ── Image loading ──
     mainCanvas._loadImage = (src) => {
         return new Promise((resolve) => {
@@ -510,6 +513,22 @@ export function init(mainCanvas, overlayCanvas, dotNetRef, options) {
             try { document.removeEventListener('keydown', mainCanvas._keyDownHandler); } catch {}
             mainCanvas._keyDownHandler = null;
         }
+        // Remove window listeners
+        const wh = mainCanvas._windowHandlers;
+        if (wh) {
+            try { window.removeEventListener('mousemove', wh.onMouseMove); } catch {}
+            try { window.removeEventListener('mouseup', wh.onMouseUp); } catch {}
+            mainCanvas._windowHandlers = null;
+        }
+        // Remove overlay canvas listeners
+        try { overlayCanvas.removeEventListener('mousedown', onMouseDown); } catch {}
+        try { overlayCanvas.removeEventListener('touchstart', onTouchStart); } catch {}
+        try { overlayCanvas.removeEventListener('touchmove', onTouchMove); } catch {}
+        try { overlayCanvas.removeEventListener('touchend', onMouseUp); } catch {}
+        try { overlayCanvas.removeEventListener('touchcancel', onMouseUp); } catch {}
+        // Clear undo/redo stacks
+        undoStack.length = 0;
+        redoStack.length = 0;
         for (const f of ['_loadImage','_getDataUrl','_applyFilter','_rotate','_flip',
             '_crop','_resizeCanvas','_setTool','_setPenColor','_setPenWidth',
             '_undo','_redo','_reset','_download','_dispose',

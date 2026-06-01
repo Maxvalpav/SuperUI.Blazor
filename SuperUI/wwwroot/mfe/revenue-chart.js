@@ -8,10 +8,11 @@ export async function mount(container, parameters) {
     
     // 1. Load Chart.js dynamically if not present
     if (!window.Chart) {
-        await new Promise((resolve) => {
+        await new Promise((resolve, reject) => {
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
             script.onload = resolve;
+            script.onerror = () => reject(new Error(`Failed to load script: ${script.src}`));
             document.head.appendChild(script);
         });
     }

@@ -48,9 +48,9 @@ function _buildTileSource(ol, opts) {
         case 'OpenStreetMap':
             return new ol.source.OSM();
         case 'StamenToner':
-            return new ol.source.XYZ({ url: 'https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', attributions: 'Map tiles by Stamen Design' });
+            return new ol.source.XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', attributions: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>' });
         case 'StamenWatercolor':
-            return new ol.source.XYZ({ url: 'https://stamen-tiles.a.ssl.fastly.net/watercolor/{z}/{x}/{y}.jpg', attributions: 'Map tiles by Stamen Design' });
+            return new ol.source.XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', attributions: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>' });
         case 'CartoPositron':
             return new ol.source.XYZ({ url: 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', attributions: '© CartoDB' });
         case 'CartoDarkMatter':
@@ -267,7 +267,7 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
                     longitude:   m.longitude,
                     latitude:    m.latitude,
                     data:        m.data        ?? null,
-                });
+                })?.catch(() => {});
             } catch {}
         } else {
             popup.style.display = 'none';
@@ -276,7 +276,7 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
                 dotnetRef.invokeMethodAsync('OnMapClickedAsync', {
                     longitude: lonLat[0],
                     latitude:  lonLat[1],
-                });
+                })?.catch(() => {});
             } catch {}
         }
     });
@@ -287,16 +287,20 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
         map.getTargetElement().style.cursor = hit ? 'pointer' : '';
     });
 
-    // ── View change ──
+    // ── View change (debounced — fires on every pan frame via 'change') ──
+    let _viewTimer = 0;
     view.on('change', () => {
-        const center = ol.proj.toLonLat(view.getCenter());
-        try {
-            dotnetRef.invokeMethodAsync('OnViewChangedAsync', {
-                centerLon: center[0],
-                centerLat: center[1],
-                zoom:      view.getZoom(),
-            });
-        } catch {}
+        cancelAnimationFrame(_viewTimer);
+        _viewTimer = requestAnimationFrame(() => {
+            const center = ol.proj.toLonLat(view.getCenter());
+            try {
+                dotnetRef.invokeMethodAsync('OnViewChangedAsync', {
+                    centerLon: center[0],
+                    centerLat: center[1],
+                    zoom:      view.getZoom(),
+                })?.catch(() => {});
+            } catch {}
+        });
     });
 
     // ── Fit to markers ──
