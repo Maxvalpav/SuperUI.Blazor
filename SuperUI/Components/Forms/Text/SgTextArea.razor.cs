@@ -197,8 +197,6 @@ public partial class SgTextArea : IDisposable
     /// <summary>Event raised when the textarea loses focus.</summary>
     [Parameter] public EventCallback<FocusEventArgs> OnBlur { get; set; }
 
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
     // ── Computed state ───────────────────────────────────────────────────
 
     private CancellationTokenSource? _debounceCts;
