@@ -18,7 +18,7 @@ export function observeResize(element, dotnetRef) {
             }
             
             try {
-                dotnetRef.invokeMethodAsync('OnResize', width, height);
+                dotnetRef.invokeMethodAsync('OnResize', width, height)?.catch(() => {});
             } catch (e) {
                 console.warn('SgMachineScheduler: Failed to invoke OnResize, object might be disposed', e);
                 isDisposed = true;

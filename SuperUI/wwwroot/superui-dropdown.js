@@ -65,7 +65,7 @@ export function attach(root, triggerElement, menuElement, dotnetRef, closeOnOuts
 
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
 
     // Run flip detection on next frame once layout is settled
     if (flip) requestAnimationFrame(doFlip);

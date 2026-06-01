@@ -1,17 +1,14 @@
+const instances = new Map();
 
-let recognition = null;
-let activeDotNetRef = null;
-
-export function initVoiceRecognition(dotNetRef, lang = 'ru-RU') {
-    activeDotNetRef = dotNetRef;
+export function initVoiceRecognition(instanceId, dotNetRef, lang = 'ru-RU') {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
+
     if (!SpeechRecognition) {
         console.error('Speech recognition not supported in this browser.');
         return false;
     }
 
-    recognition = new SpeechRecognition();
+    const recognition = new SpeechRecognition();
     recognition.lang = lang;
     recognition.interimResults = true;
     recognition.continuous = true;
@@ -28,31 +25,27 @@ export function initVoiceRecognition(dotNetRef, lang = 'ru-RU') {
             }
         }
 
-        if (activeDotNetRef) {
-            activeDotNetRef.invokeMethodAsync('OnSpeechResult', finalTranscript, interimTranscript);
-        }
+        try { dotNetRef?.invokeMethodAsync('OnSpeechResult', finalTranscript, interimTranscript)?.catch(() => {}); } catch {}
     };
 
     recognition.onerror = (event) => {
         console.error('Speech recognition error', event.error);
-        if (activeDotNetRef) {
-            activeDotNetRef.invokeMethodAsync('OnSpeechError', event.error);
-        }
+        try { dotNetRef?.invokeMethodAsync('OnSpeechError', event.error)?.catch(() => {}); } catch {}
     };
 
     recognition.onend = () => {
-        if (activeDotNetRef) {
-            activeDotNetRef.invokeMethodAsync('OnSpeechEnd');
-        }
+        try { dotNetRef?.invokeMethodAsync('OnSpeechEnd')?.catch(() => {}); } catch {}
     };
 
+    instances.set(instanceId, { recognition, dotNetRef });
     return true;
 }
 
-export function startRecognition() {
-    if (recognition) {
+export function startRecognition(instanceId) {
+    const inst = instances.get(instanceId);
+    if (inst?.recognition) {
         try {
-            recognition.start();
+            inst.recognition.start();
             return true;
         } catch (e) {
             console.warn('Recognition already started or failed', e);
@@ -61,20 +54,21 @@ export function startRecognition() {
     return false;
 }
 
-export function stopRecognition() {
-    if (recognition) {
-        try { recognition.stop(); } catch {}
+export function stopRecognition(instanceId) {
+    const inst = instances.get(instanceId);
+    if (inst?.recognition) {
+        try { inst.recognition.stop(); } catch {}
     }
 }
 
-export function disposeVoiceRecognition() {
-    if (recognition) {
-        try { recognition.stop(); } catch {}
-        try { recognition.abort(); } catch {}
-        recognition.onresult = null;
-        recognition.onerror  = null;
-        recognition.onend    = null;
-        recognition = null;
+export function disposeVoiceRecognition(instanceId) {
+    const inst = instances.get(instanceId);
+    if (inst?.recognition) {
+        try { inst.recognition.stop(); } catch {}
+        try { inst.recognition.abort(); } catch {}
+        inst.recognition.onresult = null;
+        inst.recognition.onerror  = null;
+        inst.recognition.onend    = null;
     }
-    activeDotNetRef = null;
+    instances.delete(instanceId);
 }

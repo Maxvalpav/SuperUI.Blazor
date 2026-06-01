@@ -27,7 +27,7 @@ export function initClock(dotNetRef, faceElement) {
             hand.classList.add('sgc-no-transition');
         }
 
-        dotNetRef.invokeMethodAsync('OnClockMove', angle);
+        try { dotNetRef?.invokeMethodAsync('OnClockMove', angle)?.catch(() => {}); } catch {}
     };
 
     const handleUp = (e) => {
@@ -39,7 +39,7 @@ export function initClock(dotNetRef, faceElement) {
                 hand.classList.remove('sgc-no-transition');
             }
 
-            dotNetRef.invokeMethodAsync('OnClockUp');
+            try { dotNetRef?.invokeMethodAsync('OnClockUp')?.catch(() => {}); } catch {}
             
             window.removeEventListener('mousemove', handleMove);
             window.removeEventListener('mouseup', handleUp);

@@ -291,8 +291,10 @@ export function repositionDropdowns() {
     });
 }
 
-window.addEventListener('scroll', repositionDropdowns, true);
-window.addEventListener('resize', repositionDropdowns);
+const _scrollHandler = repositionDropdowns;
+const _resizeHandler = repositionDropdowns;
+window.addEventListener('scroll', _scrollHandler, true);
+window.addEventListener('resize', _resizeHandler);
 
 window.__superuiDropdown = {
     teleport: teleportDropdown,
@@ -304,4 +306,9 @@ export function removeDropdown(menuElement) {
     if (!menuElement) return;
     remove(menuElement);
     portalDropdowns.delete(menuElement);
+}
+
+export function dispose() {
+    try { window.removeEventListener('scroll', _scrollHandler, true); } catch {}
+    try { window.removeEventListener('resize', _resizeHandler); } catch {}
 }

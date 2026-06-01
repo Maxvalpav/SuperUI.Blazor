@@ -364,6 +364,13 @@ export function downloadExcel(fileName, htmlContent) {
     setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+export function safeInvoke(ref, method, ...args) {
+    if (!ref) return;
+    try {
+        ref.invokeMethodAsync(method, ...args)?.catch(() => {});
+    } catch {}
+}
+
 export function scrollToBottom(element) {
     if (element) {
         element.scrollTop = element.scrollHeight;
@@ -532,4 +539,6 @@ export function downloadSvgAsPng(container, fileName, size) {
 
     img.src = url;
 }
+window.SuperUI = window.SuperUI || {};
+window.SuperUI.safeInvoke = safeInvoke;
 window.superuiQrCode = { downloadSvgAsPng };
