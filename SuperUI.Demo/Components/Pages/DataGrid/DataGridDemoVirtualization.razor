@@ -1,0 +1,287 @@
+@page "/datagrid-demo/virtualization"
+@using SuperUI.Components
+@using SuperUI.Enums
+@using SuperUI.Demo.Components
+@using SuperUI.Demo.Models
+@using System.Diagnostics
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Virtualization — DataGrid – SuperUI</PageTitle>
+
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg" Status="SgCardStatus.Info" Hoverable="false">
+    <HeaderContent>
+        <DemoPageHeader Title="Virtualization — Big Data"
+                        Subtitle="Performance demo: from 1K to 100K rows with the 30-column BigEmployee model. Virtualized rendering for smooth scrolling."
+                        Icon="@SgHeroicons.Outline.Server" GradientFrom="#ef4444" GradientTo="#f97316" />
+    </HeaderContent>
+    <ChildContent>
+
+        <div class="dg-nav-row" style="margin-bottom:16px;">
+        <a class="dg-nav-link" href="/datagrid-demo">← Menu</a>
+        <a class="dg-nav-link" href="/datagrid-demo/basic">Basic</a>
+        <a class="dg-nav-link" href="/datagrid-demo/editing">Editing</a>
+        <a class="dg-nav-link" href="/datagrid-demo/selection">Selection</a>
+        <a class="dg-nav-link" href="/datagrid-demo/grouping">Grouping</a>
+        <a class="dg-nav-link" href="/datagrid-demo/detail">Detail</a>
+        <a class="dg-nav-link" href="/datagrid-demo/export">Export</a>
+        <a class="dg-nav-link active" href="/datagrid-demo/virtualization">Virtualization</a>
+        <a class="dg-nav-link" href="/datagrid-demo/persistence">Persistence</a>
+    </div>
+
+    <div class="dg-config">
+        <div class="dg-config-panel">
+            <div class="dg-config-panel-title">Data Generator</div>
+            <div class="dg-config-row">
+                <label>Rows:</label>
+                <select value="@_rowCount" @onchange="OnRowCountChange">
+                    <option value="1000">1 000</option>
+                    <option value="5000">5 000</option>
+                    <option value="10000" selected>10 000</option>
+                    <option value="25000">25 000</option>
+                    <option value="50000">50 000</option>
+                    <option value="100000">100 000</option>
+                </select>
+                <input type="number" class="dg-number-input" min="1000" max="100000" step="100" value="@_rowCount"
+                       @onchange="OnRowCountChange" style="width:100px;" />
+            </div>
+            <div class="dg-config-row">
+                <label>Model:</label>
+                <select @onchange="OnModelTypeChange">
+                    <option value="BigEmployee">BigEmployee (30 cols)</option>
+                    <option value="Employee">Employee (16 cols)</option>
+                </select>
+            </div>
+            <div style="margin-top:8px;">
+                <button class="dg-config-row dg-toggle" @onclick="Regenerate" style="border-color:var(--sg-primary);color:var(--sg-primary);">⟳ Regenerate</button>
+            </div>
+            @if (_genTimeMs > 0)
+            {
+                <div style="margin-top:6px;font-size:11px;color:var(--sg-text-muted);">
+                    Generated @_rowCount.ToString("N0") rows in @_genTimeMs ms
+                </div>
+            }
+        </div>
+        <div class="dg-config-panel">
+            <div class="dg-config-panel-title">Settings</div>
+            <div class="dg-config-row">
+                <label>Height:</label>
+                <input type="range" min="300" max="800" step="20" value="@_gridHeight"
+                       @oninput="OnGridHeightChange" />
+                <span class="dg-value">@_gridHeight px</span>
+            </div>
+            <div class="dg-config-row">
+                <label>Est. row h:</label>
+                <select value="@_rowHeight" @onchange="OnRowHeightChange">
+                    <option value="28">28px</option>
+                    <option value="32">32px</option>
+                    <option value="36">36px</option>
+                    <option value="40">40px</option>
+                </select>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <label class="dg-toggle @(_showSearch ? "active" : "")">
+                    <input type="checkbox" checked="@_showSearch" @onchange="e => { _showSearch = !_showSearch; StateHasChanged(); UpdateGeneratedCode(); }" />
+                    <span>Search</span>
+                </label>
+                <label class="dg-toggle @(_showStatus ? "active" : "")">
+                    <input type="checkbox" checked="@_showStatus" @onchange="e => { _showStatus = !_showStatus; StateHasChanged(); UpdateGeneratedCode(); }" />
+                    <span>Status Bar</span>
+                </label>
+                <label class="dg-toggle @(_showColChooser ? "active" : "")">
+                    <input type="checkbox" checked="@_showColChooser" @onchange="e => { _showColChooser = !_showColChooser; StateHasChanged(); UpdateGeneratedCode(); }" />
+                    <span>Col Chooser</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
+        @if (_modelType == "BigEmployee")
+        {
+            <SgDataGrid TItem="BigEmployee" Items="_bigData"
+                        Height="@($"{_gridHeight}px")"
+                        EnableVirtualization="true"
+                        EnablePaging="false"
+                        EstimatedRowHeight="@_rowHeight"
+                        ShowSearch="@_showSearch"
+                        ShowStatusBar="@_showStatus"
+                        ShowColumnChooser="@_showColChooser">
+                <ChildContent>
+                    <SgDataGridColumn TItem="BigEmployee" Title="ID" Value="@(e => e.Id)" Width="70" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Code" Value="@(e => e.EmployeeCode)" Width="110" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="First Name" Value="@(e => e.FirstName)" Width="120" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Last Name" Value="@(e => e.LastName)" Width="120" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Email" Value="@(e => e.Email)" Width="220" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Department" Value="@(e => e.Department)" Width="130" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Position" Value="@(e => e.Position)" Width="160" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Level" Value="@(e => e.Level)" Width="100" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="N0" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Bonus" Value="@(e => e.Bonus)" Width="110" Format="N0" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Active" Value="@(e => e.IsActive)" Width="80" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Hire Date" Value="@(e => e.HireDate)" Width="110" Format="dd.MM.yyyy" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Rating" Value="@(e => e.Rating)" Width="80" Format="N1" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Projects" Value="@(e => e.ProjectsCount)" Width="80" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Efficiency" Value="@(e => e.Efficiency)" Width="90" Format="P0" />
+                    <SgDataGridColumn TItem="BigEmployee" Title="Last Login" Value="@(e => e.LastLogin)" Width="170" Format="g" />
+                </ChildContent>
+            </SgDataGrid>
+        }
+        else
+        {
+            <SgDataGrid TItem="Employee" Items="_empData"
+                        Height="@($"{_gridHeight}px")"
+                        EnableVirtualization="true"
+                        EnablePaging="false"
+                        EstimatedRowHeight="@_rowHeight"
+                        ShowSearch="@_showSearch"
+                        ShowStatusBar="@_showStatus"
+                        ShowColumnChooser="@_showColChooser">
+                <ChildContent>
+                    <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
+                    <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="120" />
+                    <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="120" />
+                    <SgDataGridColumn TItem="Employee" Title="Email" Value="@(e => e.Email)" Width="200" />
+                    <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" />
+                    <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="C0" />
+                    <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" />
+                    <SgDataGridColumn TItem="Employee" Title="Hire Date" Value="@(e => e.HireDate)" Width="110" Format="dd.MM.yyyy" />
+                    <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" />
+                    <SgDataGridColumn TItem="Employee" Title="Rating" Value="@(e => e.Rating)" Width="80" Format="N2" />
+                </ChildContent>
+            </SgDataGrid>
+        }
+    </SgCard>
+
+        <!-- Generated Code -->
+        <div style="margin-top:24px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--sg-text-muted);">Generated Code</span>
+                <button type="button" @onclick="CopyCodeToClipboard" style="display:inline-flex;align-items:center;gap:4px;background:var(--sg-surface-alt);border:1px solid var(--sg-border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--sg-text-muted);font-family:inherit;font-size:12px;">
+                    <span>@_copyIcon</span>
+                    <span style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                </button>
+            </div>
+            <div class="code-block">@_generatedCode</div>
+        </div>
+
+    </ChildContent>
+</SgCard>
+
+@code {
+    private List<BigEmployee> _bigData = new();
+    private List<Employee> _empData = new();
+    private int _rowCount = 10000;
+    private int _gridHeight = 500;
+    private int _rowHeight = 32;
+    private long _genTimeMs;
+    private string _modelType = "BigEmployee";
+    private bool _showSearch = true;
+    private bool _showStatus = true;
+    private bool _showColChooser = true;
+    private string _generatedCode = "";
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    private void OnGridHeightChange(ChangeEventArgs e) { _gridHeight = int.Parse(e.Value?.ToString() ?? "500"); UpdateGeneratedCode(); }
+    private void OnRowCountChange(ChangeEventArgs e) { _rowCount = int.Parse(e.Value?.ToString() ?? "10000"); Regenerate(); UpdateGeneratedCode(); }
+    private void OnRowHeightChange(ChangeEventArgs e) { _rowHeight = int.Parse(e.Value?.ToString() ?? "32"); UpdateGeneratedCode(); }
+    private void OnModelTypeChange(ChangeEventArgs e) { _modelType = e.Value?.ToString() ?? "BigEmployee"; Regenerate(); UpdateGeneratedCode(); }
+
+    protected override void OnInitialized() { Regenerate(); UpdateGeneratedCode(); }
+
+    private void Regenerate()
+    {
+        var sw = Stopwatch.StartNew();
+        if (_modelType == "BigEmployee")
+            _bigData = SampleDataService.GenerateBigEmployees(_rowCount, 42);
+        else
+            _empData = SampleDataService.GenerateEmployees(_rowCount, 42);
+        sw.Stop();
+        _genTimeMs = sw.ElapsedMilliseconds;
+    }
+
+    private void UpdateGeneratedCode()
+    {
+        if (_modelType == "BigEmployee")
+        {
+            _generatedCode = $"""
+                <SgDataGrid TItem="BigEmployee" Items="@_bigData"
+                    Height="{_gridHeight}px"
+                    EnableVirtualization="true"
+                    EnablePaging="false"
+                    EstimatedRowHeight="{_rowHeight}"
+                    ShowSearch="{_showSearch.ToString().ToLower()}"
+                    ShowStatusBar="{_showStatus.ToString().ToLower()}"
+                    ShowColumnChooser="{_showColChooser.ToString().ToLower()}">
+                    <ChildContent>
+                        <SgDataGridColumn TItem="BigEmployee" Title="ID" Value="@(e => e.Id)" Width="70" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Code" Value="@(e => e.EmployeeCode)" Width="110" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="First Name" Value="@(e => e.FirstName)" Width="120" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Last Name" Value="@(e => e.LastName)" Width="120" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Email" Value="@(e => e.Email)" Width="220" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Department" Value="@(e => e.Department)" Width="130" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Position" Value="@(e => e.Position)" Width="160" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="N0" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Active" Value="@(e => e.IsActive)" Width="80" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Hire Date" Value="@(e => e.HireDate)" Width="110" Format="dd.MM.yyyy" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Rating" Value="@(e => e.Rating)" Width="80" Format="N1" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Projects" Value="@(e => e.ProjectsCount)" Width="80" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Efficiency" Value="@(e => e.Efficiency)" Width="90" Format="P0" />
+                    </ChildContent>
+                </SgDataGrid>
+                """;
+        }
+        else
+        {
+            _generatedCode = $"""
+                <SgDataGrid TItem="Employee" Items="@_empData"
+                    Height="{_gridHeight}px"
+                    EnableVirtualization="true"
+                    EnablePaging="false"
+                    EstimatedRowHeight="{_rowHeight}"
+                    ShowSearch="{_showSearch.ToString().ToLower()}"
+                    ShowStatusBar="{_showStatus.ToString().ToLower()}"
+                    ShowColumnChooser="{_showColChooser.ToString().ToLower()}">
+                    <ChildContent>
+                        <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
+                        <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="120" />
+                        <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="120" />
+                        <SgDataGridColumn TItem="Employee" Title="Email" Value="@(e => e.Email)" Width="200" />
+                        <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" />
+                        <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="C0" />
+                        <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" />
+                        <SgDataGridColumn TItem="Employee" Title="Hire Date" Value="@(e => e.HireDate)" Width="110" Format="dd.MM.yyyy" />
+                        <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" />
+                        <SgDataGridColumn TItem="Employee" Title="Rating" Value="@(e => e.Rating)" Width="80" Format="N2" />
+                    </ChildContent>
+                </SgDataGrid>
+                """;
+        }
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedCode);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,249 @@
+@page "/datagrid-demo/detail"
+@using SuperUI.Components
+@using SuperUI.Enums
+@using SuperUI.Demo.Components
+@using SuperUI.Demo.Models
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Detail — DataGrid – SuperUI</PageTitle>
+
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg" Status="SgCardStatus.Info" Hoverable="false">
+    <HeaderContent>
+        <DemoPageHeader Title="Master-Detail"
+                        Subtitle="Expandable detail rows with Inline, Drawer, and Window placements. Auto-detail via reflection for complex models."
+                        Icon="@SgHeroicons.Outline.ChevronDown" GradientFrom="#06b6d4" GradientTo="#3b82f6" />
+    </HeaderContent>
+    <ChildContent>
+
+        <div class="dg-nav-row" style="margin-bottom:16px;">
+        <a class="dg-nav-link" href="/datagrid-demo">← Menu</a>
+        <a class="dg-nav-link" href="/datagrid-demo/basic">Basic</a>
+        <a class="dg-nav-link" href="/datagrid-demo/editing">Editing</a>
+        <a class="dg-nav-link" href="/datagrid-demo/selection">Selection</a>
+        <a class="dg-nav-link" href="/datagrid-demo/grouping">Grouping</a>
+        <a class="dg-nav-link active" href="/datagrid-demo/detail">Detail</a>
+        <a class="dg-nav-link" href="/datagrid-demo/export">Export</a>
+        <a class="dg-nav-link" href="/datagrid-demo/virtualization">Virtualization</a>
+        <a class="dg-nav-link" href="/datagrid-demo/persistence">Persistence</a>
+    </div>
+
+    <div class="dg-config">
+        <div class="dg-config-panel">
+            <div class="dg-config-panel-title">Data Generator</div>
+            <div class="dg-config-row">
+                <label>Rows:</label>
+                <input type="range" min="5" max="100" step="5" value="@_rowCount"
+                       @oninput="OnRowCountChange" />
+                <input type="number" class="dg-number-input" min="5" max="100" value="@_rowCount"
+                       @oninput="OnRowCountChange" />
+                <span class="dg-value">@_rowCount</span>
+            </div>
+            <div style="margin-top:8px;">
+                <button class="dg-config-row dg-toggle" @onclick="Regenerate" style="border-color:var(--sg-primary);color:var(--sg-primary);">⟳ Regenerate</button>
+            </div>
+        </div>
+        <div class="dg-config-panel">
+            <div class="dg-config-panel-title">Detail Mode</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <label class="dg-toggle @(_placement == DetailPlacement.Inline ? "active" : "")">
+                    <input type="radio" name="placement" checked="@(_placement == DetailPlacement.Inline)" @onchange="e => { _placement = DetailPlacement.Inline; StateHasChanged(); UpdateGeneratedCode(); }" />
+                    <span>Inline</span>
+                </label>
+                <label class="dg-toggle @(_placement == DetailPlacement.Drawer ? "active" : "")">
+                    <input type="radio" name="placement" checked="@(_placement == DetailPlacement.Drawer)" @onchange="e => { _placement = DetailPlacement.Drawer; StateHasChanged(); UpdateGeneratedCode(); }" />
+                    <span>Drawer</span>
+                </label>
+                <label class="dg-toggle @(_placement == DetailPlacement.Window ? "active" : "")">
+                    <input type="radio" name="placement" checked="@(_placement == DetailPlacement.Window)" @onchange="e => { _placement = DetailPlacement.Window; StateHasChanged(); UpdateGeneratedCode(); }" />
+                    <span>Window</span>
+                </label>
+            </div>
+            <div class="dg-config-row" style="margin-top:8px;">
+                <label class="dg-toggle @(_autoDetail ? "active" : "")">
+                    <input type="checkbox" checked="@_autoDetail" @onchange="e => { _autoDetail = !_autoDetail; StateHasChanged(); UpdateGeneratedCode(); }" />
+                    <span>Auto-detail</span>
+                </label>
+            </div>
+            @if (!_autoDetail)
+            {
+                <div class="dg-config-row">
+                    <label>Drawer title:</label>
+                    <input type="text" value="@_drawerTitle" @oninput="OnDrawerTitleChange" style="font-size:12px;padding:2px 6px;border:1px solid var(--sg-border);border-radius:4px;background:var(--sg-bg);color:var(--sg-text);width:160px;" />
+                </div>
+                <div class="dg-config-row">
+                    <label>Window size:</label>
+                    <input type="range" min="400" max="900" step="20" value="@_windowSize"
+                           @oninput="OnWindowSizeChange" />
+                    <span class="dg-value">@_windowSize px</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
+        @if (_autoDetail)
+        {
+            <SgDataGrid TItem="EmployeeDetailed" Items="_detailed"
+                        Height="520px"
+                        AutoDetail="true"
+                        ShowStatusBar="true"
+                        PageSize="10"
+                        EnablePaging="true">
+                <ChildContent>
+                    <SgDataGridColumn TItem="EmployeeDetailed" Title="ID" Value="@(e => e.Id)" Width="60" />
+                    <SgDataGridColumn TItem="EmployeeDetailed" Title="First Name" Value="@(e => e.FirstName)" Width="130" />
+                    <SgDataGridColumn TItem="EmployeeDetailed" Title="Last Name" Value="@(e => e.LastName)" Width="130" />
+                    <SgDataGridColumn TItem="EmployeeDetailed" Title="Department" Value="@(e => e.Department)" Width="130" />
+                    <SgDataGridColumn TItem="EmployeeDetailed" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="N0" />
+                    <SgDataGridColumn TItem="EmployeeDetailed" Title="City" Value="@(e => e.Address.City)" Width="120" />
+                </ChildContent>
+            </SgDataGrid>
+        }
+        else
+        {
+            <SgDataGrid TItem="Employee" Items="_data"
+                        Height="520px"
+                        DetailPlacement="@_placement"
+                        DetailDrawerTitle="@_drawerTitle"
+                        DetailWindowTitle="Employee Detail"
+                        DetailWindowWidth="@_windowSize"
+                        DetailWindowHeight="400"
+                        ShowStatusBar="true"
+                        PageSize="10"
+                        EnablePaging="true">
+                <ChildContent>
+                    <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
+                    <SgDataGridColumn TItem="Employee" Title="Name" Value="@(e => $"{e.FirstName} {e.LastName}")" Width="180" />
+                    <SgDataGridColumn TItem="Employee" Title="Email" Value="@(e => e.Email)" Width="200" />
+                    <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" />
+                    <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="C0" />
+                </ChildContent>
+                <DetailTemplate>
+                    <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div><div style="font-size:11px;font-weight:600;color:var(--sg-text-muted);">Name</div><div style="font-size:14px;">@context.FirstName @context.LastName</div></div>
+                        <div><div style="font-size:11px;font-weight:600;color:var(--sg-text-muted);">Email</div><div style="font-size:14px;">@context.Email</div></div>
+                        <div><div style="font-size:11px;font-weight:600;color:var(--sg-text-muted);">Department</div><div style="font-size:14px;">@context.Department</div></div>
+                        <div><div style="font-size:11px;font-weight:600;color:var(--sg-text-muted);">Salary</div><div style="font-size:14px;">@context.Salary.ToString("C2")</div></div>
+                        <div><div style="font-size:11px;font-weight:600;color:var(--sg-text-muted);">Status</div><div style="font-size:14px;">@(context.IsActive ? "Active" : "Inactive")</div></div>
+                        <div><div style="font-size:11px;font-weight:600;color:var(--sg-text-muted);">Position</div><div style="font-size:14px;">@context.Position</div></div>
+                        <div><div style="font-size:11px;font-weight:600;color:var(--sg-text-muted);">Hire Date</div><div style="font-size:14px;">@context.HireDate.ToString("dd.MM.yyyy")</div></div>
+                        <div><div style="font-size:11px;font-weight:600;color:var(--sg-text-muted);">Rating</div><div style="font-size:14px;">@(context.Rating?.ToString("N2") ?? "-")</div></div>
+                    </div>
+                </DetailTemplate>
+            </SgDataGrid>
+        }
+    </SgCard>
+
+        <!-- Generated Code -->
+        <div style="margin-top:24px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--sg-text-muted);">Generated Code</span>
+                <button type="button" @onclick="CopyCodeToClipboard" style="display:inline-flex;align-items:center;gap:4px;background:var(--sg-surface-alt);border:1px solid var(--sg-border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--sg-text-muted);font-family:inherit;font-size:12px;">
+                    <span>@_copyIcon</span>
+                    <span style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                </button>
+            </div>
+            <div class="code-block">@_generatedCode</div>
+        </div>
+
+    </ChildContent>
+</SgCard>
+
+@code {
+    private List<Employee> _data = new();
+    private List<EmployeeDetailed> _detailed = new();
+    private int _rowCount = 20;
+    private DetailPlacement _placement = DetailPlacement.Inline;
+    private bool _autoDetail;
+    private string _drawerTitle = "Employee Details";
+    private int _windowSize = 640;
+    private string _generatedCode = "";
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    private void OnRowCountChange(ChangeEventArgs e) { _rowCount = int.Parse(e.Value?.ToString() ?? "20"); Regenerate(); }
+    private void OnDrawerTitleChange(ChangeEventArgs e) { _drawerTitle = e.Value?.ToString() ?? "Employee Details"; UpdateGeneratedCode(); }
+    private void OnWindowSizeChange(ChangeEventArgs e) { _windowSize = int.Parse(e.Value?.ToString() ?? "640"); UpdateGeneratedCode(); }
+
+    protected override void OnInitialized() { Regenerate(); _detailed = SampleDataService.GenerateDetailedEmployees(_rowCount, 42); UpdateGeneratedCode(); }
+    private void Regenerate() { _data = SampleDataService.GenerateEmployees(_rowCount, 42); _detailed = SampleDataService.GenerateDetailedEmployees(_rowCount, 42); }
+
+    private void UpdateGeneratedCode()
+    {
+        if (_autoDetail)
+        {
+            _generatedCode = """
+                <SgDataGrid TItem="EmployeeDetailed" Items="@_detailed"
+                    Height="520px"
+                    AutoDetail="true"
+                    ShowStatusBar="true"
+                    PageSize="10"
+                    EnablePaging="true">
+                    <ChildContent>
+                        <SgDataGridColumn TItem="EmployeeDetailed" Title="ID" Value="@(e => e.Id)" Width="60" />
+                        <SgDataGridColumn TItem="EmployeeDetailed" Title="First Name" Value="@(e => e.FirstName)" Width="130" />
+                        <SgDataGridColumn TItem="EmployeeDetailed" Title="Last Name" Value="@(e => e.LastName)" Width="130" />
+                        <SgDataGridColumn TItem="EmployeeDetailed" Title="Department" Value="@(e => e.Department)" Width="130" />
+                        <SgDataGridColumn TItem="EmployeeDetailed" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="N0" />
+                        <SgDataGridColumn TItem="EmployeeDetailed" Title="City" Value="@(e => e.Address.City)" Width="120" />
+                    </ChildContent>
+                </SgDataGrid>
+                """;
+        }
+        else
+        {
+            _generatedCode = $"""
+                <SgDataGrid TItem="Employee" Items="@_data"
+                    Height="520px"
+                    DetailPlacement="SgDetailPlacement.{_placement}"
+                    DetailDrawerTitle="{_drawerTitle}"
+                    DetailWindowTitle="Employee Detail"
+                    DetailWindowWidth="{_windowSize}"
+                    DetailWindowHeight="400"
+                    ShowStatusBar="true"
+                    PageSize="10"
+                    EnablePaging="true">
+                    <ChildContent>
+                        <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
+                    <SgDataGridColumn TItem="Employee" Title="Name" Value="@(e => string.Concat(e.FirstName, " ", e.LastName))" Width="180" />
+                        <SgDataGridColumn TItem="Employee" Title="Email" Value="@(e => e.Email)" Width="200" />
+                        <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" />
+                        <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="C0" />
+                    </ChildContent>
+                    <DetailTemplate>
+                        <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                            <div><span>Name</span><span>@context.FirstName @context.LastName</span></div>
+                            ...
+                        </div>
+                    </DetailTemplate>
+                </SgDataGrid>
+                """;
+        }
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedCode);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+}

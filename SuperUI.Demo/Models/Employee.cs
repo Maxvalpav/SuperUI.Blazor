@@ -16,6 +16,8 @@ public enum DepartmentType
     HR
 }
 
+public enum ExperienceLevel { Junior, Middle, Senior, Lead, Principal }
+
 public class Employee
 {
     public int Id { get; set; }
