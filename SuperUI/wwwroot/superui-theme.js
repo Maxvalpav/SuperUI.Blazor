@@ -1,11 +1,15 @@
-// SuperUI 2.0-rc3 (PR #5, B1 + B2) — runtime theme state, batched.
+// SuperUI 2.0-rc3 (PR #5 B1+B2, PR #5b B3) — runtime theme state + link swap.
 //
-// One `applyThemeState(state)` call from C# does what used to require
-// 5× `localStorage.setItem` + 6× `eval(...)` interop hops. The matching
-// `getSavedState()` round-trips the persisted values at init. The
-// `initAutoMode(true)` call wires a single matchMedia subscription that
-// re-applies the theme when the OS color scheme flips (only when the user
-// is in "auto" mode).
+// B1 (C#): debounced + batched `applyThemeState(state)` DTO replaces the
+//   old 5×localStorage + 6×eval interop pattern.
+// B2 (JS):  `initAutoMode(true)` wires a single matchMedia subscription
+//   that re-applies data-theme when the OS color scheme flips, and only
+//   while the user is in 'auto' mode.
+// B3 (this): instead of C# generating a 30KB CSS string and pushing it
+//   into a <style> element on every state change, we pre-generate one
+//   .css per theme at design time (tools/ThemeCssExporter →
+//   wwwroot/themes/css/{id}.css) and swap a <link rel="stylesheet">
+//   element at runtime. Browser cache + gzip handle the rest.
 
 (function () {
     'use strict';
@@ -16,7 +20,8 @@
     const FONT_FAMILY_KEY = 'superui-font-family';
     const DENSITY_KEY  = 'superui-density';
 
-    const STYLE_ID = 'sg-dynamic-theme';
+    const STYLE_ID  = 'sg-dynamic-theme';
+    const LINK_ID   = 'sg-theme-link';
 
     // Internal cache of the last applied state so we can decide whether
     // anything actually changed before touching the DOM.
@@ -36,7 +41,50 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // CSS injection (kept for now; PR #5b will switch to <link> swap).
+    // B3 — <link rel="stylesheet"> swap. One <link> per page, mutated in
+    // place. C# no longer ships CSS strings; it ships paths like
+    // "_content/SuperUI/themes/css/natura-ui.css".
+    // ═══════════════════════════════════════════════════════════════════
+    let currentThemeHref = null;
+
+    function applyThemeLink(href) {
+        if (!href || typeof href !== 'string') return;
+        if (href === currentThemeHref) return; // nothing to do
+        currentThemeHref = href;
+
+        let linkEl = document.getElementById(LINK_ID);
+        if (!linkEl) {
+            linkEl = document.createElement('link');
+            linkEl.id = LINK_ID;
+            linkEl.rel = 'stylesheet';
+            document.head.appendChild(linkEl);
+        }
+        // Mutating `href` swaps the stylesheet in place; the browser
+        // re-evaluates cached layers under the same id.
+        linkEl.setAttribute('href', href);
+
+        // Best-effort: drop the now-redundant dynamic <style> element
+        // that earlier 2.0-alpha runs may have left in <head>. It no
+        // longer gets written to, and any selectors it contains were
+        // also emitted by the pre-built .css, so removal is safe.
+        const legacy = document.getElementById(STYLE_ID);
+        if (legacy && legacy.parentNode) legacy.parentNode.removeChild(legacy);
+    }
+
+    function preloadThemeLink(href) {
+        if (!href || typeof href !== 'string') return;
+        if (document.querySelector(`link[rel="preload"][as="style"][href="${href}"]`)) return;
+        const pre = document.createElement('link');
+        pre.rel = 'preload';
+        pre.as = 'style';
+        pre.setAttribute('href', href);
+        document.head.appendChild(pre);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Legacy CSS injection (kept for back-compat with external callers
+    // that still push raw CSS strings; SgThemeService no longer uses
+    // this path as of PR #5b).
     // ═══════════════════════════════════════════════════════════════════
     function applyThemeCss(css) {
         let styleEl = document.getElementById(STYLE_ID);
@@ -51,9 +99,12 @@
     // ═══════════════════════════════════════════════════════════════════
     // Batched state apply.
     // state: {
-    //   themeId, mode, fontSize, fontFamily, density, css,
+    //   themeId, mode, fontSize, fontFamily, density,
+    //   themeHref,                                // PR #5b: link-swap path
     //   dataTheme, attrFontFamily, attrDensity, attrFontSize
     // }
+    // (legacy `css` field is still accepted but ignored by the link-swap
+    //  path; SgThemeService stopped sending it in PR #5b.)
     // ═══════════════════════════════════════════════════════════════════
     function applyThemeState(state) {
         if (!state) return;
@@ -74,8 +125,12 @@
         if (state.attrDensity)    root.setAttribute('data-density', state.attrDensity);
         if (state.attrFontSize)   root.setAttribute('data-font-size', state.attrFontSize);
 
-        // 3) Dynamic CSS.
-        if (typeof state.css === 'string') {
+        // 3) Theme stylesheet — prefer link-swap (PR #5b).
+        if (typeof state.themeHref === 'string' && state.themeHref.length > 0) {
+            applyThemeLink(state.themeHref);
+        } else if (typeof state.css === 'string') {
+            // Back-compat: still fall back to inline <style> if a caller
+            // ships a raw CSS string and no href.
             applyThemeCss(state.css);
         }
 
@@ -142,6 +197,8 @@
     window.SuperUI = window.SuperUI || {};
     window.SuperUI.applyThemeCss = applyThemeCss;
     window.SuperUI.applyThemeState = applyThemeState;
+    window.SuperUI.applyThemeLink = applyThemeLink;
+    window.SuperUI.preloadThemeLink = preloadThemeLink;
     window.SuperUI.getSavedState = getSavedState;
     window.SuperUI.initAutoMode = initAutoMode;
 
@@ -152,6 +209,8 @@
     if (typeof exports !== 'undefined') {
         exports.applyThemeCss = applyThemeCss;
         exports.applyThemeState = applyThemeState;
+        exports.applyThemeLink = applyThemeLink;
+        exports.preloadThemeLink = preloadThemeLink;
         exports.getSavedState = getSavedState;
         exports.initAutoMode = initAutoMode;
     }
