@@ -3,6 +3,7 @@ namespace SuperUI.Themes;
 /// <summary>
 /// Base class for all SuperUI themes.
 /// </summary>
+[Obsolete("Use JsonThemeDefinition + SuperUI/Themes/json/{id}.json. Will be removed in 3.0. See migration guide.")]
 public abstract class ThemeBase : IThemeDefinition
 {
     public abstract string Id { get; }
