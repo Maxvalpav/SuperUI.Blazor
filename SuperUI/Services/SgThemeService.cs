@@ -28,6 +28,20 @@ namespace SuperUI.Services;
 ///   instead of a 15-33 KB CSS string; the JS side mutates a single
 ///   <c>&lt;link rel="stylesheet"&gt;</c> element in place, so the browser
 ///   cache does the work after the first load.
+///
+/// 2.0-rc3 (PR #5c) — root-cause fix for the silent theme-swap failure:
+/// The C# side imports the JS module via <c>import("./_content/SuperUI/superui-theme.js")</c>
+/// but the JS file is an IIFE that only assigns its API to
+/// <c>window.SuperUI</c> and never <c>export</c>s anything. Calling
+/// <c>_module.InvokeVoidAsync("applyThemeState", …)</c> therefore
+/// throws <c>TypeError: moduleExports.applyThemeState is not a function</c>,
+/// which is silently swallowed by the JSException handler below. The
+/// C# state still updates (so the button label changes) but no DOM/CSS
+/// effect is ever applied. The fix: invoke the global functions
+/// (<c>SuperUI.applyThemeState</c>, <c>SuperUI.getSavedState</c>,
+/// <c>SuperUI.initAutoMode</c>) directly via <see cref="IJSRuntime"/>,
+/// bypassing the module reference. The import is still performed as a
+/// reachability probe (and so the runtime knows JS is up).
 /// </summary>
 public sealed class SgThemeService : IAsyncDisposable
 {
@@ -93,10 +107,16 @@ public sealed class SgThemeService : IAsyncDisposable
 
         try
         {
+            // We import the module just to confirm it's reachable; the actual
+            // API surface we use lives on `window.SuperUI` (set up by the
+            // superui-theme.js IIFE). Calling `_module.InvokeVoidAsync` would
+            // fail because the JS file has no `export` statements — the
+            // TypeError would be silently caught at ApplyThemeAsync:266 and
+            // every theme change would become a no-op.
             _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-theme.js");
 
             // Load saved settings in a single JS round-trip (batched).
-            var saved = await _module.InvokeAsync<ThemeStateDto>("getSavedState");
+            var saved = await _js.InvokeAsync<ThemeStateDto>("SuperUI.getSavedState");
 
             // Determine system preference
             _systemPrefersDark = await _js.InvokeAsync<bool>("eval", "window.matchMedia('(prefers-color-scheme: dark)').matches");
@@ -115,7 +135,7 @@ public sealed class SgThemeService : IAsyncDisposable
 
             // Tell the JS module which "auto" mode should subscribe to system
             // changes (B2). Idempotent on the JS side.
-            await _module.InvokeVoidAsync("initAutoMode", CurrentMode == "auto");
+            await _js.InvokeVoidAsync("SuperUI.initAutoMode", CurrentMode == "auto");
 
             _isInitialized = true;
             await ApplyThemeAsync();
@@ -171,7 +191,10 @@ public sealed class SgThemeService : IAsyncDisposable
         // Re-arm the matchMedia subscription when the mode changes.
         if (_module is not null)
         {
-            _ = SafeVoidAsync(_module.InvokeVoidAsync("initAutoMode", mode == "auto"));
+            // Fire-and-forget: the matchMedia listener re-attaches on the
+            // JS side, and any error is non-fatal (next apply will still
+            // set data-theme from the DTO).
+            _ = SafeVoidAsync(_js.InvokeVoidAsync("SuperUI.initAutoMode", mode == "auto"));
         }
         return ScheduleApplyAsync();
     }
@@ -230,8 +253,12 @@ public sealed class SgThemeService : IAsyncDisposable
     private async Task ApplyThemeAsync()
     {
         if (_isDisposed) return;
-        var module = _module;
-        if (module is null) return;
+        // _module is set during InitializeAsync; if it's null, the JS
+        // runtime never came up (prerender, JS disabled, import failed),
+        // so we have nothing to call into. We still update the C# state
+        // so a later retry via SetXxxAsync works once the JS bridge is
+        // available again.
+        if (_module is null) return;
 
         var effectiveDark = IsDark;
         var dataTheme = effectiveDark ? "dark" : "light";
@@ -246,10 +273,13 @@ public sealed class SgThemeService : IAsyncDisposable
         // gzip handle repeat swaps.
         var themeHref = $"{ThemeCssBasePath}/{CurrentTheme.Id}.css";
 
-        // Single JS round-trip: persist + apply.
+        // Single JS round-trip: persist + apply. We go through
+        // window.SuperUI (set up by superui-theme.js) instead of the
+        // module reference because the JS file has no `export` statements
+        // — the IIFE only assigns to window.SuperUI.
         try
         {
-            await module.InvokeVoidAsync("applyThemeState", new ThemeStateDto
+            await _js.InvokeVoidAsync("SuperUI.applyThemeState", new ThemeStateDto
             {
                 ThemeId    = CurrentTheme.Id,
                 Mode       = CurrentMode,

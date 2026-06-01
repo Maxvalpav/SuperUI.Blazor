@@ -54,14 +54,20 @@
 
         let linkEl = document.getElementById(LINK_ID);
         if (!linkEl) {
+            // Create the <link> with href set BEFORE appending. Some
+            // browsers (older WebKit) can miss the fetch if the link
+            // is appended without a href and the attribute is mutated
+            // afterwards. Setting the property first is the reliable path.
             linkEl = document.createElement('link');
             linkEl.id = LINK_ID;
             linkEl.rel = 'stylesheet';
+            linkEl.href = href;
             document.head.appendChild(linkEl);
+        } else {
+            // Mutating `href` swaps the stylesheet in place; the browser
+            // re-evaluates cached layers under the same id.
+            linkEl.setAttribute('href', href);
         }
-        // Mutating `href` swaps the stylesheet in place; the browser
-        // re-evaluates cached layers under the same id.
-        linkEl.setAttribute('href', href);
 
         // Best-effort: drop the now-redundant dynamic <style> element
         // that earlier 2.0-alpha runs may have left in <head>. It no

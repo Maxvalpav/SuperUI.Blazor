@@ -11,13 +11,15 @@ public static class SgThemeGenerator
     {
         var sb = new StringBuilder();
 
-        // 0. Google Fonts @import (must precede all other CSS)
-        if (theme.Typography?.EmbedGoogleFontsImport == true &&
-            !string.IsNullOrEmpty(theme.Typography.GoogleFontsImportUrl))
-        {
-            sb.AppendLine($"@import url('{theme.Typography.GoogleFontsImportUrl}');");
-            sb.AppendLine();
-        }
+        // 0. Google Fonts loading moved to <head> in index.html.
+        //    Emitting @import from inside a per-theme CSS would block the
+        //    link-swap runtime (the rest of the file waits on the remote
+        //    fetch). 2.0-rc3 (PR #5b) initially put it here; the runtime
+        //    fix in 2.0-rc3 PR #5c removed it. The Typography fields
+        //    GoogleFontsImportUrl / EmbedGoogleFontsImport are still
+        //    read from JSON so themes can declare their font family
+        //    (consumed by AppendTypographyCss below), but no @import
+        //    is emitted.
 
         // 1. Light Mode (Default)
         sb.AppendLine(GenerateCss(theme.Primitives, theme.Light, ":root"));
