@@ -7,7 +7,7 @@ namespace SuperUI.Components;
 /// In-memory store of <see cref="NotificationItem"/>s shared between producers
 /// (any code that calls <see cref="Push(NotificationItem)"/>) and consumers
 /// (e.g. a header bell icon and the <see cref="SgNotificationPanel"/>).
-/// Also manages transient toast notifications via <see cref="SgNotificationToastItem"/>.
+/// Also bridges transient toast notifications through <see cref="SgToastService"/>.
 /// </summary>
 /// <remarks>
 /// <para>Thread-safe: все мутации внутри <c>lock</c>, чтения наружу выходят как
@@ -15,18 +15,32 @@ namespace SuperUI.Components;
 /// стабильный список даже если поток-источник дальше его меняет.</para>
 /// <para>Event <see cref="Changed"/> вызывается ВНЕ блокировки — подписчик не
 /// может вызвать deadlock или повторный mutation через тот же сервис.</para>
+/// <para>Toast notifications now delegate to <see cref="SgToastService"/> internally.
+/// <see cref="SgNotificationToastHost"/> is kept for backward compatibility but
+/// deprecated — use <see cref="SgToastHost"/> + <see cref="SgToastService"/> directly.</para>
 /// </remarks>
 public sealed class SgNotificationService
 {
     private readonly object _gate = new();
     private readonly List<NotificationItem> _items = new();
     private readonly List<SgNotificationToastItem> _toasts = new();
+    private readonly SgToastService? _toastService;
     private int _maxItems = 200;
+
+    /// <summary>Initializes a new instance with optional toast service for bridging notifications to toasts.</summary>
+    public SgNotificationService() : this(null) { }
+
+    /// <summary>Initializes a new instance with toast service bridge.</summary>
+    public SgNotificationService(SgToastService? toastService)
+    {
+        _toastService = toastService;
+    }
 
     /// <summary>Raised whenever the notification list changes (added, removed, marked read).</summary>
     public event Action? Changed;
 
-    /// <summary>Raised when the toast queue changes.</summary>
+    /// <summary>Raised when the toast queue changes. Kept for backward compatibility.</summary>
+    [Obsolete("Use SgToastService.Added/Removed directly instead of SgNotificationService.ToastsChanged.")]
     public event Action? ToastsChanged;
 
     /// <summary>Иммутабельный снимок текущих уведомлений (самые новые первые).</summary>
@@ -263,16 +277,32 @@ public sealed class SgNotificationService
 
     // ── Toast queue ────────────────────────────────────────────────────────
 
-    /// <summary>Current snapshot of active toast notifications.</summary>
+    /// <summary>Current snapshot of active toast notifications. Kept for backward compatibility.</summary>
+    [Obsolete("Use SgToastService directly. This property returns an empty list when SgToastService is available.")]
     public IReadOnlyList<SgNotificationToastItem> Toasts
     {
         get { lock (_gate) return _toasts.ToImmutableArray(); }
     }
 
-    /// <summary>Pushes a transient toast notification.</summary>
+    /// <summary>Pushes a transient toast notification. Delegates to SgToastService when available.</summary>
     public void PushToast(SgNotificationToastItem toast)
     {
         ArgumentNullException.ThrowIfNull(toast);
+        if (_toastService is not null)
+        {
+            var variant = toast.Variant switch
+            {
+                SgBadgeVariant.Success => SgToastVariant.Success,
+                SgBadgeVariant.Warn => SgToastVariant.Warn,
+                SgBadgeVariant.Danger => SgToastVariant.Danger,
+                SgBadgeVariant.Info => SgToastVariant.Default,
+                _ => SgToastVariant.Default
+            };
+            _toastService.Show(t => { t.Title = toast.Title; t.Message = toast.Message; t.Variant = variant; t.DurationMs = toast.DurationMs; });
+            return;
+        }
+
+        // Fallback: keep old behavior when no SgToastService available
         lock (_gate)
         {
             _toasts.Insert(0, toast);
@@ -280,7 +310,7 @@ public sealed class SgNotificationService
         RaiseToastsChanged();
     }
 
-    /// <summary>Creates and pushes a toast notification from parts.</summary>
+    /// <summary>Creates and pushes a toast notification from parts. Delegates to SgToastService when available.</summary>
     public SgNotificationToastItem PushToast(string? title, string? message, SgBadgeVariant variant = SgBadgeVariant.Default, int durationMs = 4000)
     {
         var toast = new SgNotificationToastItem
@@ -294,10 +324,16 @@ public sealed class SgNotificationService
         return toast;
     }
 
-    /// <summary>Removes a toast notification by id.</summary>
+    /// <summary>Removes a toast notification by id. No-op when delegated to SgToastService.</summary>
+    [Obsolete("Dismiss toasts via SgToastService.Dismiss() instead.")]
     public void RemoveToast(string id)
     {
         if (string.IsNullOrEmpty(id)) return;
+        if (_toastService is not null)
+        {
+            _toastService.Dismiss(id);
+            return;
+        }
         bool changed;
         lock (_gate)
         {
@@ -307,6 +343,7 @@ public sealed class SgNotificationService
     }
 
     /// <summary>Marks a toast as closing (for exit animation).</summary>
+    [Obsolete("Handle toast dismissal via SgToastHost events instead.")]
     public void CloseToast(string id)
     {
         if (string.IsNullOrEmpty(id)) return;
@@ -319,6 +356,7 @@ public sealed class SgNotificationService
     }
 
     /// <summary>Clears all toasts.</summary>
+    [Obsolete("Use SgToastService.DismissAll() instead.")]
     public void ClearToasts()
     {
         bool changed;

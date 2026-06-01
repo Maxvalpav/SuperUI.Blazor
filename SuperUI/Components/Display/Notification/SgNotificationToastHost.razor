@@ -1,16 +1,17 @@
 @namespace SuperUI.Components
 @implements IDisposable
 @inject SgNotificationService Notifications
+@inject SgToastService Toasts
+@{
+    DeprecationWarning();
+}
 
-<div class="sgc-notification-toast-host @PositionClass" @attributes="AdditionalAttributes">
-    @foreach (var toast in _toasts)
-    {
-        <SgNotificationToast @key="@toast.Id" Item="toast" OnDismiss="HandleDismiss" OnClick="HandleClick" />
-    }
-</div>
+@* Backward-compat rendering: maps notification toasts through SgToastHost's SgToastService *@
 
 @code {
-    /// <summary>Toast stack position on screen. Default is <see cref="SgPlacement.BottomEnd"/> (bottom-right).</summary>
+    /// <summary>
+    /// Toast stack position on screen. Default is <see cref="SgPlacement.BottomEnd"/> (bottom-right).
+    /// </summary>
     [Parameter] public SgPlacement Position { get; set; } = SgPlacement.BottomEnd;
 
     /// <summary>Additional HTML attributes.</summary>
@@ -19,50 +20,24 @@
     /// <summary>Raised when a toast is clicked.</summary>
     [Parameter] public EventCallback<SgNotificationToastItem> OnToastClick { get; set; }
 
-    private List<SgNotificationToastItem> _toasts = new();
+    /// <summary>
+    /// <strong>Deprecated:</strong> This component is kept for backward compatibility.
+    /// Notifications pushed via <see cref="SgNotificationService.PushToast"/> are now
+    /// automatically routed through <see cref="SgToastService"/> and rendered by
+    /// <see cref="SgToastHost"/>. Remove this component from your layout and keep only
+    /// <c>&lt;SgToastHost /&gt;</c>.
+    /// </summary>
+    [Obsolete("SgNotificationToastHost is deprecated. Notifications now render through SgToastHost. Remove <SgNotificationToastHost> and keep only <SgToastHost> in your layout.", false)]
+    public string? _deprecatedMessage = null;
 
-    protected override void OnInitialized()
-    {
-        Notifications.ToastsChanged += OnToastsChanged;
-        RefreshToasts();
-    }
+    private static bool _warned;
 
-    private void OnToastsChanged() => InvokeAsync(() =>
+    private static void DeprecationWarning()
     {
-        RefreshToasts();
-        StateHasChanged();
-    });
-
-    private void RefreshToasts()
-    {
-        _toasts = Notifications.Toasts.Reverse().ToList();
-    }
-
-    private async Task HandleDismiss(SgNotificationToastItem toast)
-    {
-        await Task.Delay(280);
-        Notifications.RemoveToast(toast.Id);
-    }
-
-    private Task HandleClick(SgNotificationToastItem toast)
-    {
-        if (OnToastClick.HasDelegate)
-            return OnToastClick.InvokeAsync(toast);
-        return Task.CompletedTask;
-    }
-
-    private string PositionClass => Position switch
-    {
-        SgPlacement.TopStart => "sgc-toast-host-top-start",
-        SgPlacement.TopEnd => "sgc-toast-host-top-end",
-        SgPlacement.BottomStart => "sgc-toast-host-bottom-start",
-        SgPlacement.Top => "sgc-toast-host-top-center",
-        SgPlacement.Bottom => "sgc-toast-host-bottom-center",
-        _ => "sgc-toast-host-bottom-end"
-    };
-
-    public void Dispose()
-    {
-        Notifications.ToastsChanged -= OnToastsChanged;
+        if (!_warned)
+        {
+            _warned = true;
+            Console.Error.WriteLine("[SuperUI] SgNotificationToastHost is deprecated. Remove it from your layout and keep only <SgToastHost />. Notifications pushed via SgNotificationService.PushToast now render through SgToastService automatically.");
+        }
     }
 }
