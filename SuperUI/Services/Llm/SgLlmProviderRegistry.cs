@@ -10,63 +10,26 @@ namespace SuperUI.Services.Llm;
 /// </summary>
 public static class SgLlmProviderRegistry
 {
+    // Curated short list shown in the provider picker. The full SgLlmProvider enum stays
+    // append-only (numeric ordinals are persisted in LocalStorage — never re-number or remove
+    // enum members), but only these providers are surfaced in the UI. To re-expose a hidden
+    // provider, add it back here and ensure it has a _presets entry + a LoadModelsAsync branch.
     public static readonly IReadOnlyList<SgLlmProvider> AllowedProviders = new[]
     {
         // --- Frontier ---
-        SgLlmProvider.OpenAiCompatible,
+        SgLlmProvider.OpenAiCompatible,   // OpenAI (api.openai.com) + OpenAI-compatible
         SgLlmProvider.Anthropic,
-        SgLlmProvider.Google,
-        SgLlmProvider.XAi,
-        // --- Open routing / aggregators ---
-        SgLlmProvider.OpenRouter,
-        SgLlmProvider.TogetherAi,
-        SgLlmProvider.Fireworks,
-        SgLlmProvider.HuggingFace,
-        SgLlmProvider.Replicate,
-        SgLlmProvider.AiMlApi,
-        SgLlmProvider.Novita,
-        // --- Fast inference ---
-        SgLlmProvider.Groq,
-        SgLlmProvider.Cerebras,
-        SgLlmProvider.SambaNova,
-        SgLlmProvider.DeepSeek,
-        SgLlmProvider.Lepton,
-        SgLlmProvider.DeepInfra,
+        SgLlmProvider.Google,             // kept for preset coverage
+        // --- OpenAI-compatible aggregator / coding agent ---
+        SgLlmProvider.OpenCode,
         // --- Local ---
-        SgLlmProvider.Ollama,
         SgLlmProvider.LmStudio,
-        SgLlmProvider.Vllm,
         SgLlmProvider.LlamaCpp,
-        SgLlmProvider.Jan,
-        SgLlmProvider.Gpt4All,
-        SgLlmProvider.KoboldCpp,
-        SgLlmProvider.OobaboogaTgWebUi,
-        SgLlmProvider.TabbyApi,
-        SgLlmProvider.Llamafile,
-        SgLlmProvider.WebLlm,
-        // --- Free ---
-        SgLlmProvider.CloudflareWorkersAi,
-        SgLlmProvider.GitHubModels,
-        SgLlmProvider.Pollinations,
-        SgLlmProvider.GlhfChat,
-        SgLlmProvider.Targon,
-        SgLlmProvider.Chutes,
         // --- Russian ---
         SgLlmProvider.GigaGpt,
         SgLlmProvider.YandexGpt,
-        // --- Specialty ---
-        SgLlmProvider.Cohere,
-        SgLlmProvider.Mistral,
-        SgLlmProvider.Perplexity,
-        SgLlmProvider.VoyageAi,
-        SgLlmProvider.JinaAi,
-        SgLlmProvider.Nomic,
-        SgLlmProvider.AssemblyAi,
-        SgLlmProvider.Deepgram,
-        SgLlmProvider.ElevenLabs,
-        SgLlmProvider.OpenAiCompatibleCustom,
-        // --- Azure ---
-        SgLlmProvider.AzureOpenAi
+        // --- Custom OpenAI-compatible endpoint ---
+        SgLlmProvider.OpenAiCompatibleCustom
     };
 
     private static readonly IReadOnlyDictionary<SgLlmProvider, SgLlmProviderPreset> _presets = new Dictionary<SgLlmProvider, SgLlmProviderPreset>
@@ -89,6 +52,23 @@ public static class SgLlmProviderRegistry
             SupportsEmbeddings = true, SupportsImages = true, SupportsAudioStt = true, SupportsAudioTts = true,
             SupportsReasoningModels = true, SupportsTools = true, SupportsVision = true,
             Notes = "GPT-5.5, o-series; chat/completions + responses API."
+        },
+        [SgLlmProvider.OpenCode] = new()
+        {
+            Provider = SgLlmProvider.OpenCode,
+            Label = "OpenCode",
+            BaseUrl = "https://opencode.ai/zen/v1",
+            ApiKeyUrl = "https://opencode.ai/auth",
+            DocsUrl = "https://opencode.ai/docs",
+            IsFree = false,
+            RequiresKey = true,
+            Icon = "🧑‍💻",
+            Category = SgLlmProviderCategory.OpenRouting,
+            Tags = { SgLlmProviderTag.Cloud, SgLlmProviderTag.Tools, SgLlmProviderTag.Agentic },
+            Auth = SgLlmAuthStyle.Bearer,
+            ApiStyle = SgLlmApiStyle.OpenAiChat,
+            SupportsTools = true,
+            Notes = "OpenCode Zen — OpenAI-compatible gateway for coding agents."
         },
         [SgLlmProvider.Anthropic] = new()
         {

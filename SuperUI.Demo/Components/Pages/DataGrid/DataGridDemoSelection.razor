@@ -4,7 +4,6 @@
 @using SuperUI.Demo.Components
 @using SuperUI.Demo.Models
 @inject NavigationManager Nav
-@inject IJSRuntime JS
 
 <PageTitle>Selection — DataGrid – SuperUI</PageTitle>
 
@@ -16,119 +15,146 @@
     </HeaderContent>
     <ChildContent>
 
-        <div class="dg-nav-row" style="margin-bottom:16px;">
-        <a class="dg-nav-link" href="/datagrid-demo">← Menu</a>
-        <a class="dg-nav-link" href="/datagrid-demo/basic">Basic</a>
-        <a class="dg-nav-link" href="/datagrid-demo/editing">Editing</a>
-        <a class="dg-nav-link active" href="/datagrid-demo/selection">Selection</a>
-        <a class="dg-nav-link" href="/datagrid-demo/grouping">Grouping</a>
-        <a class="dg-nav-link" href="/datagrid-demo/detail">Detail</a>
-        <a class="dg-nav-link" href="/datagrid-demo/export">Export</a>
-        <a class="dg-nav-link" href="/datagrid-demo/virtualization">Virtualization</a>
-        <a class="dg-nav-link" href="/datagrid-demo/persistence">Persistence</a>
-    </div>
-
-    <div class="dg-config">
-        <div class="dg-config-panel">
-            <div class="dg-config-panel-title">Data Generator</div>
-            <div class="dg-config-row">
-                <label>Rows:</label>
-                <input type="range" min="10" max="200" step="5" value="@_rowCount"
-                       @oninput="OnRowCountChange" />
-                <input type="number" class="dg-number-input" min="10" max="200" value="@_rowCount"
-                       @oninput="OnRowCountChange" />
-                <span class="dg-value">@_rowCount</span>
-            </div>
-            <div style="margin-top:8px;">
-                <button class="dg-config-row dg-toggle" @onclick="Regenerate" style="border-color:var(--sg-primary);color:var(--sg-primary);">⟳ Regenerate</button>
-            </div>
-        </div>
-        <div class="dg-config-panel">
-            <div class="dg-config-panel-title">Selection Mode</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <label class="dg-toggle @(_multi ? "active" : "")">
-                    <input type="checkbox" checked="@_multi" @onchange="e => { _multi = !_multi; _single = false; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Multi-select</span>
-                </label>
-                <label class="dg-toggle @(_single ? "active" : "")">
-                    <input type="checkbox" checked="@_single" @onchange="e => { _single = !_single; _multi = false; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Single-select</span>
-                </label>
-                <label class="dg-toggle @(_bulk ? "active" : "")">
-                    <input type="checkbox" checked="@_bulk" @onchange="e => { _bulk = !_bulk; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Bulk Edit</span>
-                </label>
-            </div>
-        </div>
-    </div>
-
-    <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
-        <SgDataGrid TItem="Employee" Items="_data"
-                    Height="460px"
-                    AllowMultiSelect="@_multi"
-                    AllowSingleSelect="@_single"
-                    AllowBulkEdit="@_bulk"
-                    ShowStatusBar="true"
-                    PageSize="10"
-                    EnablePaging="true"
-                    SelectedItemsChanged="OnSelectionChanged"
-                    OnBulkSave="OnBulkSave">
-            <ChildContent>
-                <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
-                <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="130" Editable="true" ValueType="typeof(string)" />
-                <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="130" Editable="true" ValueType="typeof(string)" />
-                <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" Editable="true" ValueType="typeof(DepartmentType)" />
-                <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Editable="true" ValueType="typeof(decimal)" Format="C0" />
-                <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" Editable="true" ValueType="typeof(bool)" />
-                <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" />
-            </ChildContent>
-        </SgDataGrid>
-    </SgCard>
-
-    @if (_selectedCount > 0)
-    {
-        <div style="margin-top:8px;padding:8px 12px;background:var(--sg-bg-subtle);border-radius:var(--sg-radius-md);font-size:12px;display:flex;align-items:center;gap:8px;">
-            <span style="font-weight:600;">Selected: @_selectedCount rows</span>
-            @if (_bulkLog.Count > 0)
+        <div style="margin-bottom:20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <SgButton Text="← Menu" Href="/datagrid-demo" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+            <span style="color:var(--sg-text-muted);font-size:12px;">|</span>
+            @foreach (var p in _navPages)
             {
-                <span style="color:var(--sg-text-muted);">| Last bulk edit: @string.Join(", ", _bulkLog)</span>
+                var active = Nav.Uri.EndsWith(p.Path);
+                <SgButton Text="@p.Label" Href="@p.Path" Size="SgSize.Sm"
+                          Variant="@(active ? SgButtonVariant.Primary : SgButtonVariant.Outlined)" />
             }
         </div>
-    }
 
-        <!-- Generated Code -->
-        <div style="margin-top:24px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--sg-text-muted);">Generated Code</span>
-                <button type="button" @onclick="CopyCodeToClipboard" style="display:inline-flex;align-items:center;gap:4px;background:var(--sg-surface-alt);border:1px solid var(--sg-border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--sg-text-muted);font-family:inherit;font-size:12px;">
-                    <span>@_copyIcon</span>
-                    <span style="font-size:11px;font-weight:600;">@_copyLabel</span>
-                </button>
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Configuration</SgTypography>
             </div>
-            <div class="code-block">@_generatedCode</div>
+            <SgRow Space="SgSize.Sm">
+                <SgCol Xs="12">
+                    <SgSegmented TValue="string" Options="@_presetOptions" ValueChanged="@(v => { if (v is not null) LoadPreset(v); })" Size="xs" Block />
+                </SgCol>
+            </SgRow>
+            <div style="position:sticky;top:0;z-index:10;background:var(--sg-surface);">
+                <SgRow Space="SgSize.Sm">
+                    <SgCol Xs="4">
+                        <SgCard Title="Data Generator" Status="SgCardStatus.Info" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSlider TValue="int" @bind-Value="_rowCount" Min="10" Max="200" Step="5" Label="Rows" ShowInput="true" />
+                                <SgRow Space="SgSize.Sm">
+                                    <SgCol Xs="6"><SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined" OnClick="@Regenerate" Block="true">↻ Regenerate</SgButton></SgCol>
+                                    <SgCol Xs="6"><SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" OnClick="@ApplySettings" Block="true">Apply</SgButton></SgCol>
+                                </SgRow>
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Xs="4">
+                        <SgCard Title="Selection Mode" Status="SgCardStatus.Success" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSwitch @bind-Value="_multi" Label="Multi-select" Size="SgSize.Sm" />
+                                <SgSwitch @bind-Value="_single" Label="Single-select" Size="SgSize.Sm" />
+                                <SgSwitch @bind-Value="_bulk" Label="Bulk Edit" Size="SgSize.Sm" />
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Xs="4">
+                        <SgCard Title="Display" Status="SgCardStatus.Warning" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSlider TValue="int" @bind-Value="_gridHeight" Min="300" Max="800" Step="20" Label="Height" Suffix="px" ShowInput="true" />
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                </SgRow>
+            </div>
+        </div>
+
+        <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
+            <SgDataGrid TItem="Employee" Items="_data"
+                        Height="@($"{_gridHeight}px")"
+                        AllowMultiSelect="@_multi"
+                        AllowSingleSelect="@_single"
+                        AllowBulkEdit="@_bulk"
+                        ShowStatusBar="true"
+                        PageSize="10"
+                        EnablePaging="true"
+                        SelectedItemsChanged="OnSelectionChanged"
+                        OnBulkSave="OnBulkSave">
+                <ChildContent>
+                    <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
+                    <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="130" Editable="true" ValueType="typeof(string)" />
+                    <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="130" Editable="true" ValueType="typeof(string)" />
+                    <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" Editable="true" ValueType="typeof(DepartmentType)" />
+                    <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Editable="true" ValueType="typeof(decimal)" Format="C0" />
+                    <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" Editable="true" ValueType="typeof(bool)" />
+                    <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" />
+                </ChildContent>
+            </SgDataGrid>
+        </SgCard>
+
+        @if (_selectedCount > 0)
+        {
+            <div style="margin-top:8px;padding:8px 12px;background:var(--sg-bg-subtle);border-radius:var(--sg-radius-md);font-size:12px;display:flex;align-items:center;gap:8px;">
+                <span style="font-weight:600;">Selected: @_selectedCount rows</span>
+                @if (_bulkLog.Count > 0)
+                {
+                    <span style="color:var(--sg-text-muted);">| Last bulk edit: @string.Join(", ", _bulkLog)</span>
+                }
+            </div>
+        }
+
+        <div class="demo-section" style="margin-top:32px;">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Generated Code</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Razor markup for the current configuration</SgTypography>
+            </div>
+            <DemoCodeBlock Code="@_generatedCode" Language="Razor" Title="SgDataGrid markup" Highlighted="true" RawCode="@_plainCode" />
         </div>
 
     </ChildContent>
 </SgCard>
 
 @code {
+    private static readonly List<SgSegmentedOption<string>> _presetOptions = [
+        new() { Value = "Minimal", Label = "Minimal" },
+        new() { Value = "Standard", Label = "Standard" },
+        new() { Value = "FullFeatured", Label = "Full Featured" },
+        new() { Value = "PowerUser", Label = "Power User" }
+    ];
+
     private List<Employee> _data = new();
     private int _rowCount = 50;
+    private int _gridHeight = 460;
     private bool _multi = true;
     private bool _single;
     private bool _bulk = true;
     private int _selectedCount;
     private List<string> _bulkLog = new();
+    private string _plainCode = "";
     private string _generatedCode = "";
-    private string _copyIcon = "📋";
-    private string _copyLabel = "Copy";
 
-    private void OnRowCountChange(ChangeEventArgs e) { _rowCount = int.Parse(e.Value?.ToString() ?? "50"); Regenerate(); }
+    private static readonly List<(string Label, string Path)> _navPages = new()
+    {
+        ("Basic", "/datagrid-demo/basic"),
+        ("Editing", "/datagrid-demo/editing"),
+        ("Selection", "/datagrid-demo/selection"),
+        ("Grouping", "/datagrid-demo/grouping"),
+        ("Detail", "/datagrid-demo/detail"),
+        ("Export", "/datagrid-demo/export"),
+        ("Virtualization", "/datagrid-demo/virtualization"),
+        ("Persistence", "/datagrid-demo/persistence"),
+    };
 
     protected override void OnInitialized() { Regenerate(); UpdateGeneratedCode(); }
-    private void Regenerate() => _data = SampleDataService.GenerateEmployees(_rowCount, 42);
 
-    private void OnSelectionChanged(IReadOnlyCollection<Employee> selected) { _selectedCount = selected.Count; UpdateGeneratedCode(); }
+    private void ApplySettings() { UpdateGeneratedCode(); }
+
+    private void Regenerate()
+    {
+        _data = SampleDataService.GenerateEmployees(_rowCount, 42);
+        UpdateGeneratedCode();
+    }
+
+    private void OnSelectionChanged(IReadOnlyCollection<Employee> selected) { _selectedCount = selected.Count; }
 
     private void OnBulkSave(SgBulkEditEventArgs<Employee> args)
     {
@@ -154,7 +180,7 @@
 
     private void UpdateGeneratedCode()
     {
-        _generatedCode = $"""
+        _plainCode = $"""
             <SgDataGrid TItem="Employee" Items="@_data"
                 Height="460px"
                 AllowMultiSelect="{_multi.ToString().ToLower()}"
@@ -176,30 +202,25 @@
                 </ChildContent>
             </SgDataGrid>
             """;
+        _generatedCode = DataGridCodeHighlighter.AutoHighlight(_plainCode);
     }
 
-    private async Task CopyCodeToClipboard()
+    private void LoadPreset(string name)
     {
-        try
+        switch (name)
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedCode);
-            _copyIcon = "✓";
-            _copyLabel = "Copied!";
-            StateHasChanged();
-            await Task.Delay(2000);
-            _copyIcon = "📋";
-            _copyLabel = "Copy";
-            StateHasChanged();
-        }
-        catch
-        {
-            _copyIcon = "✗";
-            _copyLabel = "Failed";
-            StateHasChanged();
-            await Task.Delay(1500);
-            _copyIcon = "📋";
-            _copyLabel = "Copy";
-            StateHasChanged();
+            case "Minimal":
+                _rowCount = 10; _multi = true; _single = false; _bulk = false;
+                break;
+            case "Standard":
+                _rowCount = 50; _multi = true; _single = false; _bulk = true;
+                break;
+            case "FullFeatured":
+                _rowCount = 100; _multi = true; _single = true; _bulk = true;
+                break;
+            case "PowerUser":
+                _rowCount = 200; _multi = false; _single = true; _bulk = true;
+                break;
         }
     }
 }

@@ -4,7 +4,6 @@
 @using SuperUI.Demo.Components
 @using SuperUI.Demo.Models
 @inject NavigationManager Nav
-@inject IJSRuntime JS
 
 <PageTitle>Export — DataGrid – SuperUI</PageTitle>
 
@@ -16,188 +15,201 @@
     </HeaderContent>
     <ChildContent>
 
-        <div class="dg-nav-row" style="margin-bottom:16px;">
-        <a class="dg-nav-link" href="/datagrid-demo">← Menu</a>
-        <a class="dg-nav-link" href="/datagrid-demo/basic">Basic</a>
-        <a class="dg-nav-link" href="/datagrid-demo/editing">Editing</a>
-        <a class="dg-nav-link" href="/datagrid-demo/selection">Selection</a>
-        <a class="dg-nav-link" href="/datagrid-demo/grouping">Grouping</a>
-        <a class="dg-nav-link" href="/datagrid-demo/detail">Detail</a>
-        <a class="dg-nav-link active" href="/datagrid-demo/export">Export</a>
-        <a class="dg-nav-link" href="/datagrid-demo/virtualization">Virtualization</a>
-        <a class="dg-nav-link" href="/datagrid-demo/persistence">Persistence</a>
-    </div>
+        <div style="margin-bottom:20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <SgButton Text="← Menu" Href="/datagrid-demo" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+            <span style="color:var(--sg-text-muted);font-size:12px;">|</span>
+            @foreach (var p in _navPages)
+            {
+                var active = Nav.Uri.EndsWith(p.Path);
+                <SgButton Text="@p.Label" Href="@p.Path" Size="SgSize.Sm"
+                          Variant="@(active ? SgButtonVariant.Primary : SgButtonVariant.Outlined)" />
+            }
+        </div>
 
-    <div class="dg-config">
-        <div class="dg-config-panel">
-            <div class="dg-config-panel-title">Data Generator</div>
-            <div class="dg-config-row">
-                <label>Rows:</label>
-                <input type="range" min="10" max="500" step="10" value="@_rowCount"
-                       @oninput="OnRowCountChange" />
-                <input type="number" class="dg-number-input" min="10" max="500" value="@_rowCount"
-                       @oninput="OnRowCountChange" />
-                <span class="dg-value">@_rowCount</span>
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Configuration</SgTypography>
             </div>
-            <div class="dg-config-row">
-                <label>Model:</label>
-                <select @onchange="OnModelTypeChange">
-                    <option value="Employee">Employee</option>
-                    <option value="BigEmployee">BigEmployee (30 cols)</option>
-                    <option value="Product">Product</option>
-                    <option value="Order">Order</option>
-                </select>
-            </div>
-            <div style="margin-top:8px;">
-                <button class="dg-config-row dg-toggle" @onclick="Regenerate" style="border-color:var(--sg-primary);color:var(--sg-primary);">⟳ Regenerate</button>
+            <SgRow Space="SgSize.Sm">
+                <SgCol Xs="12">
+                    <SgSegmented TValue="string" Options="@_presetOptions" ValueChanged="@(v => { if (v is not null) LoadPreset(v); })" Size="xs" Block />
+                </SgCol>
+            </SgRow>
+            <div style="position:sticky;top:0;z-index:10;background:var(--sg-surface);">
+                <SgRow Space="SgSize.Sm">
+                    <SgCol Xs="4">
+                        <SgCard Title="Data Generator" Status="SgCardStatus.Info" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSlider TValue="int" @bind-Value="_rowCount" Min="10" Max="500" Step="10" Label="Rows" ShowInput="true" />
+                                <SgSelect TValue="string" @bind-Value="_modelType" Items="@_modelTypes" Label="Model" />
+                                <SgRow Space="SgSize.Sm">
+                                    <SgCol Xs="6"><SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined" OnClick="@Regenerate" Block="true">↻ Regenerate</SgButton></SgCol>
+                                    <SgCol Xs="6"><SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" OnClick="@ApplySettings" Block="true">Apply</SgButton></SgCol>
+                                </SgRow>
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Xs="4">
+                        <SgCard Title="Feature Toggles" Status="SgCardStatus.Success" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Auto><SgSwitch @bind-Value="_showCsv" Label="CSV Export" Size="SgSize.Sm" /></SgCol>
+                                <SgCol Auto><SgSwitch @bind-Value="_showExcel" Label="Excel Export" Size="SgSize.Sm" /></SgCol>
+                                <SgCol Auto><SgSwitch @bind-Value="_showHighlight" Label="Row Highlighter" Size="SgSize.Sm" /></SgCol>
+                                <SgCol Auto><SgSwitch @bind-Value="_showAutoFit" Label="Auto-Fit" Size="SgSize.Sm" /></SgCol>
+                            </SgRow>
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Xs="4">
+                        <SgCard Title="Display" Status="SgCardStatus.Warning" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSlider TValue="int" @bind-Value="_gridHeight" Min="300" Max="800" Step="20" Label="Height" Suffix="px" ShowInput="true" />
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                </SgRow>
             </div>
         </div>
-        <div class="dg-config-panel">
-            <div class="dg-config-panel-title">Feature Toggles</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <label class="dg-toggle @(_showCsv ? "active" : "")">
-                    <input type="checkbox" checked="@_showCsv" @onchange="e => { _showCsv = !_showCsv; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>CSV Export</span>
-                </label>
-                <label class="dg-toggle @(_showExcel ? "active" : "")">
-                    <input type="checkbox" checked="@_showExcel" @onchange="e => { _showExcel = !_showExcel; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Excel Export</span>
-                </label>
-                <label class="dg-toggle @(_showHighlight ? "active" : "")">
-                    <input type="checkbox" checked="@_showHighlight" @onchange="e => { _showHighlight = !_showHighlight; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Row Highlighter</span>
-                </label>
-                <label class="dg-toggle @(_showAutoFit ? "active" : "")">
-                    <input type="checkbox" checked="@_showAutoFit" @onchange="e => { _showAutoFit = !_showAutoFit; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Auto-Fit</span>
-                </label>
-            </div>
-        </div>
-    </div>
 
-    <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
-        @if (_modelType == "Employee")
-        {
-            <SgDataGrid TItem="Employee" Items="_empData"
-                        Height="480px"
-                        ShowExportCsv="@_showCsv"
-                        ShowExportExcel="@_showExcel"
-                        ShowRowHighlighter="@_showHighlight"
-                        AllowAutoFit="@_showAutoFit"
-                        RowHighlightRules="@_highlightRules"
-                        ShowStatusBar="true"
-                        PageSize="15"
-                        EnablePaging="true">
-                <ChildContent>
-                    <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
-                    <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="120" />
-                    <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="120" />
-                    <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" />
-                    <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="C0" />
-                    <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" />
-                    <SgDataGridColumn TItem="Employee" Title="Rating" Value="@(e => e.Rating)" Width="90" Format="N2" />
-                    <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" />
-                </ChildContent>
-            </SgDataGrid>
-        }
-        else if (_modelType == "BigEmployee")
-        {
-            <SgDataGrid TItem="BigEmployee" Items="_bigData"
-                        Height="480px"
-                        ShowExportCsv="@_showCsv"
-                        ShowExportExcel="@_showExcel"
-                        AllowAutoFit="@_showAutoFit"
-                        ShowStatusBar="true"
-                        PageSize="15"
-                        EnablePaging="true">
-                <ChildContent>
-                    <SgDataGridColumn TItem="BigEmployee" Title="ID" Value="@(e => e.Id)" Width="60" />
-                    <SgDataGridColumn TItem="BigEmployee" Title="Name" Value="@(e => $"{e.FirstName} {e.LastName}")" Width="180" />
-                    <SgDataGridColumn TItem="BigEmployee" Title="Email" Value="@(e => e.Email)" Width="200" />
-                    <SgDataGridColumn TItem="BigEmployee" Title="Department" Value="@(e => e.Department)" Width="130" />
-                    <SgDataGridColumn TItem="BigEmployee" Title="Position" Value="@(e => e.Position)" Width="150" />
-                    <SgDataGridColumn TItem="BigEmployee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="N0" />
-                    <SgDataGridColumn TItem="BigEmployee" Title="Hire Date" Value="@(e => e.HireDate)" Width="110" Format="dd.MM.yyyy" />
-                    <SgDataGridColumn TItem="BigEmployee" Title="Active" Value="@(e => e.IsActive)" Width="80" />
-                </ChildContent>
-            </SgDataGrid>
-        }
-        else if (_modelType == "Product")
-        {
-            <SgDataGrid TItem="Product" Items="@_prodData"
-                        Height="480px"
-                        ShowExportCsv="@_showCsv"
-                        ShowExportExcel="@_showExcel"
-                        AllowAutoFit="@_showAutoFit"
-                        ShowStatusBar="true"
-                        PageSize="15"
-                        EnablePaging="true">
-                <ChildContent>
-                    <SgDataGridColumn TItem="Product" Title="ID" Value="@(e => e.Id)" Width="60" />
-                    <SgDataGridColumn TItem="Product" Title="Name" Value="@(e => e.Name)" Width="180" />
-                    <SgDataGridColumn TItem="Product" Title="Category" Value="@(e => e.Category)" Width="120" />
-                    <SgDataGridColumn TItem="Product" Title="Price" Value="@(e => e.Price)" Width="100" Format="N2" />
-                    <SgDataGridColumn TItem="Product" Title="Stock" Value="@(e => e.Stock)" Width="80" />
-                    <SgDataGridColumn TItem="Product" Title="Cost" Value="@(e => e.Cost)" Width="100" Format="N2" />
-                    <SgDataGridColumn TItem="Product" Title="Available" Value="@(e => e.IsAvailable)" Width="90" />
-                    <SgDataGridColumn TItem="Product" Title="Rating" Value="@(e => e.Rating)" Width="80" Format="N1" />
-                    <SgDataGridColumn TItem="Product" Title="Weight" Value="@(e => e.WeightKg)" Width="80" Format="N1" />
-                </ChildContent>
-            </SgDataGrid>
-        }
-        else
-        {
-            <SgDataGrid TItem="Order" Items="@_ordData"
-                        Height="480px"
-                        ShowExportCsv="@_showCsv"
-                        ShowExportExcel="@_showExcel"
-                        AllowAutoFit="@_showAutoFit"
-                        ShowStatusBar="true"
-                        PageSize="15"
-                        EnablePaging="true">
-                <ChildContent>
-                    <SgDataGridColumn TItem="Order" Title="ID" Value="@(e => e.Id)" Width="60" />
-                    <SgDataGridColumn TItem="Order" Title="Order #" Value="@(e => e.OrderNumber)" Width="140" />
-                    <SgDataGridColumn TItem="Order" Title="Date" Value="@(e => e.OrderDate)" Width="110" Format="dd.MM.yyyy" />
-                    <SgDataGridColumn TItem="Order" Title="Customer" Value="@(e => e.Customer)" Width="180" />
-                    <SgDataGridColumn TItem="Order" Title="Total" Value="@(e => e.Total)" Width="110" Format="N2" />
-                    <SgDataGridColumn TItem="Order" Title="Status" Value="@(e => e.Status)" Width="110" />
-                    <SgDataGridColumn TItem="Order" Title="Items" Value="@(e => e.ItemCount)" Width="70" />
-                    <SgDataGridColumn TItem="Order" Title="Paid" Value="@(e => e.IsPaid)" Width="70" />
-                </ChildContent>
-            </SgDataGrid>
-        }
-    </SgCard>
+        <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
+            @if (_modelType == "Employee")
+            {
+                <SgDataGrid TItem="Employee" Items="_empData"
+                            Height="@($"{_gridHeight}px")"
+                            ShowExportCsv="@_showCsv"
+                            ShowExportExcel="@_showExcel"
+                            ShowRowHighlighter="@_showHighlight"
+                            AllowAutoFit="@_showAutoFit"
+                            RowHighlightRules="@_highlightRules"
+                            ShowStatusBar="true"
+                            PageSize="15"
+                            EnablePaging="true">
+                    <ChildContent>
+                        <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
+                        <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="120" />
+                        <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="120" />
+                        <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" />
+                        <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="C0" />
+                        <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" />
+                        <SgDataGridColumn TItem="Employee" Title="Rating" Value="@(e => e.Rating)" Width="90" Format="N2" />
+                        <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" />
+                    </ChildContent>
+                </SgDataGrid>
+            }
+            else if (_modelType == "BigEmployee")
+            {
+                <SgDataGrid TItem="BigEmployee" Items="_bigData"
+                            Height="@($"{_gridHeight}px")"
+                            ShowExportCsv="@_showCsv"
+                            ShowExportExcel="@_showExcel"
+                            AllowAutoFit="@_showAutoFit"
+                            ShowStatusBar="true"
+                            PageSize="15"
+                            EnablePaging="true">
+                    <ChildContent>
+                        <SgDataGridColumn TItem="BigEmployee" Title="ID" Value="@(e => e.Id)" Width="60" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Name" Value="@(e => $"{e.FirstName} {e.LastName}")" Width="180" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Email" Value="@(e => e.Email)" Width="200" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Department" Value="@(e => e.Department)" Width="130" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Position" Value="@(e => e.Position)" Width="150" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="N0" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Hire Date" Value="@(e => e.HireDate)" Width="110" Format="dd.MM.yyyy" />
+                        <SgDataGridColumn TItem="BigEmployee" Title="Active" Value="@(e => e.IsActive)" Width="80" />
+                    </ChildContent>
+                </SgDataGrid>
+            }
+            else if (_modelType == "Product")
+            {
+                <SgDataGrid TItem="Product" Items="_prodData"
+                            Height="@($"{_gridHeight}px")"
+                            ShowExportCsv="@_showCsv"
+                            ShowExportExcel="@_showExcel"
+                            AllowAutoFit="@_showAutoFit"
+                            ShowStatusBar="true"
+                            PageSize="15"
+                            EnablePaging="true">
+                    <ChildContent>
+                        <SgDataGridColumn TItem="Product" Title="ID" Value="@(e => e.Id)" Width="60" />
+                        <SgDataGridColumn TItem="Product" Title="Name" Value="@(e => e.Name)" Width="180" />
+                        <SgDataGridColumn TItem="Product" Title="Category" Value="@(e => e.Category)" Width="120" />
+                        <SgDataGridColumn TItem="Product" Title="Price" Value="@(e => e.Price)" Width="100" Format="N2" />
+                        <SgDataGridColumn TItem="Product" Title="Stock" Value="@(e => e.Stock)" Width="80" />
+                        <SgDataGridColumn TItem="Product" Title="Cost" Value="@(e => e.Cost)" Width="100" Format="N2" />
+                        <SgDataGridColumn TItem="Product" Title="Available" Value="@(e => e.IsAvailable)" Width="90" />
+                        <SgDataGridColumn TItem="Product" Title="Rating" Value="@(e => e.Rating)" Width="80" Format="N1" />
+                        <SgDataGridColumn TItem="Product" Title="Weight" Value="@(e => e.WeightKg)" Width="80" Format="N1" />
+                    </ChildContent>
+                </SgDataGrid>
+            }
+            else
+            {
+                <SgDataGrid TItem="Order" Items="_ordData"
+                            Height="@($"{_gridHeight}px")"
+                            ShowExportCsv="@_showCsv"
+                            ShowExportExcel="@_showExcel"
+                            AllowAutoFit="@_showAutoFit"
+                            ShowStatusBar="true"
+                            PageSize="15"
+                            EnablePaging="true">
+                    <ChildContent>
+                        <SgDataGridColumn TItem="Order" Title="ID" Value="@(e => e.Id)" Width="60" />
+                        <SgDataGridColumn TItem="Order" Title="Order #" Value="@(e => e.OrderNumber)" Width="140" />
+                        <SgDataGridColumn TItem="Order" Title="Date" Value="@(e => e.OrderDate)" Width="110" Format="dd.MM.yyyy" />
+                        <SgDataGridColumn TItem="Order" Title="Customer" Value="@(e => e.Customer)" Width="180" />
+                        <SgDataGridColumn TItem="Order" Title="Total" Value="@(e => e.Total)" Width="110" Format="N2" />
+                        <SgDataGridColumn TItem="Order" Title="Status" Value="@(e => e.Status)" Width="110" />
+                        <SgDataGridColumn TItem="Order" Title="Items" Value="@(e => e.ItemCount)" Width="70" />
+                        <SgDataGridColumn TItem="Order" Title="Paid" Value="@(e => e.IsPaid)" Width="70" />
+                    </ChildContent>
+                </SgDataGrid>
+            }
+        </SgCard>
 
-        <!-- Generated Code -->
-        <div style="margin-top:24px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--sg-text-muted);">Generated Code</span>
-                <button type="button" @onclick="CopyCodeToClipboard" style="display:inline-flex;align-items:center;gap:4px;background:var(--sg-surface-alt);border:1px solid var(--sg-border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--sg-text-muted);font-family:inherit;font-size:12px;">
-                    <span>@_copyIcon</span>
-                    <span style="font-size:11px;font-weight:600;">@_copyLabel</span>
-                </button>
+        <div class="demo-section" style="margin-top:32px;">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Generated Code</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Razor markup for the current configuration</SgTypography>
             </div>
-            <div class="code-block">@_generatedCode</div>
+            <DemoCodeBlock Code="@_generatedCode" Language="Razor" Title="SgDataGrid markup" Highlighted="true" RawCode="@_plainCode" />
         </div>
 
     </ChildContent>
 </SgCard>
 
 @code {
+    private static readonly List<SgSegmentedOption<string>> _presetOptions = [
+        new() { Value = "Minimal", Label = "Minimal" },
+        new() { Value = "Standard", Label = "Standard" },
+        new() { Value = "FullFeatured", Label = "Full Featured" },
+        new() { Value = "PowerUser", Label = "Power User" }
+    ];
+
     private List<Employee> _empData = new();
     private List<BigEmployee> _bigData = new();
     private List<Product> _prodData = new();
     private List<Order> _ordData = new();
     private int _rowCount = 100;
+    private int _gridHeight = 480;
     private string _modelType = "Employee";
     private bool _showCsv = true;
     private bool _showExcel = true;
     private bool _showHighlight = true;
     private bool _showAutoFit;
+    private string _plainCode = "";
     private string _generatedCode = "";
-    private string _copyIcon = "📋";
-    private string _copyLabel = "Copy";
+
+    private static readonly List<(string Label, string Path)> _navPages = new()
+    {
+        ("Basic", "/datagrid-demo/basic"),
+        ("Editing", "/datagrid-demo/editing"),
+        ("Selection", "/datagrid-demo/selection"),
+        ("Grouping", "/datagrid-demo/grouping"),
+        ("Detail", "/datagrid-demo/detail"),
+        ("Export", "/datagrid-demo/export"),
+        ("Virtualization", "/datagrid-demo/virtualization"),
+        ("Persistence", "/datagrid-demo/persistence"),
+    };
+
+    private static readonly string[] _modelTypes = ["Employee", "BigEmployee", "Product", "Order"];
 
     private List<RowHighlightRule> _highlightRules = new()
     {
@@ -206,16 +218,17 @@
         new() { Id = "hr-inactive", Name = "Inactive", Rules = new List<QueryRule> { new() { FieldName = "IsActive", Operator = QueryFieldOperator.Equals, Value = "False" } }, RulesAnd = true, IsEnabled = true, BackgroundColor = "#f3f4f6", TextColor = "#6b7280" }
     };
 
-    private void OnRowCountChange(ChangeEventArgs e) { _rowCount = int.Parse(e.Value?.ToString() ?? "100"); Regenerate(); }
-    private void OnModelTypeChange(ChangeEventArgs e) { _modelType = e.Value?.ToString() ?? "Employee"; Regenerate(); UpdateGeneratedCode(); }
-
     protected override void OnInitialized() { Regenerate(); UpdateGeneratedCode(); }
+
+    private void ApplySettings() { UpdateGeneratedCode(); }
+
     private void Regenerate()
     {
         _empData = SampleDataService.GenerateEmployees(_rowCount, 42);
         _bigData = SampleDataService.GenerateBigEmployees(_rowCount, 42);
         _prodData = SampleDataService.GenerateProducts(_rowCount, 42);
         _ordData = SampleDataService.GenerateOrders(_rowCount, 42);
+        UpdateGeneratedCode();
     }
 
     private void UpdateGeneratedCode()
@@ -308,31 +321,26 @@
                 </SgDataGrid>
                 """
         };
-        _generatedCode = code;
+        _plainCode = code;
+        _generatedCode = DataGridCodeHighlighter.AutoHighlight(_plainCode);
     }
 
-    private async Task CopyCodeToClipboard()
+    private void LoadPreset(string name)
     {
-        try
+        switch (name)
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedCode);
-            _copyIcon = "✓";
-            _copyLabel = "Copied!";
-            StateHasChanged();
-            await Task.Delay(2000);
-            _copyIcon = "📋";
-            _copyLabel = "Copy";
-            StateHasChanged();
-        }
-        catch
-        {
-            _copyIcon = "✗";
-            _copyLabel = "Failed";
-            StateHasChanged();
-            await Task.Delay(1500);
-            _copyIcon = "📋";
-            _copyLabel = "Copy";
-            StateHasChanged();
+            case "Minimal":
+                _rowCount = 10; _modelType = "Employee"; _showCsv = true; _showExcel = false; _showHighlight = false; _showAutoFit = false;
+                break;
+            case "Standard":
+                _rowCount = 100; _modelType = "Employee"; _showCsv = true; _showExcel = true; _showHighlight = true; _showAutoFit = false;
+                break;
+            case "FullFeatured":
+                _rowCount = 200; _modelType = "BigEmployee"; _showCsv = true; _showExcel = true; _showHighlight = true; _showAutoFit = true;
+                break;
+            case "PowerUser":
+                _rowCount = 500; _modelType = "BigEmployee"; _showCsv = true; _showExcel = true; _showHighlight = true; _showAutoFit = true;
+                break;
         }
     }
 }

@@ -166,15 +166,17 @@ public sealed class SgThemeService : IAsyncDisposable
             await _js.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme-id', '{CurrentTheme.Id}')");
 
             // Typography & Density
-            var fontSizeValue = FontSize switch { "sm" => "14px", "lg" => "18px", _ => "16px" };
             var fontFamilyValue = FontFamily == "mono" ? "var(--sg-font-mono)" : "var(--sg-font-sans)";
             var densityValue = Density == "compact" ? "0.75" : "1.0";
 
-            await _js.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--sg-base-font-size', '{fontSizeValue}')");
             await _js.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--sg-base-font-family', '{fontFamilyValue}')");
             await _js.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--sg-density-factor', '{densityValue}')");
 
             await _js.InvokeVoidAsync("SuperUI.applyThemeCss", css);
+
+            // Apply font size AFTER theme CSS so user override wins over theme defaults
+            var fontSizeValue = FontSize switch { "sm" => "14px", "lg" => "18px", _ => "16px" };
+            await _js.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--sg-text-base', '{fontSizeValue}')");
         }
         catch (JSException) { }
         catch (JSDisconnectedException) { }

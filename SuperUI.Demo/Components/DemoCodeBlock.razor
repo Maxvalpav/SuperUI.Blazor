@@ -30,21 +30,31 @@
                           CssClass="sgc-demo-code-copy-btn" />
         </div>
     </div>
-    <pre class="sgc-demo-code-pre"><code class="sgc-demo-code-content">@Code</code></pre>
+    @if (Highlighted)
+    {
+        <pre class="sgc-demo-code-pre"><code class="sgc-demo-code-content">@((MarkupString)Code)</code></pre>
+    }
+    else
+    {
+        <pre class="sgc-demo-code-pre"><code class="sgc-demo-code-content">@Code</code></pre>
+    }
 </SgCard>
 
 @code {
     [Parameter] public string Code { get; set; } = string.Empty;
     [Parameter] public string? Language { get; set; } = "Razor";
     [Parameter] public string? Title { get; set; }
+    [Parameter] public bool Highlighted { get; set; }
+    [Parameter] public string? RawCode { get; set; }
 
     private bool _copied;
 
     private async Task CopyCodeAsync()
     {
+        var text = RawCode ?? Code;
         try
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Code);
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
             _copied = true;
             StateHasChanged();
             await Task.Delay(2000);
@@ -56,7 +66,7 @@
             try
             {
                 await JS.InvokeVoidAsync("eval",
-                    $"navigator.clipboard?.writeText?.(\"{Code.Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "")}\")");
+                    $"navigator.clipboard?.writeText?.(\"{text.Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "")}\")");
                 _copied = true;
                 StateHasChanged();
                 await Task.Delay(2000);

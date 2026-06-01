@@ -46,6 +46,19 @@ public sealed class ThemeRegistry
         Register(new MuseTheme());
         Register(new ForgeTheme());
         Register(new PrismTheme());
+        // ═══ Science & Accessibility themes ═══
+        Register(new ClarityClinicalTheme());
+        Register(new CircadianTheme());
+        Register(new ErgoTheme());
+        Register(new BiofiliaTheme());
+        Register(new LuminaTheme());
+        // ═══ Glassmorphism themes ═══
+        Register(new GlassLightTheme());
+        Register(new GlassDarkTheme());
+        Register(new GlassTintedTheme());
+        Register(new GlassNeumorphicTheme());
+        Register(new VeiledTheme());
+        Register(new WindowTheme());
     }
 
     /// <summary>Registers a new theme.</summary>

@@ -304,7 +304,7 @@ public class SgLlmConfig
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
     // --- Base / connection ---
-    public SgLlmProvider Provider { get; set; } = SgLlmProvider.OpenRouter;
+    public SgLlmProvider Provider { get; set; } = SgLlmProvider.OpenAiCompatible;
     public string? ModelId { get; set; }
     public string? ApiKey { get; set; }
     public string? BaseUrl { get; set; }

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using SuperUI.Localization;
 using SuperUI.Enums;
 using SuperUI.Services.Llm;
@@ -9,6 +10,7 @@ namespace SuperUI.Components.Llm;
 public partial class SgLlmSettings : ComponentBase, IDisposable
 {
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+    [Inject] private ILogger<SgLlmSettings> Logger { get; set; } = default!;
 
     [Parameter] public SgLlmConfig Config { get; set; } = new();
     /// <summary>Callback invoked when the configuration changes.</summary>
@@ -351,6 +353,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Local port test failed");
             _localPortOk = false;
             _localPortStatus = $"Error: {ex.Message}";
         }
@@ -432,7 +435,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     {
         if (!_providers.Contains(Config.Provider))
         {
-            Config.Provider = SgLlmProvider.OpenRouter;
+            Config.Provider = SgLlmProvider.OpenAiCompatible;
             Config.ModelId = null;
             Config.BaseUrl = DefaultBaseUrl(Config.Provider);
         }
@@ -535,6 +538,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
             {
                 // --- Frontier ---
                 SgLlmProvider.OpenAiCompatible => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.OpenCode => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
                 SgLlmProvider.Anthropic => await LlmService.GetAnthropicModelsAsync(Config.ApiKey),
                 SgLlmProvider.Google => await LlmService.GetGoogleModelsAsync(Config.ApiKey),
                 SgLlmProvider.XAi => await LlmService.GetXAiModelsAsync(Config.ApiKey),
@@ -645,6 +649,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to load models for {Provider}", Config.Provider);
             AddLog($"Error loading models: {ex.Message}", "Error");
             _models = SgLlmProviderRegistry.FallbackModels(Config.Provider);
             _modelIds = _models.Select(m => m.Id).ToList();
@@ -789,6 +794,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Provider health check failed");
             AddLog($"Health check error: {ex.Message}", "Error");
         }
         finally
@@ -812,6 +818,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Connection diagnostics failed");
             _lastStatus = "Error";
             _statusText = ex.Message;
             AddLog($"Diagnostics error: {ex.Message}", "Error");
@@ -892,6 +899,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to apply LLM settings");
             _lastStatus = "Error";
             _statusText = Localizer["Llm_Error"];
             AddLog($"Apply error: {ex.Message}", "Error");

@@ -207,7 +207,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
 
         if (!SgLlmProviderRegistry.IsAllowed(config.Provider))
         {
-            config.Provider = SgLlmProvider.OpenRouter;
+            config.Provider = SgLlmProvider.OpenAiCompatible;
             config.BaseUrl = SgLlmProviderRegistry.DefaultBaseUrl(config.Provider);
             config.ModelId = null;
         }

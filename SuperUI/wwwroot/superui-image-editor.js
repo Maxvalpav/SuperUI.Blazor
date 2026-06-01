@@ -307,9 +307,13 @@ export function init(mainCanvas, overlayCanvas, dotNetRef, options) {
             img.onload = () => {
                 fitCanvases();
                 hasImage = true;
+                mainCanvas._origW = img.naturalWidth;
+                mainCanvas._origH = img.naturalHeight;
                 const w = mainCanvas.width, h = mainCanvas.height;
                 ctx.clearRect(0, 0, w, h);
-                ctx.drawImage(img, 0, 0, w, h);
+                const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+                const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+                ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
                 currentState = ctx.getImageData(0, 0, w, h);
                 imageData = ctx.getImageData(0, 0, w, h);
                 undoStack.length = 0; redoStack.length = 0;
@@ -461,13 +465,17 @@ export function init(mainCanvas, overlayCanvas, dotNetRef, options) {
         mainCanvas.width = w; mainCanvas.height = w; // temp, resizeCanvas will fix
         overlayCanvas.width = w; overlayCanvas.height = w;
         fitCanvases();
-        // Put original back, scaled to current canvas
+        // Put original back, preserving aspect ratio
         const cw = mainCanvas.width, ch = mainCanvas.height;
         ctx.clearRect(0, 0, cw, ch);
+        const ow = mainCanvas._origW || imageData.width;
+        const oh = mainCanvas._origH || imageData.height;
+        const scale = Math.min(cw / ow, ch / oh);
+        const dw = ow * scale, dh = oh * scale;
         const tmp = document.createElement('canvas');
         tmp.width = imageData.width; tmp.height = imageData.height;
         tmp.getContext('2d').putImageData(imageData, 0, 0);
-        ctx.drawImage(tmp, 0, 0, cw, ch);
+        ctx.drawImage(tmp, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
         currentState = ctx.getImageData(0, 0, cw, ch);
         undoStack.length = 0; redoStack.length = 0;
         notifyUndoRedo();

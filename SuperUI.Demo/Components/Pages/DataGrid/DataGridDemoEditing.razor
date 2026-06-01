@@ -4,7 +4,6 @@
 @using SuperUI.Demo.Components
 @using SuperUI.Demo.Models
 @inject NavigationManager Nav
-@inject IJSRuntime JS
 
 <PageTitle>Editing — DataGrid – SuperUI</PageTitle>
 
@@ -16,131 +15,156 @@
     </HeaderContent>
     <ChildContent>
 
-        <div class="dg-nav-row" style="margin-bottom:16px;">
-        <a class="dg-nav-link" href="/datagrid-demo">← Menu</a>
-        <a class="dg-nav-link" href="/datagrid-demo/basic">Basic</a>
-        <a class="dg-nav-link active" href="/datagrid-demo/editing">Editing</a>
-        <a class="dg-nav-link" href="/datagrid-demo/selection">Selection</a>
-        <a class="dg-nav-link" href="/datagrid-demo/grouping">Grouping</a>
-        <a class="dg-nav-link" href="/datagrid-demo/detail">Detail</a>
-        <a class="dg-nav-link" href="/datagrid-demo/export">Export</a>
-        <a class="dg-nav-link" href="/datagrid-demo/virtualization">Virtualization</a>
-        <a class="dg-nav-link" href="/datagrid-demo/persistence">Persistence</a>
-    </div>
+        <div style="margin-bottom:20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <SgButton Text="← Menu" Href="/datagrid-demo" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+            <span style="color:var(--sg-text-muted);font-size:12px;">|</span>
+            @foreach (var p in _navPages)
+            {
+                var active = Nav.Uri.EndsWith(p.Path);
+                <SgButton Text="@p.Label" Href="@p.Path" Size="SgSize.Sm"
+                          Variant="@(active ? SgButtonVariant.Primary : SgButtonVariant.Outlined)" />
+            }
+        </div>
 
-    <div class="dg-config">
-        <div class="dg-config-panel">
-            <div class="dg-config-panel-title">Data Generator</div>
-            <div class="dg-config-row">
-                <label>Rows:</label>
-                <input type="range" min="10" max="200" step="5" value="@_rowCount"
-                       @oninput="OnRowCountChange" />
-                <input type="number" class="dg-number-input" min="10" max="200" value="@_rowCount"
-                       @oninput="OnRowCountChange" />
-                <span class="dg-value">@_rowCount</span>
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Configuration</SgTypography>
             </div>
-            <div style="margin-top:8px;">
-                <button class="dg-config-row dg-toggle" @onclick="Regenerate" style="border-color:var(--sg-primary);color:var(--sg-primary);">⟳ Regenerate</button>
+            <SgRow Space="SgSize.Sm">
+                <SgCol Xs="12">
+                    <SgSegmented TValue="string" Options="@_presetOptions" ValueChanged="@(v => { if (v is not null) LoadPreset(v); })" Size="xs" Block />
+                </SgCol>
+            </SgRow>
+            <div style="position:sticky;top:0;z-index:10;background:var(--sg-surface);">
+                <SgRow Space="SgSize.Sm">
+                    <SgCol Xs="4">
+                        <SgCard Title="Data Generator" Status="SgCardStatus.Info" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSlider TValue="int" @bind-Value="_rowCount" Min="10" Max="200" Step="5" Label="Rows" ShowInput="true" />
+                                <SgRow Space="SgSize.Sm">
+                                    <SgCol Xs="6"><SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined" OnClick="@Regenerate" Block="true">↻ Regenerate</SgButton></SgCol>
+                                    <SgCol Xs="6"><SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" OnClick="@ApplySettings" Block="true">Apply</SgButton></SgCol>
+                                </SgRow>
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Xs="4">
+                        <SgCard Title="Edit Mode" Status="SgCardStatus.Success" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Editor Type</SgTypography>
+                                    <SgSegmented TValue="bool" Options="@_editModeOptions" @bind-Value="_useModal" Size="SgSize.Sm" />
+                                </SgStack>
+                                <SgRow Space="SgSize.Sm">
+                                    <SgCol Auto><SgSwitch @bind-Value="_allowAdd" Label="Allow Add" Size="SgSize.Sm" /></SgCol>
+                                    <SgCol Auto><SgSwitch @bind-Value="_allowDelete" Label="Allow Delete" Size="SgSize.Sm" /></SgCol>
+                                </SgRow>
+                                <SgSlider TValue="int" @bind-Value="_modalWidth" Min="400" Max="800" Step="20" Label="Modal width" Suffix="px" ShowInput="true" />
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Xs="4">
+                        <SgCard Title="Display" Status="SgCardStatus.Warning" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSlider TValue="int" @bind-Value="_gridHeight" Min="300" Max="800" Step="20" Label="Height" Suffix="px" ShowInput="true" />
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                </SgRow>
             </div>
         </div>
-        <div class="dg-config-panel">
-            <div class="dg-config-panel-title">Edit Mode</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
-                <label class="dg-toggle @(_useModal ? "" : "active")">
-                    <input type="radio" name="editMode" checked="@(!_useModal)" @onchange="e => { _useModal = false; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Inline</span>
-                </label>
-                <label class="dg-toggle @(_useModal ? "active" : "")">
-                    <input type="radio" name="editMode" checked="@_useModal" @onchange="e => { _useModal = true; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Modal</span>
-                </label>
-            </div>
-            <div class="dg-config-row" style="margin-top:8px;">
-                <label class="dg-toggle @(_allowAdd ? "active" : "")">
-                    <input type="checkbox" checked="@_allowAdd" @onchange="e => { _allowAdd = !_allowAdd; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Allow Add</span>
-                </label>
-                <label class="dg-toggle @(_allowDelete ? "active" : "")">
-                    <input type="checkbox" checked="@_allowDelete" @onchange="e => { _allowDelete = !_allowDelete; StateHasChanged(); UpdateGeneratedCode(); }" />
-                    <span>Allow Delete</span>
-                </label>
-            </div>
-            <div class="dg-config-row">
-                <label>Modal width:</label>
-                <input type="range" min="400" max="800" step="20" value="@_modalWidth"
-                       @oninput="OnModalWidthChange" />
-                <span class="dg-value">@_modalWidth px</span>
-            </div>
-        </div>
-    </div>
 
-    <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
-        <SgDataGrid TItem="Employee" Items="_data"
-                    Height="460px"
-                    AllowEdit="true"
-                    UseModalForEdit="@_useModal"
-                    AllowAdd="@_allowAdd"
-                    AllowDelete="@_allowDelete"
-                    EditModalWidth="@_modalWidth"
-                    EditModalAddTitle="Add Employee"
-                    EditModalEditTitle="Edit Employee"
-                CreateItemFactory="@(() => new Employee())"
-                    ShowStatusBar="true"
-                    PageSize="10"
-                    EnablePaging="true"
-                    RowSaved="OnRowSaved">
-            <ChildContent>
-                <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" Editable="false" />
-                <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="130" Editable="true" ValueType="typeof(string)" />
-                <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="130" Editable="true" ValueType="typeof(string)" />
-                <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" Editable="true" ValueType="typeof(DepartmentType)" />
-                <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Editable="true" ValueType="typeof(decimal)" Format="C0" />
-                <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" Editable="true" ValueType="typeof(bool)" />
-                <SgDataGridColumn TItem="Employee" Title="Hire Date" Value="@(e => e.HireDate)" Width="120" Editable="true" ValueType="typeof(DateTime)" Format="dd.MM.yyyy" />
-                <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" Editable="true" ValueType="typeof(string)" />
-                <SgDataGridColumn TItem="Employee" Title="Level" Value="@(e => e.Level)" Width="100" Editable="true" ValueType="typeof(string)" />
-            </ChildContent>
-        </SgDataGrid>
-    </SgCard>
+        <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
+            <SgDataGrid TItem="Employee" Items="_data"
+                        Height="@($"{_gridHeight}px")"
+                        AllowEdit="true"
+                        UseModalForEdit="@_useModal"
+                        AllowAdd="@_allowAdd"
+                        AllowDelete="@_allowDelete"
+                        EditModalWidth="@_modalWidth"
+                        EditModalAddTitle="Add Employee"
+                        EditModalEditTitle="Edit Employee"
+                        CreateItemFactory="@(() => new Employee())"
+                        ShowStatusBar="true"
+                        PageSize="10"
+                        EnablePaging="true"
+                        RowSaved="OnRowSaved">
+                <ChildContent>
+                    <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" Editable="false" />
+                    <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="130" Editable="true" ValueType="typeof(string)" />
+                    <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="130" Editable="true" ValueType="typeof(string)" />
+                    <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="130" Editable="true" ValueType="typeof(DepartmentType)" />
+                    <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Editable="true" ValueType="typeof(decimal)" Format="C0" />
+                    <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" Editable="true" ValueType="typeof(bool)" />
+                    <SgDataGridColumn TItem="Employee" Title="Hire Date" Value="@(e => e.HireDate)" Width="120" Editable="true" ValueType="typeof(DateTime)" Format="dd.MM.yyyy" />
+                    <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" Editable="true" ValueType="typeof(string)" />
+                    <SgDataGridColumn TItem="Employee" Title="Level" Value="@(e => e.Level)" Width="100" Editable="true" ValueType="typeof(string)" />
+                </ChildContent>
+            </SgDataGrid>
+        </SgCard>
 
-        <!-- Generated Code -->
-        <div style="margin-top:24px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--sg-text-muted);">Generated Code</span>
-                <button type="button" @onclick="CopyCodeToClipboard" style="display:inline-flex;align-items:center;gap:4px;background:var(--sg-surface-alt);border:1px solid var(--sg-border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--sg-text-muted);font-family:inherit;font-size:12px;">
-                    <span>@_copyIcon</span>
-                    <span style="font-size:11px;font-weight:600;">@_copyLabel</span>
-                </button>
+        <div class="demo-section" style="margin-top:32px;">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Generated Code</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Razor markup for the current configuration</SgTypography>
             </div>
-            <div class="code-block">@_generatedCode</div>
+            <DemoCodeBlock Code="@_generatedCode" Language="Razor" Title="SgDataGrid markup" Highlighted="true" RawCode="@_plainCode" />
         </div>
 
     </ChildContent>
 </SgCard>
 
 @code {
+    private static readonly List<SgSegmentedOption<string>> _presetOptions = [
+        new() { Value = "Minimal", Label = "Minimal" },
+        new() { Value = "Standard", Label = "Standard" },
+        new() { Value = "FullFeatured", Label = "Full Featured" },
+        new() { Value = "PowerUser", Label = "Power User" }
+    ];
+
     private List<Employee> _data = new();
     private int _rowCount = 25;
+    private int _gridHeight = 460;
     private bool _useModal;
     private bool _allowAdd = true;
     private bool _allowDelete = true;
     private int _modalWidth = 500;
+    private string _plainCode = "";
     private string _generatedCode = "";
-    private string _copyIcon = "📋";
-    private string _copyLabel = "Copy";
 
-    private void OnRowCountChange(ChangeEventArgs e) { _rowCount = int.Parse(e.Value?.ToString() ?? "25"); Regenerate(); }
-    private void OnModalWidthChange(ChangeEventArgs e) { _modalWidth = int.Parse(e.Value?.ToString() ?? "500"); UpdateGeneratedCode(); }
+    private static readonly List<(string Label, string Path)> _navPages = new()
+    {
+        ("Basic", "/datagrid-demo/basic"),
+        ("Editing", "/datagrid-demo/editing"),
+        ("Selection", "/datagrid-demo/selection"),
+        ("Grouping", "/datagrid-demo/grouping"),
+        ("Detail", "/datagrid-demo/detail"),
+        ("Export", "/datagrid-demo/export"),
+        ("Virtualization", "/datagrid-demo/virtualization"),
+        ("Persistence", "/datagrid-demo/persistence"),
+    };
+
+    private static readonly List<SgSegmentedOption<bool>> _editModeOptions = new()
+    {
+        new() { Value = false, Label = "Inline" },
+        new() { Value = true, Label = "Modal" },
+    };
 
     protected override void OnInitialized() { Regenerate(); UpdateGeneratedCode(); }
 
-    private void Regenerate() => _data = SampleDataService.GenerateEmployees(_rowCount, 42);
+    private void ApplySettings() { UpdateGeneratedCode(); }
 
-    private void OnRowSaved(Employee item) { /* item already in grid */ }
+    private void Regenerate()
+    {
+        _data = SampleDataService.GenerateEmployees(_rowCount, 42);
+        UpdateGeneratedCode();
+    }
+
+    private void OnRowSaved(Employee item) { }
 
     private void UpdateGeneratedCode()
     {
-        _generatedCode = $"""
+        _plainCode = $"""
             <SgDataGrid TItem="Employee" Items="@_data"
                 Height="460px"
                 AllowEdit="true"
@@ -168,30 +192,25 @@
                 </ChildContent>
             </SgDataGrid>
             """;
+        _generatedCode = DataGridCodeHighlighter.AutoHighlight(_plainCode);
     }
 
-    private async Task CopyCodeToClipboard()
+    private void LoadPreset(string name)
     {
-        try
+        switch (name)
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedCode);
-            _copyIcon = "✓";
-            _copyLabel = "Copied!";
-            StateHasChanged();
-            await Task.Delay(2000);
-            _copyIcon = "📋";
-            _copyLabel = "Copy";
-            StateHasChanged();
-        }
-        catch
-        {
-            _copyIcon = "✗";
-            _copyLabel = "Failed";
-            StateHasChanged();
-            await Task.Delay(1500);
-            _copyIcon = "📋";
-            _copyLabel = "Copy";
-            StateHasChanged();
+            case "Minimal":
+                _rowCount = 10; _useModal = false; _allowAdd = false; _allowDelete = false; _modalWidth = 450;
+                break;
+            case "Standard":
+                _rowCount = 25; _useModal = false; _allowAdd = true; _allowDelete = true; _modalWidth = 500;
+                break;
+            case "FullFeatured":
+                _rowCount = 50; _useModal = true; _allowAdd = true; _allowDelete = true; _modalWidth = 700;
+                break;
+            case "PowerUser":
+                _rowCount = 100; _useModal = true; _allowAdd = true; _allowDelete = true; _modalWidth = 800;
+                break;
         }
     }
 }

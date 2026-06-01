@@ -15,7 +15,8 @@
         _dropdownOpen ? "sgc-nav-dropdown-open" : "",
         CssClass
     }.Where(x => !string.IsNullOrEmpty(x)));
-    <div class="@hClass">
+    var childDepth = NavDepth + 1;
+    <div class="@hClass" style="@($"--sgc-nav-depth: {NavDepth};")">
         <button type="button"
                 class="sgc-nav-dropdown-toggle"
                 disabled="@Disabled"
@@ -41,7 +42,9 @@
         {
             <div class="sgc-nav-dropdown" role="menu" aria-label="@Title">
                 <CascadingValue Value="this" IsFixed="true">
-                    @ChildContent
+                    <CascadingValue Name="NavDepth" Value="childDepth">
+                        @ChildContent
+                    </CascadingValue>
                 </CascadingValue>
             </div>
             <div class="sgc-nav-dropdown-backdrop" @onclick="CloseDropdown"></div>
@@ -60,6 +63,7 @@ else
     var groupClass = string.Join(" ", new[]
     {
         "sgc-nav-group",
+        NavDepth > 0 ? "sgc-nav-group-sub" : "",
         (_expanded || !string.IsNullOrEmpty(SearchQuery)) ? "expanded" : "",
         _isActive ? "sgc-active" : "",
         IsMini ? "mini" : "",
@@ -67,7 +71,8 @@ else
         titleMatch ? "sgc-nav-group-search-match" : "",
         CssClass
     }.Where(x => !string.IsNullOrEmpty(x)));
-    <div class="@groupClass" style="@(hideGroup ? "display:none" : null)">
+    var childDepth = NavDepth + 1;
+    <div class="@groupClass" style="@($"--sgc-nav-depth: {NavDepth};{(hideGroup ? " display:none;" : "")}")">
         <div class="sgc-nav-group-header"
              role="button"
              tabindex="@(Disabled ? "-1" : "0")"
@@ -96,7 +101,9 @@ else
         {
             <div class="sgc-nav-group-items" role="group" aria-label="@Title items">
                 <CascadingValue Value="this" IsFixed="true">
-                    @ChildContent
+                    <CascadingValue Name="NavDepth" Value="childDepth">
+                        @ChildContent
+                    </CascadingValue>
                 </CascadingValue>
             </div>
         }
@@ -190,6 +197,7 @@ else
     [CascadingParameter(Name = "Accordion")] public bool AccordionMode { get; set; }
     [CascadingParameter] public Action<SgNavGroup>? AccordionNotifier { get; set; }
     [CascadingParameter(Name = "IsHorizontal")] public bool IsHorizontal { get; set; }
+    [CascadingParameter(Name = "NavDepth")] public int NavDepth { get; set; }
 
     /// <summary>
     /// Gets or sets the group title.

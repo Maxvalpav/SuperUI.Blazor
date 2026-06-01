@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using SuperUI.Services.Llm;
 using SuperUI.Localization;
@@ -15,6 +16,7 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
     [Inject] private SgChatHistoryService HistoryService { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+    [Inject] private ILogger<SgChat> Logger { get; set; } = default!;
 
     [Parameter] public string? Title { get; set; } = "AI Assistant";
     /// <summary>Custom CSS class applied to the chat container.</summary>
@@ -39,9 +41,9 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
 
     private SgLlmConfig _config = new()
     {
-        Provider = SgLlmProvider.OpenRouter,
+        Provider = SgLlmProvider.OpenAiCompatible,
         ModelId = null,
-        BaseUrl = "https://openrouter.ai/api/v1",
+        BaseUrl = "https://api.openai.com/v1",
         ApiKey = ""
     };
 
@@ -146,6 +148,7 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
             }
             catch (Exception ex)
             {
+                Logger.LogError(ex, "Failed to load file {FileName}", file.Name);
                 _error = $"Failed to load file {file.Name}: {ex.Message}";
             }
         }
@@ -194,6 +197,7 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to send chat message");
             _error = ex.Message;
             _isThinking = false;
             _streaming = false;
@@ -368,8 +372,9 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
                 "https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js");
             _htmlCache[msg.Id] = html;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogWarning(ex, "Markdown rendering failed, using plain text fallback");
             _htmlCache[msg.Id] = System.Web.HttpUtility.HtmlEncode(msg.Content)
                 .Replace("\n", "<br>");
         }
@@ -417,6 +422,7 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to export chat");
             _error = $"Не удалось экспортировать чат: {ex.Message}";
         }
     }

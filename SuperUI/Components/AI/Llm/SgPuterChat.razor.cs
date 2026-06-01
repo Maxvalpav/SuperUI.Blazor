@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using SuperUI.Services.Llm;
 using SuperUI.Localization;
@@ -13,6 +14,7 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
     [Inject] private SgPuterService PuterService { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+    [Inject] private ILogger<SgPuterChat> Logger { get; set; } = default!;
 
     /// <summary>Custom CSS class applied to the chat container.</summary>
     [Parameter] public string? CssClass { get; set; }
@@ -71,6 +73,7 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to initialize PuterChat");
             _error = ex.Message;
         }
     }
@@ -151,6 +154,7 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to sign in to Puter");
             _error = ex.Message;
         }
         StateHasChanged();
@@ -166,6 +170,7 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to sign out from Puter");
             _error = ex.Message;
         }
         StateHasChanged();
@@ -230,6 +235,7 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to send message in PuterChat");
             _error = ex.Message;
             _isThinking = false;
         }
@@ -297,8 +303,9 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
                 "https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js");
             _htmlCache[msg.Id] = html;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogWarning(ex, "Markdown rendering failed, using plain text fallback");
             _htmlCache[msg.Id] = System.Web.HttpUtility.HtmlEncode(msg.Content)
                 .Replace("\n", "<br>");
         }
@@ -345,6 +352,7 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to export PuterChat");
             _error = $"Не удалось экспортировать чат: {ex.Message}";
         }
     }

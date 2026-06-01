@@ -4,7 +4,6 @@
 @using SuperUI.Demo.Components
 @using SuperUI.Demo.Models
 @inject NavigationManager Nav
-@inject IJSRuntime JS
 
 <PageTitle>Grouping — DataGrid – SuperUI</PageTitle>
 
@@ -16,121 +15,131 @@
     </HeaderContent>
     <ChildContent>
 
-        <div class="dg-nav-row" style="margin-bottom:16px;">
-        <a class="dg-nav-link" href="/datagrid-demo">← Menu</a>
-        <a class="dg-nav-link" href="/datagrid-demo/basic">Basic</a>
-        <a class="dg-nav-link" href="/datagrid-demo/editing">Editing</a>
-        <a class="dg-nav-link" href="/datagrid-demo/selection">Selection</a>
-        <a class="dg-nav-link active" href="/datagrid-demo/grouping">Grouping</a>
-        <a class="dg-nav-link" href="/datagrid-demo/detail">Detail</a>
-        <a class="dg-nav-link" href="/datagrid-demo/export">Export</a>
-        <a class="dg-nav-link" href="/datagrid-demo/virtualization">Virtualization</a>
-        <a class="dg-nav-link" href="/datagrid-demo/persistence">Persistence</a>
-    </div>
+        <div style="margin-bottom:20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <SgButton Text="← Menu" Href="/datagrid-demo" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+            <span style="color:var(--sg-text-muted);font-size:12px;">|</span>
+            @foreach (var p in _navPages)
+            {
+                var active = Nav.Uri.EndsWith(p.Path);
+                <SgButton Text="@p.Label" Href="@p.Path" Size="SgSize.Sm"
+                          Variant="@(active ? SgButtonVariant.Primary : SgButtonVariant.Outlined)" />
+            }
+        </div>
 
-    <div class="dg-config">
-        <div class="dg-config-panel">
-            <div class="dg-config-panel-title">Data Generator</div>
-            <div class="dg-config-row">
-                <label>Rows:</label>
-                <input type="range" min="20" max="500" step="10" value="@_rowCount"
-                       @oninput="OnRowCountChange" />
-                <input type="number" class="dg-number-input" min="20" max="500" value="@_rowCount"
-                       @oninput="OnRowCountChange" />
-                <span class="dg-value">@_rowCount</span>
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Configuration</SgTypography>
             </div>
-            <div style="margin-top:8px;">
-                <button class="dg-config-row dg-toggle" @onclick="Regenerate" style="border-color:var(--sg-primary);color:var(--sg-primary);">⟳ Regenerate</button>
+            <SgRow Space="SgSize.Sm">
+                <SgCol Xs="12">
+                    <SgSegmented TValue="string" Options="@_presetOptions" ValueChanged="@(v => { if (v is not null) LoadPreset(v); })" Size="xs" Block />
+                </SgCol>
+            </SgRow>
+            <div style="position:sticky;top:0;z-index:10;background:var(--sg-surface);">
+                <SgRow Space="SgSize.Sm">
+                    <SgCol Xs="4">
+                        <SgCard Title="Data Generator" Status="SgCardStatus.Info" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSlider TValue="int" @bind-Value="_rowCount" Min="20" Max="500" Step="10" Label="Rows" ShowInput="true" />
+                                <SgRow Space="SgSize.Sm">
+                                    <SgCol Xs="6"><SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined" OnClick="@Regenerate" Block="true">↻ Regenerate</SgButton></SgCol>
+                                    <SgCol Xs="6"><SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" OnClick="@ApplySettings" Block="true">Apply</SgButton></SgCol>
+                                </SgRow>
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Xs="4">
+                        <SgCard Title="Aggregate Functions" Status="SgCardStatus.Success" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSelect TValue="string" @bind-Value="_salaryAgg" Items="_aggregateOptions" Label="Salary agg" />
+                                <SgSelect TValue="string" @bind-Value="_ratingAgg" Items="_aggregateOptions" Label="Rating agg" />
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Xs="4">
+                        <SgCard Title="Display" Status="SgCardStatus.Warning" Shadow="SgShadow.Sm" Size="SgSize.Sm" Compact="true">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgSelect TValue="int" @bind-Value="_pageSize" Items="_pageSizeOptions" Label="Page Size" />
+                                <SgSlider TValue="int" @bind-Value="_gridHeight" Min="300" Max="900" Step="20" Label="Height" Suffix="px" ShowInput="true" />
+                            </SgStack>
+                        </SgCard>
+                    </SgCol>
+                </SgRow>
             </div>
         </div>
-        <div class="dg-config-panel">
-            <div class="dg-config-panel-title">Aggregate Functions</div>
-            <div class="dg-config-row">
-                <label>Salary agg:</label>
-                <select value="@_salaryAgg" @onchange="OnSalaryAggChange">
-                    <option value="Average">Average</option>
-                    <option value="Sum">Sum</option>
-                    <option value="Min">Min</option>
-                    <option value="Max">Max</option>
-                    <option value="Count">Count</option>
-                    <option value="None">None</option>
-                </select>
-            </div>
-            <div class="dg-config-row">
-                <label>Rating agg:</label>
-                <select value="@_ratingAgg" @onchange="OnRatingAggChange">
-                    <option value="Average">Average</option>
-                    <option value="Sum">Sum</option>
-                    <option value="Min">Min</option>
-                    <option value="Max">Max</option>
-                    <option value="Count">Count</option>
-                    <option value="None">None</option>
-                </select>
-            </div>
-            <div class="dg-config-row">
-                <label>Page size:</label>
-                <select value="@_pageSize" @onchange="OnPageSizeChange">
-                    <option value="15">15</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                </select>
-            </div>
-        </div>
-    </div>
 
-    <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
-        <SgDataGrid TItem="Employee" Items="_data"
-                    Height="560px"
-                    ShowStatusBar="true"
-                    ShowColumnChooser="true"
-                    PageSize="@_pageSize"
-                    EnablePaging="true">
-            <ChildContent>
-                <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="140" Sortable="true" Filterable="true" GroupBy="true" />
-                <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
-                <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="120" />
-                <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="120" />
-                <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="N0" Aggregate="@GetAggregate(_salaryAgg)" />
-                <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" />
-                <SgDataGridColumn TItem="Employee" Title="Rating" Value="@(e => e.Rating)" Width="90" Format="N2" Aggregate="@GetAggregate(_ratingAgg)" />
-                <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" />
-            </ChildContent>
-        </SgDataGrid>
-    </SgCard>
+        <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true" OverflowHidden="true">
+            <SgDataGrid TItem="Employee" Items="_data"
+                        Height="@($"{_gridHeight}px")"
+                        ShowStatusBar="true"
+                        ShowColumnChooser="true"
+                        PageSize="@_pageSize"
+                        EnablePaging="true">
+                <ChildContent>
+                    <SgDataGridColumn TItem="Employee" Title="Department" Value="@(e => e.Department)" Width="140" Sortable="true" Filterable="true" GroupBy="true" />
+                    <SgDataGridColumn TItem="Employee" Title="ID" Value="@(e => e.Id)" Width="60" />
+                    <SgDataGridColumn TItem="Employee" Title="First Name" Value="@(e => e.FirstName)" Width="120" />
+                    <SgDataGridColumn TItem="Employee" Title="Last Name" Value="@(e => e.LastName)" Width="120" />
+                    <SgDataGridColumn TItem="Employee" Title="Salary" Value="@(e => e.Salary)" Width="110" Format="N0" Aggregate="@GetAggregate(_salaryAgg)" />
+                    <SgDataGridColumn TItem="Employee" Title="Active" Value="@(e => e.IsActive)" Width="90" />
+                    <SgDataGridColumn TItem="Employee" Title="Rating" Value="@(e => e.Rating)" Width="90" Format="N2" Aggregate="@GetAggregate(_ratingAgg)" />
+                    <SgDataGridColumn TItem="Employee" Title="Position" Value="@(e => e.Position)" Width="140" />
+                </ChildContent>
+            </SgDataGrid>
+        </SgCard>
 
-        <!-- Generated Code -->
-        <div style="margin-top:24px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--sg-text-muted);">Generated Code</span>
-                <button type="button" @onclick="CopyCodeToClipboard" style="display:inline-flex;align-items:center;gap:4px;background:var(--sg-surface-alt);border:1px solid var(--sg-border);border-radius:6px;padding:4px 10px;cursor:pointer;color:var(--sg-text-muted);font-family:inherit;font-size:12px;">
-                    <span>@_copyIcon</span>
-                    <span style="font-size:11px;font-weight:600;">@_copyLabel</span>
-                </button>
+        <div class="demo-section" style="margin-top:32px;">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Generated Code</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Razor markup for the current configuration</SgTypography>
             </div>
-            <div class="code-block">@_generatedCode</div>
+            <DemoCodeBlock Code="@_generatedCode" Language="Razor" Title="SgDataGrid markup" Highlighted="true" RawCode="@_plainCode" />
         </div>
 
     </ChildContent>
 </SgCard>
 
 @code {
+    private static readonly List<SgSegmentedOption<string>> _presetOptions = [
+        new() { Value = "Minimal", Label = "Minimal" },
+        new() { Value = "Standard", Label = "Standard" },
+        new() { Value = "FullFeatured", Label = "Full Featured" },
+        new() { Value = "PowerUser", Label = "Power User" }
+    ];
+
     private List<Employee> _data = new();
     private int _rowCount = 100;
+    private int _gridHeight = 560;
     private int _pageSize = 25;
     private string _salaryAgg = "Average";
     private string _ratingAgg = "Average";
+    private string _plainCode = "";
     private string _generatedCode = "";
-    private string _copyIcon = "📋";
-    private string _copyLabel = "Copy";
 
-    private void OnRowCountChange(ChangeEventArgs e) { _rowCount = int.Parse(e.Value?.ToString() ?? "100"); Regenerate(); }
-    private void OnSalaryAggChange(ChangeEventArgs e) { _salaryAgg = e.Value?.ToString() ?? "Average"; UpdateGeneratedCode(); }
-    private void OnRatingAggChange(ChangeEventArgs e) { _ratingAgg = e.Value?.ToString() ?? "Average"; UpdateGeneratedCode(); }
-    private void OnPageSizeChange(ChangeEventArgs e) { _pageSize = int.Parse(e.Value?.ToString() ?? "25"); UpdateGeneratedCode(); }
+    private static readonly List<(string Label, string Path)> _navPages = new()
+    {
+        ("Basic", "/datagrid-demo/basic"),
+        ("Editing", "/datagrid-demo/editing"),
+        ("Selection", "/datagrid-demo/selection"),
+        ("Grouping", "/datagrid-demo/grouping"),
+        ("Detail", "/datagrid-demo/detail"),
+        ("Export", "/datagrid-demo/export"),
+        ("Virtualization", "/datagrid-demo/virtualization"),
+        ("Persistence", "/datagrid-demo/persistence"),
+    };
+
+    private static readonly string[] _aggregateOptions = ["Average", "Sum", "Min", "Max", "Count", "None"];
+    private static readonly int[] _pageSizeOptions = [15, 25, 50, 100];
 
     protected override void OnInitialized() { Regenerate(); UpdateGeneratedCode(); }
-    private void Regenerate() => _data = SampleDataService.GenerateEmployees(_rowCount, 42);
+
+    private void ApplySettings() { UpdateGeneratedCode(); }
+
+    private void Regenerate()
+    {
+        _data = SampleDataService.GenerateEmployees(_rowCount, 42);
+        UpdateGeneratedCode();
+    }
 
     private static Aggregate GetAggregate(string name) => name switch
     {
@@ -144,7 +153,7 @@
 
     private void UpdateGeneratedCode()
     {
-        _generatedCode = $"""
+        _plainCode = $"""
             <SgDataGrid TItem="Employee" Items="@_data"
                 Height="560px"
                 ShowStatusBar="true"
@@ -163,30 +172,25 @@
                 </ChildContent>
             </SgDataGrid>
             """;
+        _generatedCode = DataGridCodeHighlighter.AutoHighlight(_plainCode);
     }
 
-    private async Task CopyCodeToClipboard()
+    private void LoadPreset(string name)
     {
-        try
+        switch (name)
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedCode);
-            _copyIcon = "✓";
-            _copyLabel = "Copied!";
-            StateHasChanged();
-            await Task.Delay(2000);
-            _copyIcon = "📋";
-            _copyLabel = "Copy";
-            StateHasChanged();
-        }
-        catch
-        {
-            _copyIcon = "✗";
-            _copyLabel = "Failed";
-            StateHasChanged();
-            await Task.Delay(1500);
-            _copyIcon = "📋";
-            _copyLabel = "Copy";
-            StateHasChanged();
+            case "Minimal":
+                _rowCount = 20; _pageSize = 15; _salaryAgg = "Count"; _ratingAgg = "None";
+                break;
+            case "Standard":
+                _rowCount = 100; _pageSize = 25; _salaryAgg = "Average"; _ratingAgg = "Average";
+                break;
+            case "FullFeatured":
+                _rowCount = 200; _pageSize = 50; _salaryAgg = "Sum"; _ratingAgg = "Average";
+                break;
+            case "PowerUser":
+                _rowCount = 500; _pageSize = 100; _salaryAgg = "Sum"; _ratingAgg = "Max";
+                break;
         }
     }
 }

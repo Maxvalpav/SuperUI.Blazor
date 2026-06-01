@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -14,6 +15,7 @@ namespace SuperUI.Components;
 public sealed class SgRagService : IAsyncDisposable
 {
     private readonly IJSRuntime _js;
+    private readonly ILogger<SgRagService>? _logger;
     private IJSObjectReference? _module;
     private DotNetObjectReference<SgRagService>? _selfRef;
     private string? _instanceId;
@@ -54,9 +56,10 @@ public sealed class SgRagService : IAsyncDisposable
     /// <summary>Raised when the service state changes.</summary>
     public event Action<SgRagReadyState>? OnStateChanged;
 
-    public SgRagService(IJSRuntime js)
+    public SgRagService(IJSRuntime js, ILogger<SgRagService>? logger = null)
     {
         _js = js;
+        _logger = logger;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -92,7 +95,7 @@ public sealed class SgRagService : IAsyncDisposable
             try { await _module.InvokeVoidAsync("dispose", _instanceId); }
             catch (JSDisconnectedException) { }
             catch (TaskCanceledException) { }
-            catch { }
+            catch (Exception ex) { _logger?.LogWarning(ex, "RAG dispose JS call failed"); }
         }
 
         var selfRef = _selfRef;
@@ -104,7 +107,7 @@ public sealed class SgRagService : IAsyncDisposable
             try { await _module.DisposeAsync(); }
             catch (JSDisconnectedException) { }
             catch (TaskCanceledException) { }
-            catch { }
+            catch (Exception ex) { _logger?.LogWarning(ex, "RAG module dispose failed"); }
             _module = null;
         }
     }
@@ -120,7 +123,7 @@ public sealed class SgRagService : IAsyncDisposable
             var result = await _module.InvokeAsync<System.Text.Json.JsonElement>("checkWebGpu", ct);
             return result.TryGetProperty("available", out var av) && av.GetBoolean();
         }
-        catch { return false; }
+        catch (Exception ex) { _logger?.LogWarning(ex, "WebGPU check failed"); return false; }
     }
 
     /// <summary>Loads the embedding model.</summary>
@@ -465,7 +468,7 @@ public sealed class SgRagService : IAsyncDisposable
             {
                 // Tell JS to abort this specific stream.
                 try { _ = _module?.InvokeVoidAsync("cancelStream", CancellationToken.None, _instanceId, streamId); }
-                catch { }
+                catch (Exception ex) { _logger?.LogWarning(ex, "Failed to cancel RAG stream {StreamId}", streamId); }
                 CompleteStream(streamId, cancelled: true);
             });
 
@@ -482,9 +485,10 @@ public sealed class SgRagService : IAsyncDisposable
             _streamRouters.TryRemove(streamId, out _);
             if (jsTask is not null)
             {
-                try { await jsTask.ConfigureAwait(false); } catch { }
-            }
+                try { await jsTask.ConfigureAwait(false); } catch (Exception ex) { _logger?.LogWarning(ex, "RAG stream task faulted"); }
         }
+    }
+
     }
 
     private void CompleteStream(string streamId, SgRagAnswer? result = null, Exception? error = null, bool cancelled = false)
