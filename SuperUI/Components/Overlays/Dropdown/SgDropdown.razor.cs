@@ -396,7 +396,7 @@ public partial class SgDropdown : SgJsComponentBase
             _lastRenderedOpen = true;
             if (AutoFocusSearch && Searchable)
             {
-                try { await _searchRef.FocusAsync(); } catch { }
+                try { await _searchRef.FocusAsync(); } catch (JSDisconnectedException) { }
             }
             await AttachAsync();
         }

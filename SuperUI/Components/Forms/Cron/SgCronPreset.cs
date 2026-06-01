@@ -5,17 +5,22 @@ namespace SuperUI.Components;
 /// </summary>
 public sealed class SgCronPreset
 {
+    /// <summary>Display label for the preset.</summary>
     public string Label { get; init; } = "";
+    /// <summary>The cron expression for this preset.</summary>
     public string Expression { get; init; } = "* * * * *";
 
+    /// <summary>Initializes a new empty preset.</summary>
     public SgCronPreset() { }
 
+    /// <summary>Initializes a new preset with label and expression.</summary>
     public SgCronPreset(string label, string expression)
     {
         Label = label;
         Expression = expression;
     }
 
+    /// <summary>Default English cron presets.</summary>
     public static IReadOnlyList<SgCronPreset> Defaults { get; } = new[]
     {
         new SgCronPreset("Every minute", "* * * * *"),
@@ -29,6 +34,7 @@ public sealed class SgCronPreset
         new SgCronPreset("Once a year", "0 0 1 1 *"),
     };
 
+    [Obsolete("Use Defaults with a localized label via ISuperUILocalizer instead.")]
     public static IReadOnlyList<SgCronPreset> DefaultsRu { get; } = new[]
     {
         new SgCronPreset("Каждую минуту", "* * * * *"),

@@ -3060,7 +3060,8 @@ private static object? ConvertFromString(string? text, Type type)
             if (filterType == "date" || filterType == "datetime")
                 tree = BuildFilterTree(key, narrowedValues);
         }
-        catch { tree = null; }
+        catch (ObjectDisposedException) { tree = null; }
+        catch (InvalidOperationException) { tree = null; }
 
         _filterMenuAllValues = narrowedValues;
         _filterMenuVisibleValues = narrowedValues;
@@ -4473,13 +4474,8 @@ private static object? ConvertFromString(string? text, Type type)
     {
         try
         {
-            Logger.LogDebug($"[DataGrid] ========== APPLY CHOOSER CHANGES START ==========");
-            Logger.LogDebug($"[DataGrid] _chooserPinnedColumns before: {string.Join(",", _chooserPinnedColumns)}");
-            Logger.LogDebug($"[DataGrid] _pinnedColumns before: {string.Join(",", _pinnedColumns)}");
-            
             // Close menu FIRST before applying changes
             _showChooser = false;
-            Logger.LogDebug($"[DataGrid] Chooser closed, _showChooser = false");
             
             // Apply changes
             _hiddenColumns.Clear();
@@ -4490,13 +4486,8 @@ private static object? ConvertFromString(string? text, Type type)
             foreach (var key in _chooserPinnedColumns)
                 _pinnedColumns.Add(key);
 
-            Logger.LogDebug($"[DataGrid] Hidden columns: {string.Join(", ", _hiddenColumns)}");
-            Logger.LogDebug($"[DataGrid] Pinned columns after: {string.Join(", ", _pinnedColumns)}");
-
             // Invalidate all caches
             _columnsVersion++;
-            Logger.LogDebug($"[DataGrid] _columnsVersion incremented to: {_columnsVersion}");
-            
             _pinnedLeftOffsetsCache = null;
             _pinnedLeftOffsetsCacheVersion = -1;
             _visibleColumnsCache = null;
@@ -4506,22 +4497,11 @@ private static object? ConvertFromString(string? text, Type type)
             _orderedColumnsCacheColumnsVersion = -1;
             InvalidateComputedRowsCache();
             
-            Logger.LogDebug($"[DataGrid] All caches invalidated");
-            
             // Force rebuild of pinned offsets cache
-            Logger.LogDebug($"[DataGrid] Forcing rebuild of pinned offsets cache...");
             EnsurePinnedLeftOffsets();
-            Logger.LogDebug($"[DataGrid] Pinned offsets cache rebuilt");
             
-            Logger.LogDebug($"[DataGrid] Calling StateHasChanged...");
             await InvokeAsync(StateHasChanged);
-            Logger.LogDebug($"[DataGrid] StateHasChanged completed");
-            
-            Logger.LogDebug($"[DataGrid] Saving state...");
             await SaveStateAsync();
-            Logger.LogDebug($"[DataGrid] State saved");
-            
-            Logger.LogDebug($"[DataGrid] ========== APPLY CHOOSER CHANGES END ==========");
         }
         catch (Exception ex)
         {

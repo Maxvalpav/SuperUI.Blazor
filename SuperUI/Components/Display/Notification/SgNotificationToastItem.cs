@@ -4,7 +4,7 @@ using SuperUI.Enums;
 namespace SuperUI.Components;
 
 /// <summary>
-/// Represents a transient toast notification displayed by <see cref="SgNotificationToastHost"/>.
+/// Represents a transient toast notification.
 /// </summary>
 public sealed class SgNotificationToastItem
 {

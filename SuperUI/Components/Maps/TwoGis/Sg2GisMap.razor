@@ -9,6 +9,7 @@
 @code {
     private ElementReference _container;
     private bool _ready;
+    private DotNetObjectReference<Sg2GisMap>? _mapRef;
     private IEnumerable<SgMapMarker>? _lastMarkersRef;
     private IEnumerable<SgMapPolyline>? _lastPolylinesRef;
     private IEnumerable<SgMapPolygon>? _lastPolygonsRef;
@@ -93,8 +94,9 @@
     {
         if (Options == null) return;
         
+        _mapRef = DotNetObjectReference.Create(this);
         await SafeInvokeVoidAsync("initMap", 
-            DotNetObjectReference.Create(this), 
+            _mapRef, 
             _container, 
             Id, 
             Options, 
@@ -122,4 +124,12 @@
     /// </summary>
     public async Task SetCenterAsync(double lon, double lat, double? zoom = null) 
         => await SafeInvokeVoidAsync("setCenter", Id, lon, lat, zoom);
+
+    /// <inheritdoc />
+    protected override ValueTask OnDisposingAsync()
+    {
+        _mapRef?.Dispose();
+        _mapRef = null;
+        return default;
+    }
 }

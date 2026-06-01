@@ -1289,7 +1289,9 @@ namespace SuperUI.Components
                     var cv = Convert.ToDouble(cellValue, CultureInfo.CurrentCulture);
                     return cv.CompareTo(fv);
                 }
-                catch { return 0; }
+                catch (FormatException) { return 0; }
+                catch (InvalidCastException) { return 0; }
+                catch (OverflowException) { return 0; }
             }
         }
 
@@ -1393,7 +1395,9 @@ var prefix = col.Aggregate switch
                     if (v is null) continue;
                     double d;
                     try { d = Convert.ToDouble(v, CultureInfo.InvariantCulture); }
-                    catch { failed = true; break; }
+                    catch (FormatException) { failed = true; break; }
+                    catch (InvalidCastException) { failed = true; break; }
+                    catch (OverflowException) { failed = true; break; }
                     sum += d;
                     if (d < min) min = d;
                     if (d > max) max = d;
@@ -1619,7 +1623,9 @@ var prefix = col.Aggregate switch
                     prop.SetValue(item, val);
                     col.OnValueChanged?.Invoke(item, val);
                 }
-                catch { /* keep old value */ }
+                catch (InvalidCastException) { /* keep old value */ }
+                catch (FormatException) { /* keep old value */ }
+                catch (OverflowException) { /* keep old value */ }
             }
             await UpdateData();
         }

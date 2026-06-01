@@ -16,7 +16,7 @@ namespace SuperUI.Components;
 /// <para>Event <see cref="Changed"/> вызывается ВНЕ блокировки — подписчик не
 /// может вызвать deadlock или повторный mutation через тот же сервис.</para>
 /// <para>Toast notifications now delegate to <see cref="SgToastService"/> internally.
-/// <see cref="SgNotificationToastHost"/> is kept for backward compatibility but
+/// The legacy toast queue is kept for backward compatibility but
 /// deprecated — use <see cref="SgToastHost"/> + <see cref="SgToastService"/> directly.</para>
 /// </remarks>
 public sealed class SgNotificationService
@@ -38,10 +38,6 @@ public sealed class SgNotificationService
 
     /// <summary>Raised whenever the notification list changes (added, removed, marked read).</summary>
     public event Action? Changed;
-
-    /// <summary>Raised when the toast queue changes. Kept for backward compatibility.</summary>
-    [Obsolete("Use SgToastService.Added/Removed directly instead of SgNotificationService.ToastsChanged.")]
-    public event Action? ToastsChanged;
 
     /// <summary>Иммутабельный снимок текущих уведомлений (самые новые первые).</summary>
     public IReadOnlyList<NotificationItem> Items
@@ -277,13 +273,6 @@ public sealed class SgNotificationService
 
     // ── Toast queue ────────────────────────────────────────────────────────
 
-    /// <summary>Current snapshot of active toast notifications. Kept for backward compatibility.</summary>
-    [Obsolete("Use SgToastService directly. This property returns an empty list when SgToastService is available.")]
-    public IReadOnlyList<SgNotificationToastItem> Toasts
-    {
-        get { lock (_gate) return _toasts.ToImmutableArray(); }
-    }
-
     /// <summary>Pushes a transient toast notification. Delegates to SgToastService when available.</summary>
     public void PushToast(SgNotificationToastItem toast)
     {
@@ -307,7 +296,6 @@ public sealed class SgNotificationService
         {
             _toasts.Insert(0, toast);
         }
-        RaiseToastsChanged();
     }
 
     /// <summary>Creates and pushes a toast notification from parts. Delegates to SgToastService when available.</summary>
@@ -322,50 +310,6 @@ public sealed class SgNotificationService
         };
         PushToast(toast);
         return toast;
-    }
-
-    /// <summary>Removes a toast notification by id. No-op when delegated to SgToastService.</summary>
-    [Obsolete("Dismiss toasts via SgToastService.Dismiss() instead.")]
-    public void RemoveToast(string id)
-    {
-        if (string.IsNullOrEmpty(id)) return;
-        if (_toastService is not null)
-        {
-            _toastService.Dismiss(id);
-            return;
-        }
-        bool changed;
-        lock (_gate)
-        {
-            changed = _toasts.RemoveAll(x => x.Id == id) > 0;
-        }
-        if (changed) RaiseToastsChanged();
-    }
-
-    /// <summary>Marks a toast as closing (for exit animation).</summary>
-    [Obsolete("Handle toast dismissal via SgToastHost events instead.")]
-    public void CloseToast(string id)
-    {
-        if (string.IsNullOrEmpty(id)) return;
-        lock (_gate)
-        {
-            var toast = _toasts.FirstOrDefault(x => x.Id == id);
-            if (toast is not null) toast.IsClosing = true;
-        }
-        RaiseToastsChanged();
-    }
-
-    /// <summary>Clears all toasts.</summary>
-    [Obsolete("Use SgToastService.DismissAll() instead.")]
-    public void ClearToasts()
-    {
-        bool changed;
-        lock (_gate)
-        {
-            changed = _toasts.Count > 0;
-            _toasts.Clear();
-        }
-        if (changed) RaiseToastsChanged();
     }
 
     // ── Snapshot helpers for filtering ─────────────────────────────────────
@@ -419,17 +363,6 @@ public sealed class SgNotificationService
         if (_maxItems <= 0 || _items.Count <= _maxItems) return false;
         _items.RemoveRange(_maxItems, _items.Count - _maxItems);
         return true;
-    }
-
-    private void RaiseToastsChanged()
-    {
-        var handler = ToastsChanged;
-        if (handler is null) return;
-        foreach (var d in handler.GetInvocationList())
-        {
-            try { ((Action)d).Invoke(); }
-            catch { }
-        }
     }
 
     private void RaiseChanged()

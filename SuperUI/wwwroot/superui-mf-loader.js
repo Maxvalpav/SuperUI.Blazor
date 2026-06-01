@@ -56,6 +56,17 @@ export async function loadMicroFrontend(source, componentType, containerId, para
     // 3. Handle External JS Modules / CDN Scripts
     try {
         if (source.endsWith('.js')) {
+            // Try dynamic import first (supports ES modules with 'export')
+            try {
+                const mod = await import(source);
+                const mountFn = mod?.default || mod?.mount || window[`__mf_${componentType}`] || window[componentType];
+                if (typeof mountFn === 'function') {
+                    mountFn(container, parameters);
+                    return;
+                }
+            } catch {
+                // Fall back to classic script load
+            }
             await _loadScript(source);
             // Check if script registered a global mount function
             const mountFn = window[`__mf_${componentType}`] || window[componentType];

@@ -250,7 +250,7 @@ export function backtopAttach(dotnet, opts) {
             if (isDisposed) return;
             target = document.querySelector(targetSelector) || window;
             attachListener();
-            check();
+            requestAnimationFrame(check);
         }, 100);
     }
 
@@ -261,7 +261,7 @@ export function backtopAttach(dotnet, opts) {
         dispose: () => { isDisposed = true; dotnet = null; }
     });
 
-    check();
+    requestAnimationFrame(check);
     return id;
 }
 

@@ -797,7 +797,7 @@ export async function startIdleDetection(dotNetRef, threshold = 61000) {
         })?.catch(() => {}); } catch {}
     });
 
-    await idleDetector.start({ threshold });
+    await idleDetector.start({ threshold: Math.max(threshold, 60000) });
     return true;
 }
 

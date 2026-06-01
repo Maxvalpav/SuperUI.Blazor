@@ -256,7 +256,7 @@ public partial class SgTable<TItem> : SgComponentBase
         try
         {
             _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
-                "import", "./_content/SuperUI/Components/SgTable.razor.js");
+                "import", "./_content/SuperUI/Components/Data/Table/SgTable.razor.js");
             await _jsModule.InvokeVoidAsync("syncHeaderScroll", _headerScrollRef, _bodyScrollRef);
         }
         catch (JSDisconnectedException) { }
@@ -288,7 +288,7 @@ public partial class SgTable<TItem> : SgComponentBase
         }
 
         _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/SuperUI/Components/SgTable.razor.js");
+            "import", "./_content/SuperUI/Components/Data/Table/SgTable.razor.js");
         await _jsModule.InvokeVoidAsync("startColumnResize", _resizeStartX, _resizeStartWidth);
     }
 
@@ -299,7 +299,7 @@ public partial class SgTable<TItem> : SgComponentBase
             try
             {
                 _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
-                    "import", "./_content/SuperUI/Components/SgTable.razor.js");
+                    "import", "./_content/SuperUI/Components/Data/Table/SgTable.razor.js");
                 var resizeEvent = await _jsModule.InvokeAsync<MouseEventArgs?>("pollResizeEvent");
                 if (resizeEvent != null)
                 {
@@ -515,7 +515,7 @@ public partial class SgTable<TItem> : SgComponentBase
         var base64 = Convert.ToBase64String(finalBytes);
 
         _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/SuperUI/Components/SgTable.razor.js");
+            "import", "./_content/SuperUI/Components/Data/Table/SgTable.razor.js");
         await _jsModule.InvokeVoidAsync("downloadFile", base64, fileName, "text/csv;charset=utf-8;");
     }
 
@@ -562,7 +562,7 @@ public partial class SgTable<TItem> : SgComponentBase
         var base64 = Convert.ToBase64String(finalBytes);
 
         _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/SuperUI/Components/SgTable.razor.js");
+            "import", "./_content/SuperUI/Components/Data/Table/SgTable.razor.js");
         await _jsModule.InvokeVoidAsync("downloadFile", base64, fileName, "application/vnd.ms-excel");
     }
 
@@ -596,7 +596,14 @@ public partial class SgTable<TItem> : SgComponentBase
             try
             {
                 await _jsModule.InvokeVoidAsync("resetResizeState");
+            }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
 
+            try
+            {
+                await _jsModule.DisposeAsync();
             }
             catch (JSDisconnectedException) { }
             catch (TaskCanceledException) { }

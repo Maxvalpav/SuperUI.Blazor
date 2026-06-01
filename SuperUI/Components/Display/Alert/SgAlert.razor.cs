@@ -49,9 +49,8 @@ public partial class SgAlert : IDisposable
     /// <summary>Whether to show a loading/skeleton state.</summary>
     [Parameter] public bool Loading { get; set; }
 
-    /// <summary>Alias for <see cref="Dismissible"/> — for backward compatibility.</summary>
+    /// <summary>Whether the alert can be dismissed by the user.</summary>
     [Parameter]
-    [Obsolete("Use Dismissible instead")]
     public bool Closable
     {
         get => Dismissible;

@@ -1,3 +1,5 @@
+using SuperUI.Localization;
+
 namespace SuperUI.Components;
 
 /// <summary>
@@ -51,6 +53,26 @@ public static class SgCronHumanizer
         {
             DescribeRussian(parts, sb);
         }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Returns a human-readable description using the specified localizer.
+    /// </summary>
+    public static string Describe(string? expr, ISuperUILocalizer localizer)
+    {
+        if (string.IsNullOrWhiteSpace(expr)) return string.Empty;
+
+        var parts = expr.Trim().Split(' ');
+        if (parts.Length != 5) return expr;
+
+        var sb = new System.Text.StringBuilder();
+
+        if (localizer.CurrentLanguage.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
+            DescribeRussian(parts, sb, localizer);
+        else
+            DescribeEnglish(parts, sb, localizer);
 
         return sb.ToString();
     }
@@ -118,6 +140,64 @@ public static class SgCronHumanizer
         }
     }
 
+    private static void DescribeRussian(string[] parts, System.Text.StringBuilder sb, ISuperUILocalizer l)
+    {
+        // ── time ──────────────────────────────────────────────────────────────
+        if (parts[0] == "*" && parts[1] == "*")
+            sb.Append(l["Cron_EveryMinute"]);
+        else if (parts[0].StartsWith("*/") && int.TryParse(parts[0][2..], out var mEvery))
+            sb.AppendFormat(l["Cron_EveryMinutes"], Plural(mEvery, "минуту", "минуты", "минут"));
+        else if (parts[1].StartsWith("*/") && int.TryParse(parts[1][2..], out var hEvery))
+        {
+            sb.AppendFormat(l["Cron_EveryHour"], hEvery, Plural(hEvery, "час", "часа", "часов"));
+            if (parts[0] != "*" && !parts[0].Contains(',') && !parts[0].Contains('-'))
+                sb.AppendFormat(l["Cron_AtMinute"], parts[0].PadLeft(2, '0'));
+        }
+        else if (!parts[1].Contains('*') && !parts[0].Contains('*'))
+        {
+            if (parts[1].Contains(',') || parts[0].Contains(','))
+                sb.AppendFormat(l["Cron_AtRange"], $"{parts[1]}:{parts[0]}");
+            else
+                sb.AppendFormat(l["Cron_AtTime"], parts[1].PadLeft(2, '0'), parts[0].PadLeft(2, '0'));
+        }
+        else if (parts[0] != "*" && parts[1] == "*")
+            sb.AppendFormat(l["Cron_PastEveryHour"], parts[0].PadLeft(2, '0'));
+        else
+            sb.Append(l["Cron_Scheduled"]);
+
+        // ── day-of-month ───────────────────────────────────────────────────────
+        if (parts[2] == "L")
+            sb.Append(l["Cron_LastDay"]);
+        else if (parts[2] != "*" && parts[2] != "?")
+        {
+            if (parts[2].StartsWith("*/") && int.TryParse(parts[2][2..], out var dEvery))
+                sb.AppendFormat(l["Cron_EveryDays"], dEvery, Plural(dEvery, "день", "дня", "дней"));
+            else
+                sb.AppendFormat(l["Cron_OnDays"], parts[2]);
+        }
+
+        // ── month ──────────────────────────────────────────────────────────────
+        if (parts[3] != "*")
+        {
+            if (parts[3].StartsWith("*/") && int.TryParse(parts[3][2..], out var moEvery))
+                sb.AppendFormat(l["Cron_EveryMonths"], moEvery, Plural(moEvery, "месяц", "месяца", "месяцев"));
+            else
+            {
+                var months = ParseList(parts[3], 1, 12);
+                if (months.Count > 0)
+                    sb.AppendFormat(l["Cron_InMonth"], string.Join(", ", months.Select(m => MonthFullNames[m - 1])));
+            }
+        }
+
+        // ── weekday ────────────────────────────────────────────────────────────
+        if (parts[4] != "*" && parts[4] != "?")
+        {
+            var days = ParseList(parts[4], 0, 6);
+            if (days.Count > 0)
+                sb.AppendFormat(l["Cron_OnWeekDays"], string.Join(", ", days.Select(d => WeekDayFullNames[d % 7])));
+        }
+    }
+
     private static void DescribeEnglish(string[] parts, System.Text.StringBuilder sb)
     {
         // ── time ──────────────────────────────────────────────────────────────
@@ -173,6 +253,64 @@ public static class SgCronHumanizer
             var days = ParseList(parts[4], 0, 6);
             if (days.Count > 0)
                 sb.Append(", on " + string.Join(", ", days.Select(d => WeekDayFullNamesEn[d % 7])));
+        }
+    }
+
+    private static void DescribeEnglish(string[] parts, System.Text.StringBuilder sb, ISuperUILocalizer l)
+    {
+        // ── time ──────────────────────────────────────────────────────────────
+        if (parts[0] == "*" && parts[1] == "*")
+            sb.Append(l["Cron_EveryMinute"]);
+        else if (parts[0].StartsWith("*/") && int.TryParse(parts[0][2..], out var mEvery))
+            sb.AppendFormat(l["Cron_EveryMinutes"], mEvery);
+        else if (parts[1].StartsWith("*/") && int.TryParse(parts[1][2..], out var hEvery))
+        {
+            sb.AppendFormat(l["Cron_EveryHour"], hEvery);
+            if (parts[0] != "*" && !parts[0].Contains(',') && !parts[0].Contains('-'))
+                sb.AppendFormat(l["Cron_AtMinute"], parts[0].PadLeft(2, '0'));
+        }
+        else if (!parts[1].Contains('*') && !parts[0].Contains('*'))
+        {
+            if (parts[1].Contains(',') || parts[0].Contains(','))
+                sb.AppendFormat(l["Cron_AtRange"], $"{parts[1]}:{parts[0]}");
+            else
+                sb.AppendFormat(l["Cron_AtTime"], parts[1].PadLeft(2, '0'), parts[0].PadLeft(2, '0'));
+        }
+        else if (parts[0] != "*" && parts[1] == "*")
+            sb.AppendFormat(l["Cron_PastEveryHour"], parts[0].PadLeft(2, '0'));
+        else
+            sb.Append(l["Cron_Scheduled"]);
+
+        // ── day-of-month ───────────────────────────────────────────────────────
+        if (parts[2] == "L")
+            sb.Append(l["Cron_LastDay"]);
+        else if (parts[2] != "*" && parts[2] != "?")
+        {
+            if (parts[2].StartsWith("*/") && int.TryParse(parts[2][2..], out var dEvery))
+                sb.AppendFormat(l["Cron_EveryDays"], dEvery);
+            else
+                sb.AppendFormat(l["Cron_OnDays"], parts[2]);
+        }
+
+        // ── month ──────────────────────────────────────────────────────────────
+        if (parts[3] != "*")
+        {
+            if (parts[3].StartsWith("*/") && int.TryParse(parts[3][2..], out var moEvery))
+                sb.AppendFormat(l["Cron_EveryMonths"], moEvery);
+            else
+            {
+                var months = ParseList(parts[3], 1, 12);
+                if (months.Count > 0)
+                    sb.AppendFormat(l["Cron_InMonth"], string.Join(", ", months.Select(m => MonthFullNamesEn[m - 1])));
+            }
+        }
+
+        // ── weekday ────────────────────────────────────────────────────────────
+        if (parts[4] != "*" && parts[4] != "?")
+        {
+            var days = ParseList(parts[4], 0, 6);
+            if (days.Count > 0)
+                sb.AppendFormat(l["Cron_OnWeekDays"], string.Join(", ", days.Select(d => WeekDayFullNamesEn[d % 7])));
         }
     }
 

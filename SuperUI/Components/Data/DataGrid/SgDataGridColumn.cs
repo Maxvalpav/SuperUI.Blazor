@@ -177,13 +177,13 @@ public sealed class SgDataGridColumn<TItem> : ComponentBase, IDisposable where T
             if (Format.Contains('{') && Format.Contains('}'))
             {
                 try { return string.Format(System.Globalization.CultureInfo.CurrentCulture, Format, v); }
-                catch { }
+                catch (FormatException) { }
             }
 
             if (v is IFormattable f)
             {
                 try { return f.ToString(Format, System.Globalization.CultureInfo.CurrentCulture); }
-                catch { }
+                catch (FormatException) { }
             }
         }
 

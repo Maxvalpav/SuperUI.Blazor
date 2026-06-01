@@ -291,7 +291,9 @@ public partial class SgMonaco : SgJsComponentBase
     {
         if (!IsInteractive) return Value ?? "";
         try { return await SafeInvokeAsync<string>("getValue", ResolvedId) ?? ""; }
-        catch { return Value ?? ""; }
+        catch (JSDisconnectedException) { return Value ?? ""; }
+        catch (TaskCanceledException) { return Value ?? ""; }
+        catch (ObjectDisposedException) { return Value ?? ""; }
     }
 
     /// <summary>Sets the editor read-only state.</summary>
@@ -303,7 +305,9 @@ public partial class SgMonaco : SgJsComponentBase
     {
         if (!IsInteractive) return null;
         try { return await SafeInvokeAsync<SgMonacoCursorPosition>("getCursorPosition", ResolvedId); }
-        catch { return null; }
+        catch (JSDisconnectedException) { return null; }
+        catch (TaskCanceledException) { return null; }
+        catch (ObjectDisposedException) { return null; }
     }
 
     /// <summary>Sets the cursor position.</summary>
@@ -360,7 +364,9 @@ public partial class SgMonaco : SgJsComponentBase
                             await OnAutoSave.InvokeAsync(captured);
                     });
                 }
-                catch { }
+                catch (TaskCanceledException) { }
+                catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { }
             }, null, AutoSaveDelay, Timeout.Infinite);
         }
     }

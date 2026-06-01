@@ -266,9 +266,13 @@ public partial class SgCountdown : IDisposable
         {
             // Component was disposed during callback
         }
-        catch (Exception)
+        catch (TaskCanceledException)
         {
-            // Suppress unhandled timer exceptions
+            // Timer was cancelled
+        }
+        catch (InvalidOperationException)
+        {
+            // InvokeAsync failed — component disposed or not rendered
         }
     }
 
