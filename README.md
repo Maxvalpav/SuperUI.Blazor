@@ -6,7 +6,7 @@
 [![Demo](https://img.shields.io/badge/demo-live-success?logo=github)](https://maxvalpav.github.io/SuperUI.Blazor/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**90+ Blazor components** — data grid, charts, gantt, kanban, scheduler, pivot, org chart, diagram editor, forms, overlays, layout, maps, AI. Dark mode, 32 themes, localization, full IntelliSense.
+**90+ Blazor components** — data grid, charts, gantt, kanban, scheduler, pivot, org chart, diagram editor, forms, overlays, layout, maps, AI. Dark mode, **43 themes** (JSON-defined), localization, full IntelliSense.
 
 [Live demo](https://maxvalpav.github.io/SuperUI.Blazor/) · [NuGet](https://www.nuget.org/packages/SuperUI) · `dotnet add package SuperUI`
 
@@ -37,7 +37,7 @@ builder.Services.AddSuperUI();
 
 ```html
 <!-- wwwroot/index.html -->
-<link rel="stylesheet" href="_content/SuperUI/superui-theme.css" />
+<link rel="stylesheet" href="_content/SuperUI/themes/sg-theme-bundle.css" />
 <link rel="stylesheet" href="_content/SuperUI/superui-components.css" />
 ```
 
@@ -52,6 +52,8 @@ builder.Services.AddSuperUI();
 ```
 
 Targets `net10.0` — works with Blazor WebAssembly, Server, Web App, Hybrid.
+
+> **Upgrading from 1.x?** See [`docs/MIGRATION-2.0.md`](docs/MIGRATION-2.0.md) for the full checklist.
 
 ---
 
@@ -96,11 +98,11 @@ Targets `net10.0` — works with Blazor WebAssembly, Server, Web App, Hybrid.
 ```
 
 ```razor
-@* Theming — light/dark toggle, 32 built-in themes *@
+@* Theming — light/dark toggle, 43 built-in themes *@
 <SgThemeSwitcher />
 ```
 
-32 built-in themes included: Natura UI, Solaris, Royal, Graphite, Forest, Neon, Glass, Chrono, Calyx, Apex, Zen, Neo, Oasis, Flux, Prism, Cosmos, Fractalis, Wave, Aurea, Sylvan, Medici, Aether, Clarity, Element, Radius, Muse, Forge, Gordian, Inclus, Reader, Signature, Cantus. Switch via `SgThemeService.SetThemeAsync("theme-id")`.
+43 built-in themes included: Natura UI, Solaris, Royal, Graphite, Forest, Neon, Glass, Chrono, Calyx, Apex, Zen, Neo, Oasis, Flux, Prism, Cosmos, Fractalis, Wave, Aurea, Sylvan, Medici, Aether, Clarity, Element, Radius, Muse, Forge, Gordian, Inclus, Reader, Signature, Cantus, **Aether, Biofilia, Calyx, Cantus, Chrono, Circadian, Clarity, Clarity Clinical, Element, Ergo, Fractalis, Gordian, Inclus, Lumina, Muse, Oasis, Prism, Reader, Signature, Sylvan, Veiled, Wave, Window**. Switch via `SgThemeService.SetThemeAsync("theme-id")`. Themes are JSON-defined (see [`docs/MIGRATION-2.0.md`](docs/MIGRATION-2.0.md#2-themes-are-now-json)) and the runtime swaps a single `<link>` element — no per-click CSS push, browser cache does the work.
 
 ---
 
@@ -151,6 +153,42 @@ dotnet run --project SuperUI.Demo
 ```
 
 Requires .NET 10 SDK. Tests use bUnit + xUnit.
+
+To regenerate the per-theme static CSS files (after adding a JSON
+theme or changing `SgThemeGenerator`):
+
+```bash
+dotnet run --project tools/ThemeCssExporter/ThemeCssExporter.csproj -- "SuperUI/wwwroot/themes/css"
+```
+
+---
+
+## What's new in 2.0
+
+* **JSON-defined themes** (43 in alpha.1) — every theme is a JSON
+  file in `Themes/json/`, validated against `Themes/schemas/theme.schema.json`.
+  Adding a new theme no longer requires recompiling SuperUI.
+* **New token layers** — motion, state, elevation, a11y — published
+  as `_content/SuperUI/themes/sg-tokens-{motion,state,elevation,a11y}.css`
+  and bundled together by `sg-theme-bundle.css`.
+* **`color-mix()` everywhere** — 302 `rgba()` calls in
+  `superui-components.css` are now `color-mix(in srgb, ...)` so
+  tints track the active theme.
+* **Link-swap runtime** — the theme switcher now mutates a single
+  `<link rel="stylesheet">` in `<head>` instead of regenerating and
+  re-injecting a 15-33 KB CSS string. Pre-built `.css` files ship
+  with `Cache-Control: max-age=31536000, immutable`.
+* **Debounced, batched, idempotent `SgThemeService`** — 150 ms debounce,
+  single `applyThemeState({...})` JS round-trip, race-safe
+  `DisposeAsync`, single `matchMedia` subscription that only mounts
+  while the user is in `auto` mode.
+* **`SgThemeGenerator.GenerateFullThemeCss(IThemeDefinition)`** is now
+  public — used by the build-time exporter and by anyone who needs
+  to ship a pre-built CSS for a custom theme.
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full list and
+[`docs/MIGRATION-2.0.md`](docs/MIGRATION-2.0.md) for the upgrade
+checklist.
 
 ---
 
