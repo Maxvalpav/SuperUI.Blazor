@@ -27,6 +27,9 @@ public sealed class SgConfirmRequest
 
     /// <summary>Токен отмены — позволяет программно отменить ожидающий диалог.</summary>
     public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>Внутреннее состояние (используется для очереди). Не устанавливайте вручную.</summary>
+    internal object? UserState { get; set; }
 }
 
 /// <summary>
@@ -37,6 +40,10 @@ public sealed class SgConfirmRequest
 /// запрос обрабатывает первый успешно ответивший — это страхует от ситуаций prerender→interactive,
 /// когда оба экземпляра кратко сосуществуют.</para>
 /// <para>Если ни одного подписчика нет, <see cref="ConfirmAsync"/> возвращает <c>false</c>, не блокируясь.</para>
+/// <para><b>Queue mode (default):</b> если confirm уже показывается и приходит новый запрос,
+/// он ставится в очередь и показывается последовательно. Это предотвращает
+/// "стек модалок" с перекрывающимися backdrop'ами. Очередь можно отключить
+/// через <see cref="EnableQueue"/> = false.</para>
 /// </remarks>
 public sealed class SgConfirmService : IAsyncDisposable
 {
@@ -44,7 +51,11 @@ public sealed class SgConfirmService : IAsyncDisposable
     private readonly string _defaultTitle;
     private readonly string _defaultConfirmText;
     private readonly string _defaultCancelText;
+    private readonly object _queueGate = new();
+    private readonly Queue<SgConfirmRequest> _queue = new();
     private int _isDisposed; // 0 / 1
+    private int _activeCount; // 0 or 1
+    private int _maxQueueSize = 16;
 
     /// <summary>Initializes a new instance.</summary>
     public SgConfirmService(ISuperUILocalizer localizer) : this(localizer, null) { }
@@ -65,6 +76,25 @@ public sealed class SgConfirmService : IAsyncDisposable
 
     /// <summary>Подписан ли хост.</summary>
     public bool HasHost => Requested is not null;
+
+    /// <summary>Включает очередь (default true). Если false — каждый новый запрос прерывает предыдущий.</summary>
+    public bool EnableQueue { get; set; } = true;
+
+    /// <summary>Максимальный размер очереди. Превышение — новые запросы сразу возвращают false.</summary>
+    public int MaxQueueSize
+    {
+        get { lock (_queueGate) return _maxQueueSize; }
+        set { lock (_queueGate) _maxQueueSize = Math.Max(0, value); }
+    }
+
+    /// <summary>Текущая длина очереди (без учёта активного диалога).</summary>
+    public int QueueLength { get { lock (_queueGate) return _queue.Count; } }
+
+    /// <summary>Показывается ли confirm прямо сейчас.</summary>
+    public bool IsActive => Volatile.Read(ref _activeCount) > 0;
+
+    /// <summary>Очищает очередь ожидающих confirm-запросов.</summary>
+    public void ClearQueue() { lock (_queueGate) _queue.Clear(); }
 
     /// <summary>
     /// Показывает confirm-диалог и ждёт ответ пользователя.
@@ -115,36 +145,98 @@ public sealed class SgConfirmService : IAsyncDisposable
 
     private async Task<bool> ConfirmCoreAsync(SgConfirmRequest request)
     {
+        // Queue mode: если уже есть активный диалог, ставим в очередь и ждём очереди.
+        if (EnableQueue && Volatile.Read(ref _activeCount) > 0)
+        {
+            TaskCompletionSource<bool>? tcs = null;
+            lock (_queueGate)
+            {
+                if (_queue.Count >= _maxQueueSize) return false; // overflow
+                _queue.Enqueue(request);
+                tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                request.UserState = tcs;
+            }
+
+            // Wait for the queue to drain to our request, then answer.
+            try
+            {
+                using var registration = request.CancellationToken.Register(() => tcs.TrySetCanceled());
+                var result = await tcs.Task.ConfigureAwait(false);
+                return result;
+            }
+            catch (OperationCanceledException) { return false; }
+        }
+
+        return await ExecuteNowAsync(request).ConfigureAwait(false);
+    }
+
+    private async Task<bool> ExecuteNowAsync(SgConfirmRequest request)
+    {
         var handler = Requested;
         if (handler is null) return false;
 
-        // Идём по подписчикам по порядку: первый, у которого получилось — побеждает.
-        foreach (var d in handler.GetInvocationList())
+        Interlocked.Increment(ref _activeCount);
+        try
         {
-            var func = (Func<SgConfirmRequest, Task<bool>>)d;
+            // Идём по подписчикам по порядку: первый, у которого получилось — побеждает.
+            foreach (var d in handler.GetInvocationList())
+            {
+                var func = (Func<SgConfirmRequest, Task<bool>>)d;
+                try
+                {
+                    var task = func(request);
+                    if (task is null) continue;
+
+                    if (request.CancellationToken.CanBeCanceled)
+                    {
+                        var completed = await Task.WhenAny(task, Task.Delay(Timeout.Infinite, request.CancellationToken))
+                                                  .ConfigureAwait(false);
+                        if (completed == task) return await task.ConfigureAwait(false);
+                        return false;
+                    }
+
+                    return await task.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { return false; }
+                catch
+                {
+                    // Этот хост уже не живой — пробуем следующего.
+                }
+            }
+            return false;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeCount);
+            // If we are in queue mode, dequeue the next request and dispatch it.
+            if (EnableQueue) DispatchNextQueued();
+        }
+    }
+
+    private void DispatchNextQueued()
+    {
+        SgConfirmRequest? next = null;
+        TaskCompletionSource<bool>? tcs = null;
+        lock (_queueGate)
+        {
+            if (_queue.Count == 0) return;
+            next = _queue.Dequeue();
+            tcs = next.UserState as TaskCompletionSource<bool>;
+        }
+        if (next is null) return;
+
+        _ = Task.Run(async () =>
+        {
             try
             {
-                var task = func(request);
-                if (task is null) continue;
-
-                if (request.CancellationToken.CanBeCanceled)
-                {
-                    // Линкуем ожидание с user-токеном
-                    var completed = await Task.WhenAny(task, Task.Delay(Timeout.Infinite, request.CancellationToken))
-                                              .ConfigureAwait(false);
-                    if (completed == task) return await task.ConfigureAwait(false);
-                    return false; // отменено
-                }
-
-                return await task.ConfigureAwait(false);
+                var result = await ExecuteNowAsync(next).ConfigureAwait(false);
+                tcs?.TrySetResult(result);
             }
-            catch (OperationCanceledException) { return false; }
-            catch
+            catch (Exception ex)
             {
-                // Этот хост уже не живой — пробуем следующего.
+                tcs?.TrySetException(ex);
             }
-        }
-        return false;
+        });
     }
 
     /// <summary>Освобождает сервис.</summary>

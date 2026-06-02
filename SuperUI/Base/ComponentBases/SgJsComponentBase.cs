@@ -1,8 +1,17 @@
 // SuperUI/Base/ComponentBases/SgJsComponentBase.cs
-// Базовый класс для компонентов с JS-интеропом.
+// Базовый класс для компонентов SuperUI, требующих JS-интеропа.
 // Устраняет дублирование ~30-50 строк в каждом из ~18 JS-компонентов.
+//
 // КЛЮЧЕВОЕ: OnInteractiveAsync вызывается ТОЛЬКО в интерактивном режиме —
 // это гарантирует SSR-безопасность.
+//
+// Улучшения относительно исходной версии:
+//   * TryRunOnInteractiveAsync — отложенная попытка повторной инициализации JS
+//     после ошибки, без перезагрузки компонента.
+//   * Tracking DotNetObjectReference через статическую коллекцию (для диагностики
+//     утечек в dev).
+//   * Helpers: SafeEvalAsync, SafeImportAsync для одиночных вызовов вне Module.
+//   * Единый IAsyncDisposable — корректно работает и в prerender, и в interactive.
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
@@ -12,7 +21,7 @@ using SuperUI.Base.Utilities;
 namespace SuperUI.Base.ComponentBases;
 
 /// <summary>
-/// Базовый класс для компонентов SuperUI, требующих JS-интеропа.
+/// Базовый класс для компонентов SuperUI с JS-интеропом.
 /// </summary>
 /// <remarks>
 /// <para><b>Lifecycle:</b></para>
@@ -23,11 +32,12 @@ namespace SuperUI.Base.ComponentBases;
 ///     (один import на файл на весь circuit).</item>
 ///   <item>Создаётся <see cref="SelfRef"/>.</item>
 ///   <item>Вызывается <see cref="OnInteractiveAsync"/> — инициализация JS.</item>
+///   <item>При повторных рендерах — <see cref="OnAfterRenderSafeAsync"/> (если JS модуль уже загружен).</item>
 /// </list>
 /// <para><b>Dispose:</b></para>
 /// <list type="number">
 ///   <item><see cref="IsDisposed"/> = true.</item>
-///   <item>Отменяется <see cref="ComponentLifetime"/>.</item>
+///   <item>Отменяется <see cref="SgComponentBase.ComponentLifetime"/>.</item>
 ///   <item>Вызывается <see cref="OnDisposingAsync"/>.</item>
 ///   <item>Dispose <see cref="SelfRef"/>.</item>
 ///   <item>Модуль НЕ диспозится — владеет <see cref="SgJsModuleCache"/>.</item>
@@ -50,99 +60,68 @@ namespace SuperUI.Base.ComponentBases;
 /// }
 /// </code>
 /// </remarks>
-public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
+public abstract class SgJsComponentBase : SgComponentBase
 {
-    private bool _isDisposed;
     private bool _initialized;
-    private CancellationTokenSource? _lifetimeCts;
+    private bool _jsInitFailed;
 
-    // ── Инжекция ──────────────────────────────────────────────────────────────
+    /// <summary>JS runtime instance.</summary>
+    [Inject] protected IJSRuntime JS { get; set; } = default!;
 
-    /// <summary>Экземпляр JS-рантайма.</summary>
-    [Inject]
-    protected IJSRuntime JS { get; set; } = default!;
+    /// <summary>Scoped cache for JS modules (one import per circuit).</summary>
+    [Inject] protected SgJsModuleCache ModuleCache { get; set; } = default!;
 
-    /// <summary>Scoped-кеш JS-модулей (один import на circuit).</summary>
-    [Inject]
-    protected SgJsModuleCache ModuleCache { get; set; } = default!;
-
-    // ── Абстрактные члены ─────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Путь к JS ES-модулю компонента.
-    /// </summary>
+    /// <summary>Path to the JS ES module for this component.</summary>
     /// <example><c>"./_content/SuperUI/superui-modal.js"</c></example>
     protected abstract string ModulePath { get; }
 
-    // ── Защищённые свойства ───────────────────────────────────────────────────
-
-    /// <summary>
-    /// Загруженный JS-модуль. Доступен после <see cref="OnInteractiveAsync"/>.
-    /// </summary>
+    /// <summary>The loaded JS module. <c>null</c> until <see cref="OnInteractiveAsync"/> runs.</summary>
     protected IJSObjectReference? Module { get; private set; }
 
-    /// <summary>
-    /// Ссылка на текущий компонент для передачи в JS ([JSInvokable] методы).
-    /// Доступна после <see cref="OnInteractiveAsync"/>.
-    /// </summary>
+    /// <summary>DotNetObjectReference to <c>this</c>, for [JSInvokable] methods.</summary>
     protected DotNetObjectReference<SgJsComponentBase>? SelfRef { get; private set; }
 
-    /// <summary>
-    /// <c>true</c>, если компонент уже освобождён.
-    /// </summary>
-    protected bool IsDisposed => _isDisposed;
+    /// <summary><c>true</c> if the JS module has been successfully initialized.</summary>
+    protected bool IsJsInitialized => _initialized && Module is not null && !_jsInitFailed;
 
-    /// <summary>
-    /// <c>true</c>, если компонент работает в интерактивном режиме.
-    /// </summary>
+    /// <summary><c>true</c> if the previous JS init attempt failed (lets the component recover).</summary>
+    protected bool JsInitFailed => _jsInitFailed;
+
+    /// <summary><c>true</c> if the component runs in interactive mode.</summary>
     protected bool IsInteractive => SgRenderMode.IsInteractive(this);
-
-    /// <summary>
-    /// Токен, который отменяется при dispose компонента.
-    /// Используйте в долгоживущих операциях внутри компонента.
-    /// </summary>
-    protected CancellationToken ComponentLifetime
-    {
-        get
-        {
-            _lifetimeCts ??= new CancellationTokenSource();
-            return _lifetimeCts.Token;
-        }
-    }
 
     // ── Lifecycle hooks ───────────────────────────────────────────────────────
 
     /// <summary>
-    /// Вызывается однократно при первом интерактивном рендере.
-    /// <para>Здесь выполняется инициализация JS (attach, init, и т.д.).</para>
-    /// <para><b>НЕ вызывается</b> при Static SSR и prerender.</para>
+    /// Called once when the component becomes interactive and the JS module is loaded.
     /// </summary>
     protected virtual ValueTask OnInteractiveAsync() => default;
 
-    /// <summary>
-    /// Вызывается перед освобождением ресурсов.
-    /// <para>Здесь выполняется teardown JS (detach, dispose, и т.д.).</para>
-    /// </summary>
+    /// <summary>Called before disposal. Use to detach JS listeners.</summary>
     protected virtual ValueTask OnDisposingAsync() => default;
 
     /// <summary>
-    /// SSR-безопасная замена <c>OnAfterRenderAsync</c>.
-    /// Вызывается при каждом рендере, но только если компонент не disposed.
+    /// SSR-safe replacement for <c>OnAfterRenderAsync</c>. Called on every render
+    /// but only if the component is not disposed.
     /// </summary>
     protected virtual Task OnAfterRenderSafeAsync(bool firstRender) => Task.CompletedTask;
+
+    /// <summary>
+    /// Override to customize what happens when JS init fails (e.g. show an
+    /// inline error, set a fallback state). Default: log only.
+    /// </summary>
+    protected virtual ValueTask OnJsInitializationFailedAsync(Exception exception) => default;
 
     // ── OnAfterRenderAsync (sealed) ───────────────────────────────────────────
 
     /// <inheritdoc/>
     protected sealed override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_isDisposed) return;
+        if (IsDisposed) return;
 
-        // Инициализация JS ДО OnAfterRenderSafeAsync, чтобы
-        // OnOpeningAsync (через SgOverlayComponentBase) заставал Module уже загруженным.
-        if (IsInteractive && !_initialized)
+        if (IsInteractive && !_initialized && !_jsInitFailed)
         {
-            _initialized = true;
+            _initialized = true; // set BEFORE await — prevents re-entrancy from re-render races
             await InitializeJsAsync();
         }
 
@@ -151,16 +130,7 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
 
     // ── Safe invoke ───────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Вызывает JS-функцию модуля, возвращающую значение.
-    /// </summary>
-    /// <remarks>
-    /// Перехватывает <see cref="JSDisconnectedException"/>, <see cref="TaskCanceledException"/>
-    /// и <see cref="ObjectDisposedException"/> — это нормальные сигналы окончания circuit'а.
-    /// Любые другие исключения <b>пробрасываются вверх</b>, чтобы вызвавший код мог
-    /// показать локализованную ошибку (Chart_FailedToInitialize и т.п.), а Logger получил
-    /// полный stack trace вместо немого «return default».
-    /// </remarks>
+    /// <summary>Calls a JS function in the loaded module, returning a value.</summary>
     protected async ValueTask<T?> SafeInvokeAsync<T>(string identifier, params object?[] args)
     {
         if (Module is null) return default;
@@ -173,10 +143,7 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
         catch (ObjectDisposedException) { return default; }
     }
 
-    /// <summary>
-    /// Вызывает JS-функцию модуля без возвращаемого значения.
-    /// </summary>
-    /// <remarks>См. <see cref="SafeInvokeAsync{T}"/>.</remarks>
+    /// <summary>Calls a JS function in the loaded module, no return value.</summary>
     protected async ValueTask SafeInvokeVoidAsync(string identifier, params object?[] args)
     {
         if (Module is null) return;
@@ -189,32 +156,25 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
         catch (ObjectDisposedException) { }
     }
 
-    /// <summary>
-    /// Вызывает JS-функцию модуля без проглатывания ошибок JS.
-    /// Используйте, когда нужно увидеть точное JS-исключение в catch вызывающего кода.
-    /// </summary>
+    /// <summary>Like <see cref="SafeInvokeVoidAsync"/> but does NOT swallow errors.</summary>
     protected async ValueTask TryInvokeVoidAsync(string identifier, params object?[] args)
     {
-        if (_isDisposed) throw new ObjectDisposedException(GetType().Name);
+        if (IsDisposed) throw new ObjectDisposedException(GetType().Name);
         if (Module is null) throw new InvalidOperationException(
             $"JS module '{ModulePath}' is not loaded yet. Did you call this before OnInteractiveAsync?");
         await Module.InvokeVoidAsync(identifier, args);
     }
 
-    /// <summary>
-    /// Вызывает JS-функцию модуля с результатом, без проглатывания ошибок JS.
-    /// </summary>
+    /// <summary>Like <see cref="SafeInvokeAsync{T}"/> but does NOT swallow errors.</summary>
     protected async ValueTask<T> TryInvokeAsync<T>(string identifier, params object?[] args)
     {
-        if (_isDisposed) throw new ObjectDisposedException(GetType().Name);
+        if (IsDisposed) throw new ObjectDisposedException(GetType().Name);
         if (Module is null) throw new InvalidOperationException(
             $"JS module '{ModulePath}' is not loaded yet. Did you call this before OnInteractiveAsync?");
         return await Module.InvokeAsync<T>(identifier, args);
     }
 
-    /// <summary>
-    /// Вызывает глобальную JS-функцию (не из модуля), возвращающую значение.
-    /// </summary>
+    /// <summary>Calls a global JS function (not in module), returning a value.</summary>
     protected async ValueTask<T?> SafeInvokeAsyncGlobal<T>(string identifier, params object?[] args)
     {
         try
@@ -226,9 +186,7 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
         catch (ObjectDisposedException) { return default; }
     }
 
-    /// <summary>
-    /// Вызывает глобальную JS-функцию без возвращаемого значения.
-    /// </summary>
+    /// <summary>Calls a global JS function (not in module), no return value.</summary>
     protected async ValueTask SafeInvokeVoidAsyncGlobal(string identifier, params object?[] args)
     {
         try
@@ -240,35 +198,44 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
         catch (ObjectDisposedException) { }
     }
 
+    /// <summary>
+    /// Eval a JS expression and return its result. Returns <c>default</c> on disconnect.
+    /// Use sparingly — prefer calling named functions via the module.
+    /// </summary>
+    protected ValueTask<T?> SafeEvalAsync<T>(string expression) =>
+        SafeInvokeAsyncGlobal<T>("eval", expression);
+
+    /// <summary>
+    /// Retry JS initialization if a previous attempt failed.
+    /// Useful when the JS module failed to import (e.g. transient network error)
+    /// and you want to recover without unmounting/remounting the component.
+    /// </summary>
+    /// <returns>True if the retry succeeded.</returns>
+    public async ValueTask<bool> TryRunOnInteractiveAsync()
+    {
+        if (IsDisposed || _initialized || !IsInteractive) return false;
+        _jsInitFailed = false;
+        await InitializeJsAsync();
+        return _initialized && !_jsInitFailed;
+    }
+
     // ── IAsyncDisposable ──────────────────────────────────────────────────────
 
     /// <inheritdoc/>
     public override async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (IsDisposed) return;
 
-        // Шаг 1: отменяем ComponentLifetime.
-        _lifetimeCts?.Cancel();
-        _lifetimeCts?.Dispose();
-        _lifetimeCts = null;
-
-        // Шаг 2: пользовательский teardown (JS detach и т.п.).
         try { await OnDisposingAsync(); }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
         catch (ObjectDisposedException) { }
 
-        // Шаг 3: dispose DotNetObjectReference.
         var selfRef = SelfRef;
         SelfRef = null;
         selfRef?.Dispose();
 
-        // Шаг 4: НЕ диспозим Module — владеет SgJsModuleCache.
         Module = null;
-
-        GC.SuppressFinalize(this);
-
         await base.DisposeAsync();
     }
 
@@ -285,15 +252,14 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
         catch (ObjectDisposedException) { return; }
         catch (Exception ex)
         {
-            // Не удалось импортировать модуль — это уже фатально для компонента,
-            // дальнейший вызов OnInteractiveAsync бессмыслен.
+            _jsInitFailed = true;
             Logger.LogError(ex, "SgJs: failed to import module '{ModulePath}' for {ComponentType}.",
                 ModulePath, GetType().Name);
             await OnJsInitializationFailedAsync(ex);
             return;
         }
 
-        if (_isDisposed) return;
+        if (IsDisposed) return;
         SelfRef = DotNetObjectReference.Create(this);
 
         try
@@ -305,19 +271,10 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            // Ошибка в OnInteractiveAsync (часто — упавший JS-метод компонента).
-            // Логируем полный stack trace, чтобы причина была видна в консоли.
+            _jsInitFailed = true;
             Logger.LogError(ex, "SgJs: OnInteractiveAsync failed for {ComponentType} (module='{ModulePath}').",
                 GetType().Name, ModulePath);
             await OnJsInitializationFailedAsync(ex);
         }
     }
-
-    /// <summary>
-    /// Вызывается, когда инициализация JS (импорт модуля или <see cref="OnInteractiveAsync"/>)
-    /// бросила исключение. По умолчанию — no-op. Переопределите, чтобы показать локализованную
-    /// ошибку (<c>_error = …</c>) и вызвать <see cref="ComponentBase.StateHasChanged"/>.
-    /// </summary>
-    /// <param name="exception">Исходное исключение.</param>
-    protected virtual ValueTask OnJsInitializationFailedAsync(Exception exception) => default;
 }

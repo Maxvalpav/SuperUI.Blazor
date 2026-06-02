@@ -18,6 +18,9 @@ namespace SuperUI.Base.Utilities;
 /// <para><see cref="StableIdFor"/> через <see cref="ConditionalWeakTable{TKey,TValue}"/>
 /// возвращает один и тот же ID для одного owner-объекта на протяжении его жизни.
 /// Используйте для ARIA-связей между родителем и детьми.</para>
+/// <para><see cref="StableIdFor{T}(T, string)"/> дополнительно принимает generic
+/// тип-параметр и добавляет его имя в префикс — предотвращает коллизии между
+/// SgModal и SgDrawer при одинаковом префиксе "sg".</para>
 /// </remarks>
 public static class SgIdGenerator
 {
@@ -29,8 +32,6 @@ public static class SgIdGenerator
     /// <summary>
     /// Создаёт новый уникальный ID вида <c>{prefix}-{base36}</c>.
     /// </summary>
-    /// <param name="prefix">Префикс. По умолчанию <c>"sg"</c>.</param>
-    /// <returns>Строка вида <c>"sg-a1b2c3"</c>.</returns>
     public static string NewId(string prefix = "sg")
     {
         var n = Interlocked.Increment(ref _counter);
@@ -38,17 +39,43 @@ public static class SgIdGenerator
     }
 
     /// <summary>
-    /// Возвращает стабильный ID для данного <paramref name="owner"/>.
-    /// Повторные вызовы с одним объектом возвращают одинаковую строку.
+    /// Возвращает стабильный ID для <paramref name="owner"/>.
     /// </summary>
-    /// <param name="owner">Объект-владелец (обычно <c>this</c> в компоненте).</param>
-    /// <param name="prefix">Префикс. По умолчанию <c>"sg"</c>.</param>
     public static string StableIdFor(object owner, string prefix = "sg")
     {
         ArgumentNullException.ThrowIfNull(owner);
         return _stableIds
             .GetOrCreateValue(owner)
             .GetOrCreate(prefix);
+    }
+
+    /// <summary>
+    /// Возвращает стабильный ID для <paramref name="owner"/>, включающий
+    /// имя типа <typeparamref name="T"/> в префикс (например, <c>sg-modal-a1b2c</c>).
+    /// </summary>
+    /// <remarks>
+    /// Полезно когда у нескольких компонентов одинаковый логический префикс
+    /// (например, "title") и хочется избежать коллизий в одном DOM-дереве.
+    /// </remarks>
+    public static string StableIdFor<T>(T owner, string suffix = "", string typePrefix = "")
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        var prefix = string.IsNullOrEmpty(typePrefix)
+            ? DefaultPrefixForType<T>()
+            : typePrefix;
+        return StableIdFor((object)owner, prefix + suffix);
+    }
+
+    private static string DefaultPrefixForType<T>()
+    {
+        var t = typeof(T);
+        // Strip "Sg" prefix and "Component" suffix for shorter IDs.
+        var name = t.Name;
+        if (name.StartsWith("Sg", StringComparison.Ordinal)) name = name[2..];
+        if (name.EndsWith("Component", StringComparison.Ordinal)) name = name[..^9];
+        if (name.EndsWith("Base", StringComparison.Ordinal)) name = name[..^4];
+        return "sg-" + name.ToLowerInvariant();
     }
 
     // Base-36 кодирование: цифры + строчные буквы латиницы.

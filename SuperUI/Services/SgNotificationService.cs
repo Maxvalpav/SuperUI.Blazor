@@ -1,4 +1,7 @@
 using System.Collections.Immutable;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using SuperUI.Base.Utilities;
 using SuperUI.Enums;
 
 namespace SuperUI.Components;
@@ -21,11 +24,24 @@ namespace SuperUI.Components;
 /// </remarks>
 public sealed class SgNotificationService
 {
+    private const string PersistenceKey = "superui.notifications.v1";
+
     private readonly object _gate = new();
     private readonly List<NotificationItem> _items = new();
     private readonly List<SgNotificationToastItem> _toasts = new();
     private readonly SgToastService? _toastService;
+    private Services.SgStorageService? _storage;
     private int _maxItems = 200;
+    private bool _persistenceEnabled;
+    private bool _initialized;
+
+    private static readonly JsonSerializerOptions s_json = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+    };
 
     /// <summary>Initializes a new instance with optional toast service for bridging notifications to toasts.</summary>
     public SgNotificationService() : this(null) { }
@@ -34,6 +50,18 @@ public sealed class SgNotificationService
     public SgNotificationService(SgToastService? toastService)
     {
         _toastService = toastService;
+    }
+
+    /// <summary>True, если уведомления сохраняются в localStorage между сессиями.</summary>
+    public bool IsPersistenceEnabled => _persistenceEnabled;
+
+    /// <summary>Включает/выключает persistence через SgStorageService. Загружает сохранённые при включении.</summary>
+    public async Task EnablePersistenceAsync(Services.SgStorageService storage)
+    {
+        ArgumentNullException.ThrowIfNull(storage);
+        _storage = storage;
+        _persistenceEnabled = true;
+        await RestoreFromStorageAsync().ConfigureAwait(false);
     }
 
     /// <summary>Raised whenever the notification list changes (added, removed, marked read).</summary>
@@ -341,6 +369,102 @@ public sealed class SgNotificationService
         }
     }
 
+    /// <summary>Возвращает снимок уведомлений, отфильтрованных по <paramref name="predicate"/>.</summary>
+    public List<NotificationItem> Where(Func<NotificationItem, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        lock (_gate) { return _items.Where(predicate).ToList(); }
+    }
+
+    /// <summary>Возвращает уведомления с указанной категорией.</summary>
+    public List<NotificationItem> GetByCategory(string category)
+    {
+        if (string.IsNullOrEmpty(category)) return GetActiveItems();
+        return Where(x => string.Equals(x.Category, category, StringComparison.Ordinal));
+    }
+
+    /// <summary>Возвращает уведомления с указанным каналом.</summary>
+    public List<NotificationItem> GetByChannel(string channel)
+    {
+        if (string.IsNullOrEmpty(channel)) return GetActiveItems();
+        return Where(x => string.Equals(x.Channel, channel, StringComparison.Ordinal));
+    }
+
+    /// <summary>Возвращает набор уникальных категорий среди всех уведомлений.</summary>
+    public IReadOnlyList<string> GetCategories()
+    {
+        lock (_gate)
+        {
+            return _items.Where(x => !string.IsNullOrEmpty(x.Category))
+                         .Select(x => x.Category!)
+                         .Distinct(StringComparer.Ordinal)
+                         .ToImmutableArray();
+        }
+    }
+
+    /// <summary>Возвращает набор уникальных каналов среди всех уведомлений.</summary>
+    public IReadOnlyList<string> GetChannels()
+    {
+        lock (_gate)
+        {
+            return _items.Where(x => !string.IsNullOrEmpty(x.Channel))
+                         .Select(x => x.Channel!)
+                         .Distinct(StringComparer.Ordinal)
+                         .ToImmutableArray();
+        }
+    }
+
+    // ── Persistence ────────────────────────────────────────────────────────
+
+    private async Task RestoreFromStorageAsync()
+    {
+        if (_storage is null) return;
+        try
+        {
+            var items = await _storage.GetAsync<List<NotificationItem>>(PersistenceKey).ConfigureAwait(false);
+            if (items is null || items.Count == 0) return;
+            lock (_gate)
+            {
+                foreach (var item in items)
+                {
+                    // Skip items that already expired (older than 30 days) and were read.
+                    if (item.IsRead && item.Timestamp.HasValue
+                        && (DateTimeOffset.Now - item.Timestamp.Value).TotalDays > 30) continue;
+                    _items.Add(item);
+                }
+            }
+            RaiseChanged();
+        }
+        catch
+        {
+            // Corrupted storage — ignore and start fresh.
+        }
+    }
+
+    private async Task PersistAsync()
+    {
+        if (!_persistenceEnabled || _storage is null) return;
+        try
+        {
+            List<NotificationItem> snapshot;
+            lock (_gate) { snapshot = _items.ToList(); }
+            await _storage.SetAsync(PersistenceKey, snapshot).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort: persistence failure must not break UI.
+        }
+    }
+
+    /// <summary>Принудительно сохраняет текущий snapshot в localStorage.</summary>
+    public Task FlushAsync() => PersistAsync();
+
+    /// <summary>Принудительно загружает snapshot из localStorage, заменяя текущий список.</summary>
+    public async Task ReloadAsync()
+    {
+        await RestoreFromStorageAsync().ConfigureAwait(false);
+    }
+
     /// <summary>Resurrects snoozed items whose time has come — moves them back to the active set.</summary>
     public int UnsnoozeDueItems()
     {
@@ -367,6 +491,12 @@ public sealed class SgNotificationService
 
     private void RaiseChanged()
     {
+        // Fire-and-forget persistence. If persistence is enabled, save asynchronously.
+        if (_persistenceEnabled && _storage is not null)
+        {
+            _ = PersistAsync();
+        }
+
         // snapshot — подписчик может отписаться/мутировать ивент.
         var handler = Changed;
         if (handler is null) return;

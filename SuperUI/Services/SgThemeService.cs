@@ -208,6 +208,60 @@ public sealed class SgThemeService : IAsyncDisposable
 
     public IReadOnlyList<IThemeDefinition> GetAvailableThemes() => _registry.GetAll();
 
+    // ── Custom CSS variables (overrides for --sg-* tokens at runtime) ──────
+
+    /// <summary>
+    /// Устанавливает CSS-переменную на :root (например, <c>--sg-primary: #ff0</c>).
+    /// Полезно для тонкой кастомизации без переключения темы.
+    /// </summary>
+    public async Task SetCssVariableAsync(string name, string value)
+    {
+        if (_isDisposed) return;
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Name is empty.", nameof(name));
+        try
+        {
+            await _js.InvokeVoidAsync("SuperUI.setCssVariable", name, value ?? string.Empty);
+        }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>
+    /// Устанавливает несколько CSS-переменных за один JS-вызов.
+    /// <paramref name="variables"/> — словарь {имя: значение}.
+    /// </summary>
+    public async Task SetCssVariablesAsync(IDictionary<string, string> variables)
+    {
+        if (_isDisposed) return;
+        if (variables is null || variables.Count == 0) return;
+        try
+        {
+            await _js.InvokeVoidAsync("SuperUI.setCssVariables",
+                variables.ToDictionary(kv => kv.Key, kv => kv.Value ?? string.Empty));
+        }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>Сбрасывает одну CSS-переменную к значению по умолчанию.</summary>
+    public async Task RemoveCssVariableAsync(string name)
+    {
+        if (_isDisposed) return;
+        if (string.IsNullOrWhiteSpace(name)) return;
+        try
+        {
+            await _js.InvokeVoidAsync("SuperUI.removeCssVariable", name);
+        }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+    }
+
     /// <summary>
     /// Coalesces rapid mutations into a single apply 150 ms after the last
     /// change. Cancellation is done by replacing the pending CTS; only the
@@ -316,7 +370,6 @@ public sealed class SgThemeService : IAsyncDisposable
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
         catch (ObjectDisposedException) { }
-        catch (InvalidOperationException) { }
     }
 
     public async ValueTask DisposeAsync()

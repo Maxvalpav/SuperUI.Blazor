@@ -58,6 +58,28 @@ public sealed class SgToast
 
     /// <summary>Content revealed when the toast is expanded.</summary>
     public RenderFragment? ExpandedContent { get; set; }
+
+    /// <summary>Приоритет тоста. Используется для упорядочивания в стеке и фильтрации при переполнении.</summary>
+    public SgToastPriority Priority { get; set; } = SgToastPriority.Normal;
+
+    /// <summary>Категория для фильтрации и дедупликации (например, "network", "auth").</summary>
+    public string? Category { get; set; }
+}
+
+/// <summary>
+/// Приоритет тоста. Высокий приоритет означает, что тост показывается первым
+/// и остаётся в очереди, если новых тостов больше <c>MaxVisibleToasts</c>.
+/// </summary>
+public enum SgToastPriority
+{
+    /// <summary>Обычный приоритет. Может быть вытеснен низкоприоритетными тостами.</summary>
+    Low = 0,
+    /// <summary>Стандартный приоритет (default).</summary>
+    Normal = 1,
+    /// <summary>Высокий приоритет. Показывается первым в очереди.</summary>
+    High = 2,
+    /// <summary>Критический — показывается в обход MaxVisibleToasts, требует ручного закрытия.</summary>
+    Critical = 3,
 }
 
 /// <summary>
@@ -228,6 +250,60 @@ public sealed class SgToastService : IAsyncDisposable
             if (string.Equals(kvp.Value.Group, group, StringComparison.Ordinal))
                 Dismiss(kvp.Key);
         }
+    }
+
+    /// <summary>Закрывает все тосты с указанной категорией.</summary>
+    public int DismissByCategory(string category)
+    {
+        if (string.IsNullOrEmpty(category)) return 0;
+        if (Volatile.Read(ref _disposed) == 1) return 0;
+        var dismissed = 0;
+        // Snapshot keys to avoid concurrent modification during iteration.
+        var toDismiss = new List<string>();
+        foreach (var kvp in _activeToasts)
+            if (string.Equals(kvp.Value.Category, category, StringComparison.Ordinal))
+                toDismiss.Add(kvp.Key);
+        foreach (var id in toDismiss) { Dismiss(id); dismissed++; }
+        return dismissed;
+    }
+
+    /// <summary>Возвращает все тосты с приоритетом ≤ указанного.</summary>
+    public IReadOnlyList<SgToast> GetByPriority(SgToastPriority minPriority)
+    {
+        var result = new List<SgToast>();
+        foreach (var t in _activeToasts.Values)
+            if (t.Priority >= minPriority) result.Add(t);
+        return result;
+    }
+
+    /// <summary>Дедупликация: если тост с таким же Category+Message уже активен, возвращает его id без показа нового.</summary>
+    /// <returns>True, если новый тост показан; false, если найден дубликат.</returns>
+    public bool ShowUnique(Action<SgToast> configure, int dedupWindowMs = 1500)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (Volatile.Read(ref _disposed) == 1) return false;
+
+        var probe = new SgToast { DurationMs = _defaultDurationMs };
+        configure(probe);
+
+        // Check for existing duplicate: same Category AND same Message within the dedup window.
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        foreach (var existing in _activeToasts.Values)
+        {
+            if (existing.Category == probe.Category
+                && string.Equals(existing.Message, probe.Message, StringComparison.Ordinal))
+            {
+                // Reset its timer (bump it).
+                if (existing.DurationMs > 0)
+                {
+                    existing.ShowProgress = probe.ShowProgress;
+                    Update(existing.Id, t => t.DurationMs = probe.DurationMs);
+                }
+                return false;
+            }
+        }
+        ShowCore(probe);
+        return true;
     }
 
     private void FlushPending()

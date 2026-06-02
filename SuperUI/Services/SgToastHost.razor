@@ -1,7 +1,9 @@
 @namespace SuperUI.Components
 @implements IAsyncDisposable
+@using Microsoft.Extensions.Logging
 @inject SgToastService Toasts
 @inject Microsoft.Extensions.Options.IOptions<SuperUI.SuperUiOptions> Options
+@inject ILogger<SgToastHost> Logger
 
 @{
     /* Group toasts by resolved placement for per-position containers */
@@ -333,7 +335,8 @@
         var toast = _items.FirstOrDefault(x => x.Id == id);
         if (toast?.OnClose is not null)
         {
-            try { toast.OnClose.Invoke(id); } catch (Exception ex) { System.Console.Error.WriteLine($"[SgToastHost] OnClose failed: {ex.Message}"); }
+            try { toast.OnClose.Invoke(id); }
+            catch (Exception ex) { Logger.LogError(ex, "SgToastHost: OnClose callback failed for toast {Id}", id); }
         }
 
         _items.RemoveAll(x => x.Id == id);
@@ -358,14 +361,14 @@
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static async Task SafeAsync(Func<Task> action, string source)
+    private async Task SafeAsync(Func<Task> action, string source)
     {
         try { await action(); }
         catch (OperationCanceledException) { }
         catch (ObjectDisposedException)    { }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[SgToastHost.{source}] {ex}");
+            Logger.LogError(ex, "SgToastHost.{Source} failed", source);
         }
     }
 

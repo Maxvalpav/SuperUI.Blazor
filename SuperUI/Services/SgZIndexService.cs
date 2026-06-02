@@ -15,6 +15,7 @@ public sealed class SgZIndexService
 
     private int _currentZIndex = DefaultInitialZIndex;
     private readonly List<ZIndexEntry> _entries = new();
+    private readonly object _lock = new();
 
     [DebuggerDisplay("Value = {Value}, Owner = {Owner}")]
     private sealed record ZIndexEntry(int Value, object Owner);
@@ -47,10 +48,10 @@ public sealed class SgZIndexService
     public event Action<object?>? TopOwnerChanged;
 
     /// <summary>Number of active z-index allocations.</summary>
-    public int Count => _entries.Count;
+    public int Count { get { lock (_lock) return _entries.Count; } }
 
     /// <summary>Gets the current highest z-index in use, or <see cref="DefaultInitialZIndex"/> if none.</summary>
-    public int CurrentZIndex => _entries.Count > 0 ? _entries[^1].Value : _currentZIndex;
+    public int CurrentZIndex { get { lock (_lock) return _entries.Count > 0 ? _entries[^1].Value : _currentZIndex; } }
 
     /// <summary>
     /// Checks whether the specified owner has an active z-index allocation.
@@ -58,7 +59,7 @@ public sealed class SgZIndexService
     public bool IsActive(object owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        return _entries.Exists(x => ReferenceEquals(x.Owner, owner));
+        lock (_lock) return _entries.Exists(x => ReferenceEquals(x.Owner, owner));
     }
 
     /// <summary>
@@ -68,8 +69,10 @@ public sealed class SgZIndexService
     public int GetZIndex(object owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        var entry = _entries.Find(x => ReferenceEquals(x.Owner, owner));
-        return entry?.Value ?? 0;
+        lock (_lock)
+        {
+            return _entries.Find(x => ReferenceEquals(x.Owner, owner))?.Value ?? 0;
+        }
     }
 
     /// <summary>
@@ -79,14 +82,13 @@ public sealed class SgZIndexService
     public bool TryGetZIndex(object owner, out int zIndex)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        var entry = _entries.Find(x => ReferenceEquals(x.Owner, owner));
-        if (entry is not null)
+        lock (_lock)
         {
-            zIndex = entry.Value;
-            return true;
+            var entry = _entries.Find(x => ReferenceEquals(x.Owner, owner));
+            if (entry is not null) { zIndex = entry.Value; return true; }
+            zIndex = 0;
+            return false;
         }
-        zIndex = 0;
-        return false;
     }
 
     /// <summary>
@@ -99,19 +101,31 @@ public sealed class SgZIndexService
     public int Allocate(object owner, int baseZIndex)
     {
         ArgumentNullException.ThrowIfNull(owner);
+        object? newTop;
 
-        var oldTop = GetTopOwner();
-
-        // Remove existing entry for this owner (re-allocate to bring to front)
-        _entries.RemoveAll(x => ReferenceEquals(x.Owner, owner));
-
-        _currentZIndex = Math.Max(_currentZIndex, baseZIndex) + 10;
-        _entries.Add(new ZIndexEntry(_currentZIndex, owner));
-
-        var newTop = GetTopOwner();
-        if (!ReferenceEquals(oldTop, newTop))
+        lock (_lock)
         {
-            TopOwnerChanged?.Invoke(newTop);
+            var oldTop = _entries.Count > 0 ? _entries[^1].Owner : null;
+
+            // Remove existing entry for this owner (re-allocate to bring to front)
+            _entries.RemoveAll(x => ReferenceEquals(x.Owner, owner));
+
+            _currentZIndex = Math.Max(_currentZIndex, baseZIndex) + 10;
+            _entries.Add(new ZIndexEntry(_currentZIndex, owner));
+
+            newTop = _entries.Count > 0 ? _entries[^1].Owner : null;
+
+            if (!ReferenceEquals(oldTop, newTop))
+            {
+                // Raise event outside lock to avoid deadlocks if subscribers re-enter the service.
+                var capturedNew = newTop;
+                var capturedOld = oldTop;
+                _ = System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    try { TopOwnerChanged?.Invoke(capturedNew); }
+                    catch { /* swallow subscriber errors */ }
+                });
+            }
         }
 
         return _currentZIndex;
@@ -135,29 +149,43 @@ public sealed class SgZIndexService
     public void Release(object owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
+        object? newTop;
+        object? oldTop;
 
-        var oldTop = GetTopOwner();
-        _entries.RemoveAll(x => ReferenceEquals(x.Owner, owner));
-        var newTop = GetTopOwner();
-
-        if (_entries.Count == 0)
+        lock (_lock)
         {
-            _currentZIndex = DefaultInitialZIndex;
-        }
+            oldTop = _entries.Count > 0 ? _entries[^1].Owner : null;
+            _entries.RemoveAll(x => ReferenceEquals(x.Owner, owner));
 
-        if (!ReferenceEquals(oldTop, newTop))
-        {
-            TopOwnerChanged?.Invoke(newTop);
+            if (_entries.Count == 0)
+            {
+                _currentZIndex = DefaultInitialZIndex;
+            }
+
+            newTop = _entries.Count > 0 ? _entries[^1].Owner : null;
+
+            if (!ReferenceEquals(oldTop, newTop))
+            {
+                var capturedNew = newTop;
+                _ = System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    try { TopOwnerChanged?.Invoke(capturedNew); }
+                    catch { }
+                });
+            }
         }
     }
 
     /// <summary>Gets the owner of the top-most (highest z-index) overlay.</summary>
-    public object? GetTopOwner() => _entries.Count > 0 ? _entries[^1].Owner : null;
+    public object? GetTopOwner() { lock (_lock) return _entries.Count > 0 ? _entries[^1].Owner : null; }
 
     /// <summary>Resets all allocations (useful for testing).</summary>
     public void Reset()
     {
-        _currentZIndex = DefaultInitialZIndex;
-        _entries.Clear();
+        lock (_lock)
+        {
+            _currentZIndex = DefaultInitialZIndex;
+            _entries.Clear();
+        }
     }
 }

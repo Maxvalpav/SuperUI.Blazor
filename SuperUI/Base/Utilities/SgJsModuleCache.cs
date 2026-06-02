@@ -25,22 +25,18 @@ public sealed class SgJsModuleCache : IAsyncDisposable
     // Task<IJSObjectReference> — coalescing: параллельные GetAsync получат один Task.
     // ConcurrentDictionary: lock-free чтение в fast-path, GetOrAdd с фабрикой для slow-path.
     private readonly ConcurrentDictionary<string, Task<IJSObjectReference>> _cache = new();
-    private bool _disposed;
+    private int _disposed;
 
     /// <summary>
     /// Возвращает <see cref="IJSObjectReference"/> для указанного пути к модулю.
     /// При первом вызове — импортирует модуль; при повторных — возвращает кешированный.
     /// </summary>
-    /// <param name="js">Экземпляр <see cref="IJSRuntime"/>.</param>
-    /// <param name="path">Путь к модулю (e.g. <c>"./_content/SuperUI/superui-modal.js"</c>).</param>
-    /// <param name="ct">Токен отмены.</param>
-    /// <exception cref="ObjectDisposedException">Кеш уже освобождён.</exception>
     public async ValueTask<IJSObjectReference> GetAsync(
         IJSRuntime js,
         string path,
         CancellationToken ct = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
         ArgumentNullException.ThrowIfNull(js);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
@@ -68,7 +64,6 @@ public sealed class SgJsModuleCache : IAsyncDisposable
     /// <summary>
     /// Удаляет модуль из кеша (например, при hotreload).
     /// </summary>
-    /// <param name="path">Путь к модулю.</param>
     public async ValueTask InvalidateAsync(string path)
     {
         if (_cache.TryRemove(path, out var task) && task.IsCompletedSuccessfully)
@@ -81,12 +76,16 @@ public sealed class SgJsModuleCache : IAsyncDisposable
     }
 
     /// <summary>
+    /// Возвращает количество кешированных модулей (для тестов и диагностики).
+    /// </summary>
+    public int Count => _cache.Count;
+
+    /// <summary>
     /// Освобождает все кешированные JS-модули.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
         foreach (var task in _cache.Values)
         {

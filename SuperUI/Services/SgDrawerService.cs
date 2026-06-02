@@ -11,9 +11,27 @@ namespace SuperUI.Services;
 /// </summary>
 public class SgDrawerService
 {
+    private readonly object _gate = new();
     private readonly List<DrawerInstance> _drawers = new();
 
-    public IReadOnlyList<DrawerInstance> Drawers => _drawers.AsReadOnly();
+    /// <summary>Иммутабельный снимок всех открытых drawer'ов (безопасно для итерации из подписчиков).</summary>
+    public IReadOnlyList<DrawerInstance> Drawers
+    {
+        get { lock (_gate) { return _drawers.ToArray(); } }
+    }
+
+    /// <summary>Количество открытых drawer'ов.</summary>
+    public int Count
+    {
+        get { lock (_gate) { return _drawers.Count; } }
+    }
+
+    /// <summary>Проверяет, открыт ли указанный drawer.</summary>
+    public bool IsOpen(DrawerInstance instance)
+    {
+        if (instance is null) return false;
+        lock (_gate) { return _drawers.Contains(instance); }
+    }
 
     public event Action? StateChanged;
 
@@ -23,6 +41,7 @@ public class SgDrawerService
     /// </summary>
     public DrawerInstance Show(string title, RenderFragment body, Action<DrawerConfig>? configure = null)
     {
+        ArgumentNullException.ThrowIfNull(body);
         var config = new DrawerConfig();
         configure?.Invoke(config);
 
@@ -37,8 +56,8 @@ public class SgDrawerService
 
         instance.OnClose = () => Close(instance);
 
-        _drawers.Add(instance);
-        StateChanged?.Invoke();
+        lock (_gate) { _drawers.Add(instance); }
+        RaiseStateChanged();
         return instance;
     }
 
@@ -59,9 +78,35 @@ public class SgDrawerService
     /// </summary>
     public void Close(DrawerInstance instance)
     {
-        instance.Visible = false;
-        _drawers.Remove(instance);
-        StateChanged?.Invoke();
+        ArgumentNullException.ThrowIfNull(instance);
+        bool changed;
+        lock (_gate)
+        {
+            instance.Visible = false;
+            changed = _drawers.Remove(instance);
+        }
+        if (changed) RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// Closes the drawer with the specified id.
+    /// </summary>
+    public bool CloseById(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return false;
+        DrawerInstance? found = null;
+        lock (_gate)
+        {
+            foreach (var d in _drawers)
+            {
+                if (d.Id == id) { found = d; break; }
+            }
+            if (found is null) return false;
+            found.Visible = false;
+            _drawers.Remove(found);
+        }
+        RaiseStateChanged();
+        return true;
     }
 
     /// <summary>
@@ -69,10 +114,26 @@ public class SgDrawerService
     /// </summary>
     public void CloseAll()
     {
-        foreach (var d in _drawers.ToList())
-            d.Visible = false;
-        _drawers.Clear();
-        StateChanged?.Invoke();
+        bool changed;
+        lock (_gate)
+        {
+            foreach (var d in _drawers) d.Visible = false;
+            changed = _drawers.Count > 0;
+            _drawers.Clear();
+        }
+        if (changed) RaiseStateChanged();
+    }
+
+    private void RaiseStateChanged()
+    {
+        // snapshot to avoid concurrent modification during dispatch
+        var handler = StateChanged;
+        if (handler is null) return;
+        foreach (var d in handler.GetInvocationList())
+        {
+            try { ((Action)d).Invoke(); }
+            catch { /* one subscriber must not break others */ }
+        }
     }
 }
 

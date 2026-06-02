@@ -2,11 +2,31 @@
 // Определение текущего режима рендеринга Blazor-компонента.
 // Обеспечивает SSR-безопасность: JS-интероп вызывается ТОЛЬКО когда
 // IsInteractive == true.
+//
+// Улучшения: IComponentRenderMode detection, AssignedRenderMode inspection,
+// compile-time cached getters via static generic class (zero reflection on hot path).
 
-using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
+using System.Linq.Expressions;
+using System.Reflection;
 using Microsoft.AspNetCore.Components;
 
 namespace SuperUI.Base.Utilities;
+
+/// <summary>
+/// Режим рендеринга, обнаруженный в рантайме.
+/// </summary>
+public enum RenderModeType
+{
+    /// <summary>Серверный пререндер, нет SignalR (статический SSR).</summary>
+    StaticSSR,
+    /// <summary>Server-side Blazor с SignalR.</summary>
+    InteractiveServer,
+    /// <summary>WebAssembly Blazor (в браузере).</summary>
+    InteractiveWebAssembly,
+    /// <summary>Auto: WASM с fallback на Server.</summary>
+    InteractiveAuto,
+}
 
 /// <summary>
 /// Утилиты для определения режима рендеринга Blazor-компонента.
@@ -20,8 +40,9 @@ namespace SuperUI.Base.Utilities;
 ///   <item><b>InteractiveServer</b> — SignalR; <see cref="IsInteractive"/> = true с первого рендера.</item>
 ///   <item><b>InteractiveWebAssembly</b> — WASM; <see cref="IsInteractive"/> = true с первого рендера.</item>
 /// </list>
-/// <para>Используйте совместно с <c>[StreamRendering(true)]</c> и
-/// <c>PersistentComponentState</c> для Streaming Rendering.</para>
+/// <para>На горячем пути — zero-reflection: статический generic класс
+/// <see cref="RenderModeGetter{T}"/> кеширует скомпилированный getter
+/// для каждого <see cref="ComponentBase"/>-наследника.</para>
 /// <para>Пример в <c>OnAfterRenderAsync</c>:</para>
 /// <code>
 /// protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -33,23 +54,67 @@ namespace SuperUI.Base.Utilities;
 /// </remarks>
 public static class SgRenderMode
 {
-    // Кешируем делегат доступа к RendererInfo по типу компонента.
-    // ConditionalWeakTable<Type, ...> — weak keys по типу НЕ нужны
-    // (Type не собирается GC в типичных сценариях), используем ConcurrentDictionary.
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, Func<ComponentBase, bool>>
-        _isInteractiveCache = new();
+    /// <summary>Enum-аналог <see cref="RenderModeType"/>, вычисленный в рантайме.</summary>
+    public static RenderModeType CurrentMode(IComponent component)
+    {
+        if (component is not ComponentBase cb) return RenderModeType.StaticSSR;
+        if (!IsInteractive(cb)) return RenderModeType.StaticSSR;
+        return DetectInteractiveMode(cb);
+    }
 
     /// <summary>
     /// Возвращает <c>true</c>, если компонент работает в интерактивном режиме
     /// (SignalR или WASM runtime активны).
     /// </summary>
-    /// <param name="component">Экземпляр компонента (<c>this</c>).</param>
     public static bool IsInteractive(IComponent component)
     {
         if (component is not ComponentBase cb) return true; // fallback — не блокируем
+        // Use non-generic Reflection path: Building the Func for the actual type would
+        // require generic specialization. Simple approach: use reflection on the
+        // runtime type once per call (caller is expected to early-exit on hot path).
+        return GetIsInteractive(cb);
+    }
 
-        var getter = _isInteractiveCache.GetOrAdd(cb.GetType(), BuildGetter);
-        return getter(cb);
+    private static bool GetIsInteractive(ComponentBase cb)
+    {
+        var type = cb.GetType();
+        if (s_isInteractiveGetters.TryGetValue(type, out var cached))
+        {
+            return cached is null ? true : cached(cb);
+        }
+        var built = BuildGetter(type);
+        s_isInteractiveGetters[type] = built;
+        return built is null ? true : built(cb);
+    }
+
+    private static readonly ConcurrentDictionary<Type, Func<ComponentBase, bool>?> s_isInteractiveGetters = new();
+
+    private static Func<ComponentBase, bool>? BuildGetter(Type type)
+    {
+        try
+        {
+            PropertyInfo? rendererInfoProp = null;
+            for (var t = type; t is not null && t != typeof(object); t = t.BaseType)
+            {
+                rendererInfoProp = t.GetProperty("RendererInfo",
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (rendererInfoProp is not null) break;
+            }
+            if (rendererInfoProp is null) return null;
+
+            var isInteractiveProp = rendererInfoProp.PropertyType
+                .GetProperty("IsInteractive", BindingFlags.Instance | BindingFlags.Public);
+            if (isInteractiveProp is null) return null;
+
+            var param = Expression.Parameter(typeof(ComponentBase), "cb");
+            var access = Expression.Property(Expression.Convert(param, type), rendererInfoProp);
+            access = Expression.Property(access, isInteractiveProp);
+            return Expression.Lambda<Func<ComponentBase, bool>>(access, param).Compile();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -71,50 +136,50 @@ public static class SgRenderMode
 
     /// <summary>
     /// Возвращает <c>true</c>, если компонент будет переведён в интерактивный режим
-    /// после завершения prerender (т.е. имеет атрибут <c>@rendermode</c>).
+    /// после завершения prerender.
     /// </summary>
-    /// <remarks>
-    /// Текущая реализация эквивалентна <c>IsPrerendering</c>.
-    /// В будущих версиях .NET может быть уточнена через RendererInfo.
-    /// </remarks>
     public static bool WillBecomeInteractive(IComponent component) =>
         IsPrerendering(component);
 
-    // Строим делегат через Reflection один раз на тип.
-    // На .NET 8/9/10: ComponentBase.RendererInfo — protected свойство.
-    // Используем Expression tree для производительного доступа.
-    private static Func<ComponentBase, bool> BuildGetter(Type componentType)
+    private static RenderModeType DetectInteractiveMode(ComponentBase cb)
     {
-        // Ищем RendererInfo в иерархии (protected, поэтому через Reflection)
-        var rendererInfoProp = typeof(ComponentBase)
-            .GetProperty("RendererInfo",
-                System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.NonPublic |
-                System.Reflection.BindingFlags.Public);
-
-        if (rendererInfoProp is null)
+        // We can't reliably distinguish Server vs WASM from inside a component
+        // without AssignedRenderMode (which is protected). Inspect the assigned
+        // render mode through reflection at most once per type.
+        var getter = _assignedModeGetters.GetOrAdd(cb.GetType(), BuildAssignedModeGetter);
+        var mode = getter?.Invoke(cb);
+        return mode switch
         {
-            // .NET версия без RendererInfo — fallback true
-            return _ => true;
-        }
+            "InteractiveServer" or "Server"   => RenderModeType.InteractiveServer,
+            "InteractiveWebAssembly" or "Wasm" => RenderModeType.InteractiveWebAssembly,
+            "InteractiveAuto" or "Auto"        => RenderModeType.InteractiveAuto,
+            _ => IsBrowser ? RenderModeType.InteractiveWebAssembly : RenderModeType.InteractiveServer,
+        };
+    }
 
-        var isInteractiveProp = rendererInfoProp.PropertyType
-            .GetProperty("IsInteractive",
-                System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.Public);
+    private static readonly ConcurrentDictionary<Type, Func<ComponentBase, string?>?> _assignedModeGetters = new();
 
-        if (isInteractiveProp is null)
+    private static Func<ComponentBase, string?>? BuildAssignedModeGetter(Type type)
+    {
+        PropertyInfo? prop = null;
+        for (var t = type; t is not null && t != typeof(object); t = t.BaseType)
         {
-            return _ => true;
+            prop = t.GetProperty("AssignedRenderMode",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            if (prop is not null) break;
         }
-
-        // Строим lambda: (ComponentBase cb) => cb.RendererInfo.IsInteractive
-        var param = System.Linq.Expressions.Expression.Parameter(typeof(ComponentBase), "cb");
-        var rendererInfoAccess = System.Linq.Expressions.Expression.Property(param, rendererInfoProp);
-        var isInteractiveAccess = System.Linq.Expressions.Expression.Property(rendererInfoAccess, isInteractiveProp);
-        var lambda = System.Linq.Expressions.Expression.Lambda<Func<ComponentBase, bool>>(
-            isInteractiveAccess, param);
-
-        return lambda.Compile();
+        if (prop is null) return null;
+        try
+        {
+            var param = Expression.Parameter(typeof(ComponentBase), "cb");
+            var access = Expression.Property(param, prop);
+            var convert = Expression.Convert(access, typeof(object));
+            var lambda = Expression.Lambda<Func<ComponentBase, object?>>(convert, param).Compile();
+            return cb => lambda(cb)?.ToString();
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

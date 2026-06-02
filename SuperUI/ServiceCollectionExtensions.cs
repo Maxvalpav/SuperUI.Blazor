@@ -54,7 +54,7 @@ public static class ServiceCollectionExtensions
             configureThemes?.Invoke(registry);
             return registry;
         });
-        
+
         services.TryAddScoped<SgThemeService>();
         services.TryAddScoped<SgSettingsService>();
         services.TryAddScoped<SgDrawerService>();
@@ -74,6 +74,23 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<Services.Llm.SgLlmProxyForwarder>();
         services.TryAddScoped<SgJsModuleCache>();
         services.TryAddScoped<SgWeatherService>();
+
+        // ── Cross-cutting infrastructure (Phase 3) ──────────────────────────
+        // Scoped: per-circuit on Blazor Server, per-session on Blazor WASM.
+        services.TryAddScoped<SgEventAggregator>();
+        services.TryAddScoped<SgStorageService>();
+        services.TryAddScoped<SgClipboardService>();
+        services.TryAddScoped<SgDownloadService>();
+        services.TryAddScoped<SgPrintService>();
+        services.TryAddScoped<SgFullscreenService>();
+        services.TryAddScoped<SgViewportService>();
+        services.TryAddScoped<SgBreakpointService>();
+        services.TryAddScoped<SgNetworkService>();
+        services.TryAddScoped<SgVisibilityService>();
+        services.TryAddScoped<SgHotkeyService>();
+        services.TryAddScoped<SgIntersectionService>();
+        services.TryAddScoped<SgResizeService>();
+        services.TryAddScoped<SgErrorService>();
 
         Components.DocumentExtractor.Services.DocumentExtractorServiceCollectionExtensions.AddSgDocumentExtractor(services);
 

@@ -1,8 +1,12 @@
 // SuperUI/Base/ComponentBases/SgOverlayComponentBase.cs
-// Базовый класс для оверлеев: Modal, Drawer, Popover, Tooltip, ToastHost.
-// Убирает паттерн _previousVisible/Allocate/Release из каждого оверлея.
+// Базовый класс для оверлеев: Modal, Drawer, Popover, Tooltip, ToastHost, Dialog, CommandPalette.
+// Убирает паттерн _previousVisible / Allocate / Release из каждого оверлея и
+// добавляет focus restore + nested overlay support.
 
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
+using Microsoft.JSInterop;
+using SuperUI.Base.Utilities;
 using SuperUI.Services;
 
 namespace SuperUI.Base.ComponentBases;
@@ -16,7 +20,9 @@ namespace SuperUI.Base.ComponentBases;
 ///   <item>Z-index (через <see cref="SgZIndexService"/>): Allocate при открытии, Release при закрытии.</item>
 ///   <item>Состоянием visible/closing: <see cref="IsOpening"/>, <see cref="IsClosing"/>.</item>
 ///   <item>Lifecycle-хуками: OnOpeningAsync, OnOpenedAsync, OnClosingAsync, OnClosedAsync.</item>
-///   <item>Стандартным каналом закрытия: <see cref="RequestCloseAsync"/> (вызывается из JS через ESC/backdrop).</item>
+///   <item>Стандартным каналом закрытия: <see cref="RequestCloseAsync"/> (JS-вызов из ESC/backdrop).</item>
+///   <item>Анимациями через <see cref="SgAnimationCoordinator"/> (с учётом prefers-reduced-motion).</item>
+///   <item>Focus restore при закрытии (через <see cref="SgFocusManager"/>).</item>
 /// </list>
 /// <para><b>Использование (пример миграции SgModal):</b></para>
 /// <code>
@@ -29,16 +35,9 @@ namespace SuperUI.Base.ComponentBases;
 ///     protected override async ValueTask OnOpeningAsync()
 ///     {
 ///         await SafeInvokeVoidAsync("attach", RootRef, SelfRef, CloseOnEscape);
-///         if (Draggable) await SafeInvokeVoidAsync("initDrag", RootRef, _headerRef);
 ///     }
 ///
-///     protected override async ValueTask OnClosingAsync()
-///     {
-///         await SafeInvokeVoidAsync("detach");
-///     }
-///
-///     // [JSInvokable] метод — стандартный канал ESC/backdrop:
-///     [JSInvokable] public override Task RequestCloseAsync() => CloseAsync();
+///     [JSInvokable] public override Task RequestCloseAsync() =&gt; CloseAsync();
 /// }
 /// </code>
 /// </remarks>
@@ -48,116 +47,112 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
     private bool _isOpening;
     private bool _isClosing;
     private int _zIndexValue;
-    private CancellationTokenSource? _animationCts;
+    private IAsyncDisposable? _focusTrap;
 
-    // ── Параметры ─────────────────────────────────────────────────────────────
+    /// <summary>Z-index service for stacking overlays.</summary>
+    [Inject] protected SgZIndexService ZIndex { get; set; } = default!;
 
-    /// <summary>
-    /// Управляет видимостью оверлея.
-    /// </summary>
-    [Parameter]
-    public bool Visible { get; set; }
+    /// <summary>Animation coordinator (reduced-motion aware).</summary>
+    [Inject] protected SgAnimationCoordinator Animations { get; set; } = default!;
 
-    /// <summary>
-    /// Callback при изменении <see cref="Visible"/>.
-    /// </summary>
-    [Parameter]
-    public EventCallback<bool> VisibleChanged { get; set; }
+    /// <summary>Focus manager for trap/restore.</summary>
+    [Inject] protected SgFocusManager Focus { get; set; } = default!;
 
-    // ── Инжекция ──────────────────────────────────────────────────────────────
+    /// <summary>Controls overlay visibility.</summary>
+    [Parameter] public bool Visible { get; set; }
 
-    /// <summary>Сервис управления z-index.</summary>
-    [Inject]
-    protected SgZIndexService ZIndex { get; set; } = default!;
+    /// <summary>Two-way binding callback for <see cref="Visible"/>.</summary>
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
 
-    // ── Абстрактные члены ─────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Базовый z-index для данного типа оверлея.
-    /// Используйте константы <see cref="SgZIndexService"/>:
-    /// <see cref="SgZIndexService.ModalBase"/>, <see cref="SgZIndexService.TooltipBase"/>, и т.д.
-    /// </summary>
+    /// <summary>Base z-index for this overlay kind (e.g. <see cref="SgZIndexService.ModalBase"/>).</summary>
     protected abstract int ZIndexBase { get; }
 
-    // ── Защищённые свойства ───────────────────────────────────────────────────
-
-    /// <summary>Текущий выделенный z-index. 0 — оверлей закрыт.</summary>
+    /// <summary>Current allocated z-index (0 = closed).</summary>
     protected int ZIndexValue => _zIndexValue;
 
-    /// <summary>Z-index бэкдропа (на 5 ниже оверлея).</summary>
+    /// <summary>Backdrop z-index (5 below the overlay).</summary>
     protected int BackdropZIndex => _zIndexValue > 0 ? _zIndexValue - 5 : 0;
 
-    /// <summary><c>true</c> во время анимации открытия.</summary>
+    /// <summary>True during the opening animation.</summary>
     protected bool IsOpening => _isOpening;
 
-    /// <summary><c>true</c> во время анимации закрытия.</summary>
+    /// <summary>True during the closing animation.</summary>
     protected bool IsClosing => _isClosing;
 
     // ── Lifecycle hooks ───────────────────────────────────────────────────────
 
-    /// <summary>Вызывается перед показом оверлея (до анимации).</summary>
+    /// <summary>Called before show (before animation).</summary>
     protected virtual ValueTask OnOpeningAsync() => default;
 
-    /// <summary>Вызывается после завершения анимации открытия.</summary>
+    /// <summary>Called after open animation completes.</summary>
     protected virtual ValueTask OnOpenedAsync() => default;
 
-    /// <summary>Вызывается перед скрытием оверлея (до анимации закрытия).</summary>
+    /// <summary>Called before hide (before animation).</summary>
     protected virtual ValueTask OnClosingAsync() => default;
 
-    /// <summary>Вызывается после завершения анимации закрытия.</summary>
+    /// <summary>Called after hide animation completes.</summary>
     protected virtual ValueTask OnClosedAsync() => default;
 
-    /// <summary>
-    /// Длительность анимации закрытия в миллисекундах.
-    /// После истечения — <see cref="VisibleChanged"/> вызывается с <c>false</c>.
-    /// По умолчанию 200 мс.
-    /// </summary>
+    /// <summary>Override to disable or alter the closing animation duration (ms).</summary>
     protected virtual int ClosingAnimationMs => 200;
+
+    /// <summary>
+    /// Override to disable focus trap (default: true if the overlay contains focusable content).
+    /// </summary>
+    protected virtual bool UseFocusTrap => true;
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Стандартный канал закрытия из JS (ESC, backdrop click).
-    /// Помечен <c>[JSInvokable]</c> — Blazor резолвит по runtime-типу.
-    /// </summary>
+    /// <summary>JS channel: ESC key or backdrop click.</summary>
     [Microsoft.JSInterop.JSInvokable]
     public virtual Task RequestCloseAsync() => CloseAsync();
 
-    /// <summary>
-    /// Программно закрывает оверлей.
-    /// </summary>
+    /// <summary>Programmatically closes the overlay.</summary>
     public virtual async Task CloseAsync()
     {
         if (IsDisposed || _isClosing || !Visible) return;
 
-        _animationCts?.Cancel();
-        _animationCts?.Dispose();
-        _animationCts = new CancellationTokenSource();
-        var token = _animationCts.Token;
-
         _isClosing = true;
         StateHasChanged();
 
-        await OnClosingAsync();
+        // 1) user-defined teardown (JS detach).
+        try { await OnClosingAsync(); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (ObjectDisposedException) { }
 
+        // 2) wait for the animation (or reduced-motion = 0).
         try
         {
-            await Task.Delay(ClosingAnimationMs, token);
+            var delay = await Animations.BeginAsync(ClosingAnimationMs);
+            await delay.WaitAsync();
         }
-        catch (TaskCanceledException)
-        {
-            return;
-        }
+        catch (OperationCanceledException) { return; }
 
         _isClosing = false;
         Visible = false;
         _previousVisible = false;
         ReleaseZIndex();
 
+        // 3) dispose focus trap.
+        if (_focusTrap is not null)
+        {
+            try { await _focusTrap.DisposeAsync(); } catch { /* swallow */ }
+            _focusTrap = null;
+        }
+
+        // 4) fire VisibleChanged.
         if (VisibleChanged.HasDelegate)
             await VisibleChanged.InvokeAsync(false);
 
-        await OnClosedAsync();
+        // 5) restore focus to the trigger.
+        await Focus.RestoreAsync();
+
+        // 6) user-defined post-close.
+        try { await OnClosedAsync(); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (ObjectDisposedException) { }
     }
 
     // ── Override OnInteractiveAsync ──────────────────────────────────────────
@@ -165,16 +160,16 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
     /// <inheritdoc/>
     protected override async ValueTask OnInteractiveAsync()
     {
-        // Если компонент уже создан с Visible=true (типичный кейс prerender→interactive
-        // или просто открытый по умолчанию модал), выполняем полный цикл открытия здесь
-        // и помечаем _previousVisible, чтобы OnAfterRenderSafeAsync не запустил его повторно.
+        // If the component is created with Visible=true (e.g. SSR→interactive handoff
+        // or default-open), perform the full open cycle here and mark _previousVisible
+        // so OnAfterRenderSafeAsync doesn't re-run it.
         if (Visible && !_previousVisible)
         {
             _previousVisible = true;
             _zIndexValue = ZIndex.Allocate(this, ZIndexBase);
             StateHasChanged();
-            await OnOpeningAsync();
-            await OnOpenedAsync();
+            try { await OnOpeningAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpeningAsync failed."); }
+            try { await OnOpenedAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpenedAsync failed."); }
         }
     }
 
@@ -183,53 +178,64 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
     /// <inheritdoc/>
     protected override async Task OnAfterRenderSafeAsync(bool firstRender)
     {
-        if (!IsInteractive) return; // SSR-guard
+        if (!IsInteractive) return; // SSR guard
 
         // Detect Visible → true (opening)
         if (Visible && !_previousVisible)
         {
             _previousVisible = true;
             _zIndexValue = ZIndex.Allocate(this, ZIndexBase);
+
+            // Capture the current focus so CloseAsync can restore it.
+            await Focus.CaptureAsync();
+
+            if (UseFocusTrap && RootRef.Id is not null)
+            {
+                _focusTrap = await Focus.TrapAsync(RootRef);
+            }
+
             _isOpening = true;
             StateHasChanged();
-            await OnOpeningAsync();
+            try { await OnOpeningAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpeningAsync failed."); }
             _isOpening = false;
-            await OnOpenedAsync();
+            try { await OnOpenedAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpenedAsync failed."); }
         }
         // Detect Visible → false (closing via parameter, not CloseAsync)
         else if (!Visible && _previousVisible)
         {
             _previousVisible = false;
             ReleaseZIndex();
-            await OnClosingAsync();
-            await OnClosedAsync();
+            if (_focusTrap is not null)
+            {
+                try { await _focusTrap.DisposeAsync(); } catch { /* swallow */ }
+                _focusTrap = null;
+            }
+            try { await OnClosingAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnClosingAsync failed."); }
+            try { await OnClosedAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnClosedAsync failed."); }
+            await Focus.RestoreAsync();
         }
     }
 
     // ── Override OnDisposingAsync ─────────────────────────────────────────────
 
     /// <inheritdoc/>
-    protected override ValueTask OnDisposingAsync()
+    protected override async ValueTask OnDisposingAsync()
     {
-        _animationCts?.Cancel();
-        _animationCts?.Dispose();
+        if (_focusTrap is not null)
+        {
+            try { await _focusTrap.DisposeAsync(); } catch { /* swallow */ }
+            _focusTrap = null;
+        }
         ReleaseZIndex();
-        return default;
     }
 
-    /// <summary>
-    /// Перевыделяет z-index для оверлея — освобождает текущий и берёт новый,
-    /// который окажется поверх остальных оверлеев того же базового уровня.
-    /// Используйте для реализации «bring to front» (например, в плавающих окнах).
-    /// </summary>
+    /// <summary>Re-allocates z-index to bring the overlay to the top of its stack.</summary>
     protected void BringToFront()
     {
         if (!Visible || IsDisposed) return;
         if (_zIndexValue > 0) ZIndex.Release(this);
         _zIndexValue = ZIndex.Allocate(this, ZIndexBase);
     }
-
-    // ── Private ───────────────────────────────────────────────────────────────
 
     private void ReleaseZIndex()
     {

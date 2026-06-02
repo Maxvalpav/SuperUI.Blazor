@@ -1,4 +1,5 @@
 using SuperUI.Base.Builders;
+using SuperUI.Enums;
 using Xunit;
 
 namespace SuperUI.Tests.Base;
@@ -48,5 +49,43 @@ public class CssBuilderTests
     {
         string s = CssBuilder.Default("btn");
         Assert.Equal("btn", s);
+    }
+
+    [Fact] void Add_alias_with_when()
+    {
+        var result = CssBuilder.Default("base").Add("extra", true).Build();
+        Assert.Equal("base extra", result);
+    }
+
+    [Fact] void Add_alias_with_when_false()
+    {
+        var result = CssBuilder.Default("base").Add("extra", false).Build();
+        Assert.Equal("base", result);
+    }
+
+    [Fact] void Add_alias_with_lazy_condition()
+    {
+        var result = CssBuilder.Default("base").Add("x", () => true).Build();
+        Assert.Equal("base x", result);
+    }
+
+    [Fact] void Add_enum_value()
+    {
+        var result = CssBuilder.Default("sg-btn").AddClass(SgSize.Md).Build();
+        Assert.Equal("sg-btn md", result);
+    }
+
+    [Fact] void AddFromValue_with_null_skips()
+    {
+        SgSize? size = null;
+        var result = CssBuilder.Default("sg-btn").AddClassFromValue(size).Build();
+        Assert.Equal("sg-btn", result);
+    }
+
+    [Fact] void AddFromValue_with_value_includes()
+    {
+        SgSize? size = SgSize.Lg;
+        var result = CssBuilder.Default("sg-btn").AddClassFromValue(size).Build();
+        Assert.Equal("sg-btn lg", result);
     }
 }

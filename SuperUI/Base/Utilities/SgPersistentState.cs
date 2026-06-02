@@ -23,15 +23,8 @@ namespace SuperUI.Base.Utilities;
 public static class SgPersistentState
 {
     /// <summary>
-    /// Регистрирует функцию сохранения состояния перед pausin компонента.
+    /// Регистрирует функцию сохранения состояния перед pausing компонента.
     /// </summary>
-    /// <typeparam name="T">Тип данных.</typeparam>
-    /// <param name="pcs">Экземпляр <see cref="PersistentComponentState"/>.</param>
-    /// <param name="key">Уникальный ключ (рекомендуется: тип + discriminator).</param>
-    /// <param name="getter">Функция, возвращающая текущее значение для сохранения.</param>
-    /// <returns>
-    /// <see cref="IDisposable"/> — subscription. Dispose вызывается в <c>DisposeAsync</c> компонента.
-    /// </returns>
     public static IDisposable Register<T>(
         PersistentComponentState pcs,
         string key,
@@ -55,11 +48,6 @@ public static class SgPersistentState
     /// <summary>
     /// Пытается восстановить значение из персистентного состояния.
     /// </summary>
-    /// <typeparam name="T">Тип данных.</typeparam>
-    /// <param name="pcs">Экземпляр <see cref="PersistentComponentState"/>.</param>
-    /// <param name="key">Ключ.</param>
-    /// <param name="value">Восстановленное значение или <c>default</c>.</param>
-    /// <returns><c>true</c>, если значение найдено и восстановлено.</returns>
     public static bool TryTake<T>(
         PersistentComponentState pcs,
         string key,
@@ -72,12 +60,6 @@ public static class SgPersistentState
     /// <summary>
     /// Восстанавливает значение из персистентного состояния или создаёт его заново.
     /// </summary>
-    /// <typeparam name="T">Тип данных.</typeparam>
-    /// <param name="pcs">Экземпляр <see cref="PersistentComponentState"/>.</param>
-    /// <param name="key">Ключ.</param>
-    /// <param name="compute">Функция создания значения (вызывается только если нет персистентного).</param>
-    /// <param name="ct">Токен отмены.</param>
-    /// <returns>Восстановленное или вновь созданное значение.</returns>
     public static async ValueTask<T?> TakeOrCreateAsync<T>(
         PersistentComponentState pcs,
         string key,
@@ -93,5 +75,22 @@ public static class SgPersistentState
         }
 
         return await compute(ct);
+    }
+
+    /// <summary>
+    /// Регистрирует callback, который вызывается после restore из PersistentState.
+    /// Используйте, чтобы инициализировать C# state на основе восстановленных данных.
+    /// </summary>
+    public static void OnRestored<T>(
+        PersistentComponentState pcs,
+        string key,
+        Action<T> onRestored)
+    {
+        ArgumentNullException.ThrowIfNull(pcs);
+        ArgumentNullException.ThrowIfNull(onRestored);
+        if (pcs.TryTakeFromJson<T>(key, out var value) && value is not null)
+        {
+            onRestored(value);
+        }
     }
 }
