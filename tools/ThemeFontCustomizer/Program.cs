@@ -183,6 +183,327 @@ internal static class Program
             display:"Inter, system-ui, sans-serif",
             mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
             gfonts: "Inter:wght@400;500;600;700|Bitter:ital,wght@0,400;0,500;0,600;0,700;1,400|JetBrains+Mono:wght@400;500"),
+
+        // ── 43 original themes (kept for backward compat) ───────────────
+        // Each gets a distinctive body/serif/display/mono identity that
+        // matches its category and character. Google Fonts only.
+
+        ["aether"] = new(
+            sans:   "Manrope, system-ui, -apple-system, sans-serif",
+            serif:  "Newsreader, Georgia, serif",
+            display:"'Space Grotesk', Manrope, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Manrope:wght@400;500;600;700|Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700|Space+Grotesk:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["apex"] = new(
+            sans:   "Inter, system-ui, -apple-system, sans-serif",
+            serif:  "Lora, Georgia, serif",
+            display:"'Space Grotesk', Inter, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Inter:wght@400;500;600;700|Lora:ital,wght@0,400;0,500;0,600;0,700;1,400|Space+Grotesk:wght@500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["aurea"] = new(
+            // Gold-tinged elegant theme. All-serif for a refined look.
+            sans:   "'Playfair Display', Georgia, serif",
+            serif:  "'Playfair Display', Georgia, serif",
+            display:"'Playfair Display', Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400|JetBrains+Mono:wght@400;500"),
+
+        ["biofilia"] = new(
+            // Organic nature theme. Nunito for soft, rounded body.
+            sans:   "Nunito, system-ui, -apple-system, sans-serif",
+            serif:  "Lora, Georgia, serif",
+            display:"Nunito, system-ui, sans-serif",
+            mono:   "'Source Code Pro', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "Nunito:wght@400;500;600;700|Lora:wght@400;500;600;700|Source+Code+Pro:wght@400;500"),
+
+        ["calyx"] = new(
+            // Book serif, literary.
+            sans:   "Literata, Georgia, serif",
+            serif:  "Literata, Georgia, serif",
+            display:"Literata, Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Literata:opsz,wght@7..72,400;7..72,500;7..72,600;7..72,700|JetBrains+Mono:wght@400;500"),
+
+        ["cantus"] = new(
+            // Minimalist song-like.
+            sans:   "'DM Sans', system-ui, -apple-system, sans-serif",
+            serif:  "'Playfair Display', Georgia, serif",
+            display:"'DM Sans', system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "DM+Sans:wght@400;500;600;700|Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400|JetBrains+Mono:wght@400;500"),
+
+        ["chrono"] = new(
+            // Time/futuristic.
+            sans:   "Rajdhani, system-ui, -apple-system, sans-serif",
+            serif:  "'Cormorant Garamond', Georgia, serif",
+            display:"Rajdhani, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Share Tech Mono', ui-monospace, monospace",
+            gfonts: "Rajdhani:wght@400;500;600;700|Cormorant+Garamond:wght@400;500;600;700|Share+Tech+Mono|JetBrains+Mono:wght@400;500"),
+
+        ["circadian"] = new(
+            sans:   "Inter, system-ui, -apple-system, sans-serif",
+            serif:  "'Source Serif 4', Georgia, serif",
+            display:"Inter, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Inter:wght@400;500;600;700|Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700|JetBrains+Mono:wght@400;500"),
+
+        ["clarity"] = new(
+            // Minimal — one font, no serif.
+            sans:   "Inter, system-ui, -apple-system, sans-serif",
+            serif:  "Inter, system-ui, -apple-system, sans-serif",
+            display:"Inter, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["clarity-clinical"] = new(
+            sans:   "Inter, system-ui, -apple-system, sans-serif",
+            serif:  "Newsreader, Georgia, serif",
+            display:"Inter, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Inter:wght@400;500;600;700|Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700|JetBrains+Mono:wght@400;500"),
+
+        ["cosmos"] = new(
+            sans:   "'Space Grotesk', system-ui, -apple-system, sans-serif",
+            serif:  "'Cormorant Garamond', Georgia, serif",
+            display:"'Space Grotesk', system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Space+Grotesk:wght@400;500;600;700|Cormorant+Garamond:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["element"] = new(
+            // Space Grotesk for sans + Fraunces for warm serif.
+            sans:   "'Space Grotesk', system-ui, -apple-system, sans-serif",
+            serif:  "Fraunces, Georgia, serif",
+            display:"Fraunces, Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Space+Grotesk:wght@400;500;600;700|Fraunces:ital,opsz,wght,SOFT@0,9..144,300..800,50;1,9..144,300..800,50|JetBrains+Mono:wght@400;500"),
+
+        ["ergo"] = new(
+            sans:   "'IBM Plex Sans', system-ui, -apple-system, sans-serif",
+            serif:  "'IBM Plex Serif', Georgia, serif",
+            display:"'IBM Plex Sans', system-ui, sans-serif",
+            mono:   "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "IBM+Plex+Sans:wght@400;500;600;700|IBM+Plex+Serif:wght@400;600;700|IBM+Plex+Mono:wght@400;500"),
+
+        ["flux"] = new(
+            // Outfit + Clash Display (variable display font).
+            sans:   "Outfit, system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"'Clash Display', Outfit, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Outfit:wght@400;500;600;700|Inter:wght@400;500;600;700|Clash+Display:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["forest"] = new(
+            sans:   "'Source Sans 3', system-ui, -apple-system, sans-serif",
+            serif:  "'Source Serif 4', Georgia, serif",
+            display:"'Source Serif 4', Georgia, serif",
+            mono:   "'Source Code Pro', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "Source+Sans+3:wght@400;500;600;700|Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700|Source+Code+Pro:wght@400;500"),
+
+        ["forge"] = new(
+            // Mono-heavy forge theme.
+            sans:   "'IBM Plex Mono', 'IBM Plex Sans', monospace, sans-serif",
+            serif:  "'IBM Plex Serif', Georgia, serif",
+            display:"'IBM Plex Sans', system-ui, sans-serif",
+            mono:   "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "IBM+Plex+Mono:wght@400;500;600|IBM+Plex+Sans:wght@400;500;600;700|IBM+Plex+Serif:wght@400;600"),
+
+        ["fractalis"] = new(
+            // Geometric futuristic.
+            sans:   "Orbitron, system-ui, -apple-system, sans-serif",
+            serif:  "'Space Grotesk', sans-serif",
+            display:"Orbitron, system-ui, sans-serif",
+            mono:   "'Space Mono', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "Orbitron:wght@400;500;600;700;800|Space+Grotesk:wght@500;600;700|Space+Mono:wght@400;700"),
+
+        ["glass"] = new(
+            sans:   "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"'Plus Jakarta Sans', system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["glass-dark"] = new(
+            sans:   "'Space Grotesk', system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"'Space Grotesk', system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Space+Grotesk:wght@300;400;500;600;700|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["glass-light"] = new(
+            sans:   "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"'Plus Jakarta Sans', system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["glass-neumorphic"] = new(
+            sans:   "Nunito, system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"Nunito, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Nunito:wght@300;400;500;600;700|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["glass-tinted"] = new(
+            sans:   "Inter, system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"Inter, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Inter:wght@300;400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["gordian"] = new(
+            // Knot, elegant.
+            sans:   "'Cormorant Garamond', Georgia, serif",
+            serif:  "'Cormorant Garamond', Georgia, serif",
+            display:"'Cormorant Garamond', Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400|JetBrains+Mono:wght@400;500"),
+
+        ["graphite"] = new(
+            sans:   "'IBM Plex Sans', system-ui, -apple-system, sans-serif",
+            serif:  "'IBM Plex Serif', Georgia, serif",
+            display:"'IBM Plex Serif', Georgia, serif",
+            mono:   "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "IBM+Plex+Sans:wght@400;500;600;700|IBM+Plex+Serif:wght@400;600;700|IBM+Plex+Mono:wght@400;500"),
+
+        ["inclus"] = new(
+            // Accessibility-first.
+            sans:   "'Atkinson Hyperlegible', system-ui, -apple-system, sans-serif",
+            serif:  "'Atkinson Hyperlegible', system-ui, sans-serif",
+            display:"'Atkinson Hyperlegible', system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700|JetBrains+Mono:wght@400;500"),
+
+        ["lumina"] = new(
+            sans:   "'Atkinson Hyperlegible', Inter, system-ui, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"'Atkinson Hyperlegible', system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["medici"] = new(
+            sans:   "'Atkinson Hyperlegible', Inter, system-ui, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"'Atkinson Hyperlegible', system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["muse"] = new(
+            sans:   "Inter, system-ui, -apple-system, sans-serif",
+            serif:  "'Playfair Display', Georgia, serif",
+            display:"'Playfair Display', Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Inter:wght@400;500;600;700|Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400|JetBrains+Mono:wght@400;500"),
+
+        ["natura-ui"] = new(
+            // Default theme - Inter + Source Serif 4.
+            sans:   "Inter, system-ui, -apple-system, sans-serif",
+            serif:  "'Source Serif 4', Georgia, serif",
+            display:"Inter, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Inter:wght@400;500;600;700|Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700|JetBrains+Mono:wght@400;500"),
+
+        ["neo"] = new(
+            sans:   "Manrope, system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"Manrope, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Manrope:wght@400;500;600;700|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["neon"] = new(
+            sans:   "Orbitron, system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"Orbitron, system-ui, sans-serif",
+            mono:   "'Share Tech Mono', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "Orbitron:wght@400;500;600;700;800|Inter:wght@400;500;600;700|Share+Tech+Mono|JetBrains+Mono:wght@400;500"),
+
+        ["oasis"] = new(
+            sans:   "Lora, Georgia, serif",
+            serif:  "Lora, Georgia, serif",
+            display:"Lora, Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Lora:ital,wght@0,400;0,500;0,600;0,700;1,400|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["prism"] = new(
+            sans:   "Outfit, system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"Outfit, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Outfit:wght@400;500;600;700|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["radius"] = new(
+            sans:   "Manrope, system-ui, -apple-system, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"Manrope, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Manrope:wght@400;500;600;700|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["reader"] = new(
+            sans:   "Literata, Georgia, serif",
+            serif:  "'Source Serif 4', Georgia, serif",
+            display:"Literata, Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Literata:opsz,wght@7..72,400;7..72,500;7..72,600;7..72,700|Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700|JetBrains+Mono:wght@400;500"),
+
+        ["royal"] = new(
+            sans:   "'Cormorant Garamond', Georgia, serif",
+            serif:  "'Cormorant Garamond', Georgia, serif",
+            display:"'Cormorant Garamond', Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400|JetBrains+Mono:wght@400;500"),
+
+        ["signature"] = new(
+            // Hand-written modern serif.
+            sans:   "Fraunces, Georgia, serif",
+            serif:  "'Playfair Display', Georgia, serif",
+            display:"Fraunces, Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Fraunces:ital,opsz,wght,SOFT@0,9..144,300..800,50;1,9..144,300..800,50|Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400|Inter:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["solaris"] = new(
+            sans:   "'DM Sans', system-ui, -apple-system, sans-serif",
+            serif:  "'DM Serif Display', Georgia, serif",
+            display:"'DM Serif Display', Georgia, serif",
+            mono:   "'DM Mono', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "DM+Sans:wght@400;500;600;700|DM+Serif+Display:ital@0;1|DM+Mono:wght@400;500|JetBrains+Mono:wght@400;500"),
+
+        ["sylvan"] = new(
+            sans:   "Fraunces, Georgia, serif",
+            serif:  "Lora, Georgia, serif",
+            display:"Fraunces, Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Fraunces:ital,opsz,wght,SOFT@0,9..144,300..800,50;1,9..144,300..800,50|Lora:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["veiled"] = new(
+            // Mystery serif. Was system-only, now using Google Fonts.
+            sans:   "Newsreader, Georgia, serif",
+            serif:  "Lora, Georgia, serif",
+            display:"Newsreader, Georgia, serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700|Lora:wght@400;500;600;700|JetBrains+Mono:wght@400;500"),
+
+        ["wave"] = new(
+            sans:   "Inter, system-ui, -apple-system, sans-serif",
+            serif:  "'Source Serif 4', Georgia, serif",
+            display:"Inter, system-ui, sans-serif",
+            mono:   "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+            gfonts: "Inter:wght@400;500;600;700|Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700|JetBrains+Mono:wght@400;500"),
+
+        ["window"] = new(
+            // Was Windows system-only. Source Sans 3 is closest free Segoe.
+            sans:   "'Source Sans 3', 'Segoe UI', system-ui, sans-serif",
+            serif:  "Inter, Georgia, serif",
+            display:"'Source Sans 3', 'Segoe UI', system-ui, sans-serif",
+            mono:   "'Fira Code', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "Source+Sans+3:wght@400;500;600;700|Inter:wght@400;500;600;700|Fira+Code:wght@400;500"),
+
+        ["zen"] = new(
+            sans:   "'Noto Sans JP', 'Hiragino Sans', system-ui, sans-serif",
+            serif:  "'Noto Serif JP', Georgia, serif",
+            display:"'Noto Sans JP', 'Hiragino Sans', sans-serif",
+            mono:   "'Noto Sans Mono', 'JetBrains Mono', ui-monospace, monospace",
+            gfonts: "Noto+Sans+JP:wght@400;500;600;700|Noto+Serif+JP:wght@400;500;700|Noto+Sans+Mono:wght@400;500;600|JetBrains+Mono:wght@400;500"),
     };
 
     private static int Main(string[] args)
