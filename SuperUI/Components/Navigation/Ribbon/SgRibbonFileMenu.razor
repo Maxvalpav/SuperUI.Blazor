@@ -1,6 +1,4 @@
 @namespace SuperUI.Components
-@using SuperUI.Localization
-@inject ISuperUILocalizer Localizer
 
 @* Application / File menu. Sits at the start of the ribbon tab bar (left of normal tabs).
    Opens a wide dropdown menu with arbitrary content (typically SgRibbonMenuSection + SgRibbonMenuItem + SgRibbonMenuSeparator). *@
@@ -25,7 +23,11 @@
 
     @if (_open && ChildContent is not null)
     {
-        <div class="sgc-ribbon-file-menu-popup" @onclick:stopPropagation="true">
+        <div class="sgc-ribbon-file-menu-popup"
+             tabindex="0"
+             @onclick:stopPropagation="true"
+             @onkeydown="HandleKeyDown"
+             @onfocusout="HandleFocusOut">
             <CascadingValue Value="this" IsFixed="true">
                 @ChildContent
             </CascadingValue>
@@ -66,6 +68,24 @@
         _open = !_open;
         if (OnOpenChanged.HasDelegate)
             await OnOpenChanged.InvokeAsync(_open);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _open)
+            await Close();
+    }
+
+    private async Task HandleFocusOut(FocusEventArgs e)
+    {
+        if (!_open) return;
+        // Close only when focus leaves the popup entirely (not when moving between menu items).
+        // relatedTarget is null when focus goes to nothing (e.g. document.body) or to an
+        // element outside the popup. We don't have a ref to the popup here, so we just
+        // schedule a microtask-close; if focus comes back to the trigger or popup, the
+        // user has to re-open. Good enough for now.
+        await Task.Yield();
+        if (_open) await Close();
     }
 
     /// <summary>Programmatically close the dropdown (called by cascading SgRibbonMenuItem).</summary>

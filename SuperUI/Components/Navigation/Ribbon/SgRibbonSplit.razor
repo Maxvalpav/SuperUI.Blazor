@@ -4,7 +4,7 @@
 
 <div class="sgc-ribbon-split @SizeClass @PlacementClass @(Disabled ? "sgc-ribbon-btn-disabled" : "") @(!Visible ? "sgc-ribbon-btn-hidden" : "") @CssClass"
      @onkeydown="HandleKeyDown"
-     @onfocusout:stopPropagation="true"
+     @onfocusout="HandleFocusOut"
      @onclick:stopPropagation="true">
     @* Main action button *@
     <button type="button"
@@ -125,8 +125,15 @@
         if (e.Key == "Escape" && _open)
         {
             _open = false;
-            StateHasChanged();
         }
+    }
+
+    private async Task HandleFocusOut(FocusEventArgs e)
+    {
+        if (!_open) return;
+        // Defer slightly so any click-outside completes before we close.
+        await Task.Yield();
+        if (_open) _open = false;
     }
 
     /// <summary>Closes the dropdown (called by parent ribbon or by child menu items via cascading parameter).</summary>
