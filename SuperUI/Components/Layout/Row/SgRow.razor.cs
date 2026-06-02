@@ -125,19 +125,7 @@ public partial class SgRow : ComponentBase
     /// Kept for backward compatibility; new code should use <see cref="Tag"/>.
     /// </summary>
     [Obsolete("Use the strongly-typed Tag parameter (SgRowTag) instead.")]
-    [Parameter]
-    public string? TagName
-    {
-        get => null;
-        set
-        {
-            if (string.IsNullOrWhiteSpace(value)) return;
-            if (Enum.TryParse<SgRowTag>(value, ignoreCase: true, out var parsed))
-            {
-                Tag = parsed;
-            }
-        }
-    }
+    [Parameter] public string? TagName { get; set; }
 
     /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
