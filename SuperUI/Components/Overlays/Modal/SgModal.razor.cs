@@ -78,6 +78,15 @@ public partial class SgModal : SgOverlayComponentBase
     /// <summary>Custom CSS min-width.</summary>
     [Parameter] public string? MinWidth { get; set; }
 
+    /// <summary>Custom CSS height (e.g. "400px", "60vh").</summary>
+    [Parameter] public string? Height { get; set; }
+
+    /// <summary>Custom CSS max-height (e.g. "90vh").</summary>
+    [Parameter] public string? MaxHeight { get; set; }
+
+    /// <summary>Custom CSS min-height (e.g. "200px").</summary>
+    [Parameter] public string? MinHeight { get; set; }
+
     /// <summary>Preset size (Sm/Md/Lg/Xl). Default: Md.</summary>
     [Parameter] public SgModalSize Size { get; set; } = SgModalSize.Md;
 
@@ -361,6 +370,9 @@ public partial class SgModal : SgOverlayComponentBase
             .AddStyle("width", Width, !string.IsNullOrEmpty(Width))
             .AddStyle("max-width", MaxWidth, !string.IsNullOrEmpty(MaxWidth))
             .AddStyle("min-width", MinWidth, !string.IsNullOrEmpty(MinWidth))
+            .AddStyle("height", Height, !string.IsNullOrEmpty(Height))
+            .AddStyle("max-height", MaxHeight, !string.IsNullOrEmpty(MaxHeight))
+            .AddStyle("min-height", MinHeight, !string.IsNullOrEmpty(MinHeight))
             .Build();
     }
 
