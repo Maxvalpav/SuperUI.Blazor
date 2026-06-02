@@ -188,8 +188,8 @@
             {
                 _activeTab = tab;
                 _activeTabIndex = _tabs.Count - 1;
+                StateHasChanged();
             }
-            StateHasChanged();
         }
     }
 
@@ -212,6 +212,9 @@
     /// <summary>Called by <see cref="SgRibbonTab"/> when its <c>Visible</c> parameter changes.</summary>
     internal void NotifyTabVisibilityChanged(SgRibbonTab tab, bool visible)
     {
+        // Caller (SgRibbonTab.SetParametersAsync) already debounces, so we only
+        // need to re-render when this actually shifts the active tab.
+        var oldIndex = _activeTabIndex;
         if (!visible && _activeTab == tab)
         {
             _activeTab = _visibleTabs.FirstOrDefault(t => !t.Disabled && t != tab);
@@ -222,7 +225,7 @@
             _activeTab = tab;
             _activeTabIndex = _tabs.IndexOf(tab);
         }
-        StateHasChanged();
+        if (_activeTabIndex != oldIndex) StateHasChanged();
     }
 
     private async Task ActivateTab(SgRibbonTab tab, int index)

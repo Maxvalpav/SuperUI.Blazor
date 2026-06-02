@@ -49,9 +49,34 @@
         _ => "sgc-badge-default"
     };
 
-    protected override void OnParametersSet()
+    // Track only the Visible parameter so that re-renders (e.g. when the parent
+    // re-evaluates its own parameters) do NOT re-notify the ribbon. The previous
+    // OnParametersSet implementation called NotifyTabVisibilityChanged on every
+    // parameter set, and Notify unconditionally called StateHasChanged — this
+    // produced a tight re-render loop that froze the browser on /ribbon-demo.
+    private bool _initialized;
+    private bool _lastSeenVisible = true;
+
+    public override Task SetParametersAsync(ParameterView parameters)
     {
-        Owner?.NotifyTabVisibilityChanged(this, Visible);
+        var newVisible = parameters.GetValueOrDefault<bool>(nameof(Visible));
+        var isInit = !_initialized;
+
+        var task = base.SetParametersAsync(parameters);
+
+        if (isInit)
+        {
+            _initialized = true;
+            _lastSeenVisible = Visible;
+            // First-time registration is handled by OnInitialized → RegisterTab.
+        }
+        else if (newVisible != _lastSeenVisible)
+        {
+            _lastSeenVisible = newVisible;
+            Owner?.NotifyTabVisibilityChanged(this, newVisible);
+        }
+
+        return task;
     }
 
     protected override void OnInitialized() => Owner?.RegisterTab(this);
