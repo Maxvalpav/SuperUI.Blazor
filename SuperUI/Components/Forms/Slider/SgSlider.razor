@@ -1,7 +1,6 @@
 @namespace SuperUI.Components
 @typeparam TValue
 @inherits SgInputBase<TValue>
-@implements IDisposable
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @CssClass @SizeClass"
      style="@(Color is not null ? $"--sgc-slider-color:{Color}" : null)">
@@ -41,7 +40,7 @@
         @if (ShowTooltip)
         {
             var tooltipValue = TooltipFormat is not null ? TooltipFormat(ValueAsDouble) : (FormatValue is not null ? FormatValue(ValueAsDouble) : $"{ValueAsDouble}{Suffix}");
-            <span class="sgc-slider-tooltip" style="left: @FillPercent%">@tooltipValue</span>
+            <span class="sgc-slider-tooltip" style="@TooltipPositionStyle">@tooltipValue</span>
         }
         @if (ShowValue && string.IsNullOrEmpty(Label) && !ShowTooltip)
         {
@@ -70,10 +69,10 @@
                     var pct = Max > Min ? (mark - Min) / (Max - Min) * 100.0 : 0;
                     var labelText = MarksLabels is not null && MarksLabels.TryGetValue(mark, out var lbl) ? lbl : (ShowMarksLabels ? mark.ToString(CultureInfo.InvariantCulture) : null);
                     <span class="sgc-slider-mark @(MarksClickable ? "sgc-slider-mark-clickable" : "")"
-                          style="left: @pct%"
+                          style="@(Vertical ? $"bottom: {pct.ToString("F1", CultureInfo)}%" : $"left: {pct.ToString("F1", CultureInfo)}%")"
                           title="@mark.ToString(CultureInfo.InvariantCulture)"
-                          @onclick="MarksClickable ? (() => ClickMark(mark)) : null"
-                          @onkeydown="MarksClickable ? (() => ClickMark(mark)) : null"
+                          @onclick="async () => await OnMarkClickAsync(mark)"
+                          @onkeydown="(e) => OnMarkKeyDownAsync(e, mark)"
                           tabindex="@(MarksClickable ? "0" : null)"
                           role="@(MarksClickable ? "button" : null)"
                           aria-label="@(MarksClickable ? $"Set value to {mark}" : null)">
@@ -207,6 +206,15 @@
         }
     }
 
+    private string TooltipPositionStyle
+    {
+        get
+        {
+            var pct = FillPercent;
+            return Vertical ? $"bottom: {pct}%" : $"left: {pct}%";
+        }
+    }
+
     private async Task OnInputAsync(ChangeEventArgs e)
     {
         if (_suppressUpdate) return;
@@ -242,10 +250,19 @@
         }
     }
 
-    private async Task ClickMark(double mark)
+    private async Task OnMarkClickAsync(double mark)
     {
-        if (Disabled) return;
+        if (Disabled || !MarksClickable) return;
         await SetValueAsync(ConvertValue<TValue>(mark));
+    }
+
+    private async Task OnMarkKeyDownAsync(KeyboardEventArgs e, double mark)
+    {
+        if (Disabled || !MarksClickable) return;
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            await SetValueAsync(ConvertValue<TValue>(mark));
+        }
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
@@ -273,9 +290,10 @@
         return (T)Convert.ChangeType(value, targetType, CultureInfo);
     }
 
-    public void Dispose()
+    public override ValueTask DisposeAsync()
     {
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();
+        return base.DisposeAsync();
     }
 }
