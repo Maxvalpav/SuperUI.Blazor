@@ -1,6 +1,7 @@
 @namespace SuperUI.Components
 @typeparam TValue
 @using SuperUI.Enums
+@using Microsoft.Extensions.Logging
 @inherits SgInputBase<TValue>
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @SizeClass @CssClass">
@@ -35,6 +36,8 @@
                       @oninput="OnInput"
                       @onchange="OnChangeAsync"
                       @onkeydown="OnKeyDownAsync"
+                      @onfocus="OnFocusAsync"
+                      @onblur="OnBlurAsync"
                       @attributes="AdditionalAttributes"></textarea>
         }
         else
@@ -56,6 +59,8 @@
                    @oninput="OnInput"
                    @onchange="OnChangeAsync"
                    @onkeydown="OnKeyDownAsync"
+                   @onfocus="OnFocusAsync"
+                   @onblur="OnBlurAsync"
                    @attributes="AdditionalAttributes" />
         }
         <div class="sgc-input-right-group">
@@ -164,6 +169,15 @@
     /// <summary>Callback invoked when the Enter key is pressed while the input is focused.</summary>
     [Parameter] public EventCallback OnEnterPressed { get; set; }
 
+    /// <summary>Callback invoked on every input event (raw keystroke, before debounce).</summary>
+    [Parameter] public EventCallback<ChangeEventArgs> OnInputEvent { get; set; }
+
+    /// <summary>Callback invoked when the input receives focus.</summary>
+    [Parameter] public EventCallback<FocusEventArgs> OnFocus { get; set; }
+
+    /// <summary>Callback invoked when the input loses focus.</summary>
+    [Parameter] public EventCallback<FocusEventArgs> OnBlur { get; set; }
+
     /// <summary>Debounce delay in milliseconds. When set, value changes are committed after the specified delay without further input.</summary>
     [Parameter] public int Debounce { get; set; }
 
@@ -202,7 +216,7 @@
 
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
-    private CancellationTokenSource? _debounceCts;
+    private readonly SgDebouncer _debouncer = new();
 
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
@@ -227,22 +241,22 @@
 
     private void OnInput(ChangeEventArgs e)
     {
+        if (OnInputEvent.HasDelegate)
+        {
+            try { _ = OnInputEvent.InvokeAsync(e); }
+            catch (Exception ex) { Logger.LogError(ex, "SgTextBox.OnInputEvent handler threw"); }
+        }
+
         if (Debounce > 0)
         {
-            _debounceCts?.Cancel();
-            _debounceCts?.Dispose();
-            _debounceCts = new CancellationTokenSource();
-            var token = _debounceCts.Token;
             var raw = e.Value?.ToString();
-            _ = Task.Run(async () =>
-            {
-                try
+            _ = _debouncer.RunAsync(
+                async _ =>
                 {
-                    await Task.Delay(Debounce, token);
-                    await InvokeAsync(() => CommitAsync(raw));
-                }
-                catch (TaskCanceledException) { }
-            });
+                    try { await InvokeAsync(() => CommitAsync(raw)); }
+                    catch (Exception ex) { Logger.LogError(ex, "SgTextBox debounced commit failed"); }
+                },
+                TimeSpan.FromMilliseconds(Debounce));
         }
         else if (Immediate)
         {
@@ -255,13 +269,30 @@
     private async Task SafeCommitAsync(string? raw)
     {
         try { await CommitAsync(raw); }
-        catch (Exception ex) { Console.Error.WriteLine($"[SgTextBox.CommitAsync] {ex}"); }
+        catch (Exception ex) { Logger.LogError(ex, "SgTextBox.CommitAsync failed"); }
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && OnEnterPressed.HasDelegate)
             await OnEnterPressed.InvokeAsync();
+    }
+
+    private async Task OnFocusAsync(FocusEventArgs e)
+    {
+        if (OnFocus.HasDelegate)
+            await OnFocus.InvokeAsync(e);
+    }
+
+    private async Task OnBlurAsync(FocusEventArgs e)
+    {
+        if (Debounce > 0)
+        {
+            _debouncer.Cancel();
+            await CommitAsync(CurrentText);
+        }
+        if (OnBlur.HasDelegate)
+            await OnBlur.InvokeAsync(e);
     }
 
     private Task ClearAsync() => SetValueAsync(default);
@@ -282,8 +313,7 @@
 
     public override void Dispose()
     {
-        _debounceCts?.Cancel();
-        _debounceCts?.Dispose();
+        _debouncer.Dispose();
         base.Dispose();
     }
 }
