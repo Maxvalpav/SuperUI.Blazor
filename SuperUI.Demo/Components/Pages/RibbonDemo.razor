@@ -1,291 +1,588 @@
 @page "/ribbon-demo"
 @using SuperUI.Components
 @using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Ribbon UI — SuperUI</PageTitle>
+<PageTitle>Ribbon — SuperUI</PageTitle>
 
-<SgCard Title="Ribbon — Лента инструментов"
-        Subtitle="Интерфейс в стиле Office для приложений с большим количеством функций. Поддерживает вкладки, группы и адаптивные кнопки."
-        CssClass="sgc-card-flush">
+<SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" Animated="true">
+    <HeaderContent>
+        <DemoPageHeader Title="Ribbon"
+                        Subtitle="Office-style toolbar with tabs, groups, buttons, split buttons, file menu, contextual tab groups, and ribbon-styled inputs (color picker, combobox, checkbox)."
+                        Icon="@SgHeroicons.Outline.RectangleStack"
+                        GradientFrom="#006FEE"
+                        GradientTo="#8b5cf6" />
+    </HeaderContent>
+    <ChildContent>
 
-    @* ── Interactive Demo ─────────────────────────────────────────────────── *@
-    <div class="sgc-demo-section">
-        <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">Interactive Demo</SgTypography>
-            <span class="demo-live-badge">Interactive</span>
-        </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">
-            Компактная панель с группировкой инструментов. Переключайте вкладки, сворачивайте ленту, нажимайте кнопки — все действия логируются.
-        </SgTypography>
+        @* ═══════════════════════════════════════════════════════════════════════
+           SECTION 1: TABS & TAB BAR
+           ═══════════════════════════════════════════════════════════════════════ *@
+        <div class="rb-demo-page demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Tabs &amp; Tab Bar
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Basic tab bar, contextual (highlighted) tab, badges, disabled tabs, and far-right content slot.
+                </SgTypography>
+            </div>
 
-        <div class="demo-grid-adaptive">
-            <SgCard Title="Usage Examples" CssClass="demo-interactive-card">
-                <div class="demo-ribbon-wrap">
-                    <SgRibbon @bind-Collapsed="_collapsed" AllowCollapse="true" Animate="true">
-                        <ChildContent>
-
-                        @* ── Home tab ── *@
-                        <SgRibbonTab Title="Home">
-                            <SgRibbonGroup Title="Clipboard" Icon="@SgIcons.Copy">
-                                <SgRibbonSplit Icon="@SgIcons.Copy" Text="Paste" Tooltip="Paste (Ctrl+V)"
-                                               OnClick="@(() => Log("Paste"))">
-                                    <DropdownContent>
-                                        <button class="sgc-ribbon-menu-item" @onclick="@(() => Log("Paste as text"))">
-                                            <span class="sgc-ribbon-btn-icon" style="font-size:16px;margin-right:8px;">@((MarkupString)SgIcons.FileText)</span> Paste as text
-                                        </button>
-                                        <button class="sgc-ribbon-menu-item" @onclick="@(() => Log("Special paste"))">
-                                            <span class="sgc-ribbon-btn-icon" style="font-size:16px;margin-right:8px;">@((MarkupString)SgIcons.Settings)</span> Special paste…
-                                        </button>
-                                    </DropdownContent>
-                                </SgRibbonSplit>
-                                <div style="display:flex;flex-direction:column;gap:1px;min-width:100px;">
-                                    <SgRibbonButton Icon="@SgIcons.Copy"    Text="Copy"   Size="SgRibbonButtonSize.Small" Tooltip="Copy (Ctrl+C)" OnClick="@(() => Log("Copy"))" />
-                                    <SgRibbonButton Icon="@SgIcons.Edit"    Text="Cut"    Size="SgRibbonButtonSize.Small" Tooltip="Cut (Ctrl+X)"  OnClick="@(() => Log("Cut"))" />
-                                    <SgRibbonButton Icon="@SgIcons.Refresh" Text="Format" Size="SgRibbonButtonSize.Small" Tooltip="Format painter" OnClick="@(() => Log("Format"))" />
-                                </div>
-                            </SgRibbonGroup>
-
-                            <SgRibbonGroup Title="Font" Icon="@_boldIcon">
-                                <SgRibbonButton Icon="@_boldIcon"   Text="Bold"      Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_bold"   Tooltip="Bold (Ctrl+B)" />
-                                <SgRibbonButton Icon="@_italicIcon" Text="Italic"    Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_italic" Tooltip="Italic (Ctrl+I)" />
-                                <SgRibbonButton Icon="@_underIcon"  Text="Underline" Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_under" Tooltip="Underline (Ctrl+U)" />
-                                <SgRibbonSeparator />
-                                <SgRibbonButton Icon="@SgIcons.ArrowUp"   Text="Increase" Size="SgRibbonButtonSize.Small" OnClick="@(() => Log("Increase font"))" />
-                                <SgRibbonButton Icon="@SgIcons.ArrowDown" Text="Decrease" Size="SgRibbonButtonSize.Small" OnClick="@(() => Log("Decrease font"))" />
-                            </SgRibbonGroup>
-
-                            <SgRibbonGroup Title="Styles">
-                                <SgRibbonButton Icon="@SgIcons.FileText" Text="Normal"    Size="SgRibbonButtonSize.Medium" Tooltip="Normal style" OnClick="@(() => Log("Normal"))" />
-                                <SgRibbonButton Icon="@SgIcons.FileText" Text="Heading 1" Size="SgRibbonButtonSize.Medium" Tooltip="Heading 1"    OnClick="@(() => Log("Heading 1"))" />
-                            </SgRibbonGroup>
-
-                            <SgRibbonGroup Title="Editing">
-                                <SgRibbonButton Icon="@SgIcons.Search" Text="Find"    Size="SgRibbonButtonSize.Large" Shortcut="Ctrl+F" Tooltip="Find (Ctrl+F)"  OnClick="@(() => Log("Find"))" />
-                                <SgRibbonButton Icon="@SgIcons.Check"  Text="Select"  Size="SgRibbonButtonSize.Large" Shortcut="Ctrl+A" Tooltip="Select all"      OnClick="@(() => Log("Select all"))" />
-                            </SgRibbonGroup>
-                        </SgRibbonTab>
-
-                        @* ── Insert tab ── *@
-                        <SgRibbonTab Title="Insert" Badge="New" BadgeVariant="SgBadgeVariant.Success">
-                            <SgRibbonGroup Title="Objects">
-                                <SgRibbonSplit Icon="@SgIcons.Database" Text="Table" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Insert table"))">
-                                    <DropdownContent>
-                                        <button class="sgc-ribbon-menu-item" @onclick="@(() => Log("Insert table"))">
-                                            @((MarkupString)SgIcons.Database) Insert table…
-                                        </button>
-                                        <button class="sgc-ribbon-menu-item" @onclick="@(() => Log("Pivot table"))">
-                                            @((MarkupString)SgIcons.Settings) Pivot table…
-                                        </button>
-                                    </DropdownContent>
-                                </SgRibbonSplit>
-                                <SgRibbonButton Icon="@SgIcons.Download"  Text="Picture"   Size="SgRibbonButtonSize.Medium" Tooltip="Insert picture" OnClick="@(() => Log("Picture"))" />
-                                <SgRibbonButton Icon="@SgIcons.BarChart"  Text="Chart"     Size="SgRibbonButtonSize.Medium" Tooltip="Insert chart"   OnClick="@(() => Log("Chart"))" />
-                            </SgRibbonGroup>
-
-                            <SgRibbonGroup Title="Links">
-                                <SgRibbonButton Icon="@SgIcons.ChevronRight" Text="Link"      Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Hyperlink"))" />
-                                <SgRibbonButton Icon="@SgIcons.FileText"     Text="Bookmark"  Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Bookmark"))" />
-                            </SgRibbonGroup>
-                        </SgRibbonTab>
-
-                        @* ── Data tab (contextual) ── *@
-                        <SgRibbonTab Title="Data" Highlight="true" Badge="5" BadgeVariant="SgBadgeVariant.Danger">
-                            <SgRibbonGroup Title="Source">
-                                <SgRibbonButton Icon="@SgIcons.Database" Text="Connect"  Size="SgRibbonButtonSize.Large" Tooltip="Connect data source" OnClick="@(() => Log("Connect"))" />
-                                <SgRibbonButton Icon="@SgIcons.Refresh"  Text="Refresh"  Size="SgRibbonButtonSize.Large" Tooltip="Refresh data"         OnClick="@(() => Log("Refresh"))" />
-                            </SgRibbonGroup>
-
-                            <SgRibbonGroup Title="Tools">
-                                <SgRibbonButton Icon="@SgIcons.Check"    Text="Validate" Size="SgRibbonButtonSize.Medium" Tooltip="Validate data"  OnClick="@(() => Log("Validate"))" />
-                                <SgRibbonButton Icon="@SgIcons.BarChart" Text="Analyze"  Size="SgRibbonButtonSize.Medium" Tooltip="Analyze data"    OnClick="@(() => Log("Analyze"))" Danger="true" />
-                            </SgRibbonGroup>
-                        </SgRibbonTab>
-
-                        @* ── View tab ── *@
-                        <SgRibbonTab Title="View">
-                            <SgRibbonGroup Title="Layout">
-                                <SgRibbonButton Icon="@SgIcons.FileText"  Text="Normal"    Size="SgRibbonButtonSize.Large" Tooltip="Normal view"     OnClick="@(() => Log("Normal view"))" />
-                                <SgRibbonButton Icon="@SgIcons.Search"   Text="Page Layout" Size="SgRibbonButtonSize.Large" Tooltip="Page layout view" OnClick="@(() => Log("Page layout"))" />
-                            </SgRibbonGroup>
-
-                            <SgRibbonGroup Title="Show">
-                                <SgRibbonButton Icon="@SgIcons.Check" Text="Ruler"     Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_ruler" />
-                                <SgRibbonButton Icon="@SgIcons.Check" Text="Gridlines" Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_gridlines" />
-                                <SgRibbonButton Icon="@SgIcons.Check" Text="Nav Pane"  Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_navPane" />
-                            </SgRibbonGroup>
-                        </SgRibbonTab>
-
-                        </ChildContent>
-                        <TabBarFarContent>
-                            <SgButton Text="Help" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="@(() => Log("Help opened"))" />
-                        </TabBarFarContent>
-                    </SgRibbon>
-                </div>
-
-                @* Action log *@
-                @if (_log.Count > 0)
-                {
-                    <div class="ribbon-log-container">
-                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="ribbon-log-title">
-                            Action log
-                        </SgTypography>
-                        @foreach (var entry in _log)
-                        {
-                            <div class="ribbon-log-entry">
-                                <span class="ribbon-log-dot"></span>
-                                <span class="ribbon-log-text">@entry</span>
-                            </div>
-                        }
-                    </div>
-                }
-            </SgCard>
-
-            <SgCard Title="Controls" CssClass="demo-interactive-card">
-                <div class="demo-flex-col">
-                    <div>
-                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">Collapse state</SgTypography>
-                        <div class="demo-flex-row">
-                            <SgButton Text="@_collapseBtnText"
-                                      Variant="@(_collapsed ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
-                                      OnClick="@(() => _collapsed = !_collapsed)" />
-                            <SgBadge Text="@_collapseBadgeText" Variant="@_collapseBadgeVariant" />
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="Basic Tabs" Subtitle="4 normal tabs" Shadow="SgShadow.Sm" Compact="true">
+                        <div class="rb-mini">
+                            <SgRibbon @bind-Collapsed="_s1Collapsed" AllowCollapse="true">
+                                <ChildContent>
+                                    <SgRibbonTab Title="Home">
+                                        <SgRibbonGroup Title="Clipboard" Icon="@SgIcons.Copy">
+                                            <SgRibbonButton Icon="@SgIcons.Copy" Text="Copy" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Copy"))" />
+                                            <SgRibbonButton Icon="@SgIcons.Edit" Text="Paste" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Paste"))" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                    <SgRibbonTab Title="Insert">
+                                        <SgRibbonGroup Title="Objects">
+                                            <SgRibbonButton Icon="@SgIcons.Plus" Text="Add" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Add"))" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                    <SgRibbonTab Title="View">
+                                        <SgRibbonGroup Title="Show">
+                                            <SgRibbonButton Icon="@SgIcons.Monitor" Text="Layout" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Layout"))" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                    <SgRibbonTab Title="Help">
+                                        <SgRibbonGroup Title="Info">
+                                            <SgRibbonButton Icon="@SgIcons.HelpCircle" Text="About" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("About"))" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                </ChildContent>
+                            </SgRibbon>
                         </div>
-                    </div>
-                    <SgDivider />
-                    <div>
-                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">Toggle states</SgTypography>
-                        <div class="demo-flex-row">
-                            <SgBadge Text="@("Bold: " + _boldState)" Variant="@_boldVariant" />
-                            <SgBadge Text="@("Italic: " + _italicState)" Variant="@_italicVariant" />
-                            <SgBadge Text="@("Underline: " + _underState)" Variant="@_underVariant" />
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="Contextual Tab" Subtitle="Highlight flag + tab badge" Shadow="SgShadow.Sm" Compact="true">
+                        <div class="rb-mini">
+                            <SgRibbon>
+                                <ChildContent>
+                                    <SgRibbonTab Title="Home">
+                                        <SgRibbonGroup Title="Clipboard">
+                                            <SgRibbonButton Icon="@SgIcons.Copy" Text="Copy" Size="SgRibbonButtonSize.Medium" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                    <SgRibbonTab Title="Table Design" Highlight="true" Badge="Design" BadgeVariant="SgBadgeVariant.Warn">
+                                        <SgRibbonGroup Title="Style">
+                                            <SgRibbonButton Icon="@SgIcons.Table" Text="Header Row" Size="SgRibbonButtonSize.Medium" />
+                                            <SgRibbonButton Icon="@SgIcons.Star" Text="Total Row" Size="SgRibbonButtonSize.Medium" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                    <SgRibbonTab Title="Layout" Highlight="true" Badge="2" BadgeVariant="SgBadgeVariant.Danger">
+                                        <SgRibbonGroup Title="Merge">
+                                            <SgRibbonButton Icon="@SgIcons.Layout" Text="Merge" Size="SgRibbonButtonSize.Medium" />
+                                            <SgRibbonButton Icon="@SgIcons.Table" Text="Split" Size="SgRibbonButtonSize.Medium" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                    <SgRibbonTab Title="References" Disabled="true">
+                                        <SgRibbonGroup Title="Empty"><SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">(disabled tab)</SgTypography></SgRibbonGroup>
+                                    </SgRibbonTab>
+                                </ChildContent>
+                                <TabBarFarContent>
+                                    <SgButton Text="Help" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                                </TabBarFarContent>
+                            </SgRibbon>
                         </div>
-                    </div>
-                    <SgDivider />
-                    <div>
-                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">View toggles</SgTypography>
-                        <div class="demo-flex-row">
-                            <SgBadge Text="@("Ruler: " + _rulerState)" Variant="@_rulerVariant" />
-                            <SgBadge Text="@("Grid: " + _gridState)" Variant="@_gridVariant" />
-                            <SgBadge Text="@("Nav: " + _navState)" Variant="@_navVariant" />
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ═══════════════════════════════════════════════════════════════════════
+           SECTION 2: BUTTONS & SIZES
+           ═══════════════════════════════════════════════════════════════════════ *@
+        <div class="rb-demo-page demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Buttons &amp; Sizes
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Three sizes (Large / Medium / Small), toggle mode, danger state, and disabled state.
+                </SgTypography>
+            </div>
+
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="Large Size" Subtitle="Icon + label stacked" Shadow="SgShadow.Sm" Compact="true">
+                        <SgRibbon>
+                            <ChildContent>
+                                <SgRibbonTab Title="Home">
+                                    <SgRibbonGroup Title="Editing">
+                                        <SgRibbonButton Icon="@_boldIcon" Text="Bold" Size="SgRibbonButtonSize.Large" IsToggle="true" @bind-Pressed="_bold" KeyTip="B" />
+                                        <SgRibbonButton Icon="@_italicIcon" Text="Italic" Size="SgRibbonButtonSize.Large" IsToggle="true" @bind-Pressed="_italic" KeyTip="I" />
+                                        <SgRibbonButton Icon="@_underIcon" Text="Underline" Size="SgRibbonButtonSize.Large" IsToggle="true" @bind-Pressed="_under" KeyTip="U" />
+                                    </SgRibbonGroup>
+                                </SgRibbonTab>
+                            </ChildContent>
+                        </SgRibbon>
+                        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                            <SgBadge Text="@("Bold: " + _boldState)" Variant="@_boldVariant" Standalone="true" />
+                            <SgBadge Text="@("Italic: " + _italicState)" Variant="@_italicVariant" Standalone="true" />
+                            <SgBadge Text="@("Underline: " + _underState)" Variant="@_underVariant" Standalone="true" />
                         </div>
-                    </div>
-                </div>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="Toggle &amp; States" Subtitle="Disabled, danger, pressed" Shadow="SgShadow.Sm" Compact="true">
+                        <SgRibbon>
+                            <ChildContent>
+                                <SgRibbonTab Title="Home">
+                                    <SgRibbonGroup Title="Tools">
+                                        <SgRibbonButton Icon="@SgIcons.Download" Text="Save" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Save"))" />
+                                        <SgRibbonButton Icon="@SgIcons.Trash" Text="Delete" Size="SgRibbonButtonSize.Medium" Danger="true" OnClick="@(() => Log("Delete"))" />
+                                        <SgRibbonButton Icon="@SgIcons.X" Text="Disabled" Size="SgRibbonButtonSize.Medium" Disabled="true" />
+                                    </SgRibbonGroup>
+                                    <SgRibbonGroup Title="Toggles">
+                                        <SgRibbonButton Icon="@SgIcons.Check" Text="Bold" Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_bold" />
+                                        <SgRibbonButton Icon="@SgIcons.Check" Text="Italic" Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_italic" />
+                                    </SgRibbonGroup>
+                                </SgRibbonTab>
+                            </ChildContent>
+                        </SgRibbon>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="Medium &amp; Small" Subtitle="Compact button sizes" Shadow="SgShadow.Sm" Compact="true">
+                        <SgRibbon>
+                            <ChildContent>
+                                <SgRibbonTab Title="Home">
+                                    <SgRibbonGroup Title="Medium">
+                                        <SgRibbonButton Icon="@SgIcons.Database" Text="Tables" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Tables"))" />
+                                        <SgRibbonButton Icon="@SgIcons.BarChart" Text="Charts" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Charts"))" />
+                                    </SgRibbonGroup>
+                                    <SgRibbonGroup Title="Small">
+                                        <SgRibbonButton Icon="@SgIcons.ArrowUp" Text="Up" Size="SgRibbonButtonSize.Small" OnClick="@(() => Log("Up"))" />
+                                        <SgRibbonButton Icon="@SgIcons.ArrowDown" Text="Down" Size="SgRibbonButtonSize.Small" OnClick="@(() => Log("Down"))" />
+                                    </SgRibbonGroup>
+                                </SgRibbonTab>
+                            </ChildContent>
+                        </SgRibbon>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ═══════════════════════════════════════════════════════════════════════
+           SECTION 3: SPLIT BUTTONS & GROUPS
+           ═══════════════════════════════════════════════════════════════════════ *@
+        <div class="rb-demo-page demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Split Buttons &amp; Groups
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Split button (main + dropdown arrow), 5 placement variants, group launcher (↗), collapsible group.
+                </SgTypography>
+            </div>
+
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="Split Button Sizes" Subtitle="Large/Medium/Small + placement" Shadow="SgShadow.Sm" Compact="true">
+                        <SgRibbon>
+                            <ChildContent>
+                                <SgRibbonTab Title="Home">
+                                    <SgRibbonGroup Title="Clipboard">
+                                        <SgRibbonSplit Icon="@SgIcons.Copy" Text="Paste" Size="SgRibbonButtonSize.Large"
+                                                       OnClick="@(() => Log("Paste"))"
+                                                       OnSelect="@(item => Log("Split → " + (item.Text ?? "")))">
+                                            <DropdownContent>
+                                                <SgRibbonMenuItem Text="Paste" Icon="@SgIcons.Copy" Shortcut="Ctrl+V" />
+                                                <SgRibbonMenuItem Text="Paste as text" Icon="@SgIcons.FileText" Shortcut="Ctrl+Shift+V" />
+                                                <SgRibbonMenuSeparator />
+                                                <SgRibbonMenuItem Text="Paste special…" Icon="@SgIcons.Settings" />
+                                            </DropdownContent>
+                                        </SgRibbonSplit>
+                                        <SgRibbonSplit Icon="@SgIcons.Download" Text="Save" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Save"))">
+                                            <DropdownContent>
+                                                <SgRibbonMenuItem Text="Save" Icon="@SgIcons.Download" Shortcut="Ctrl+S" />
+                                                <SgRibbonMenuItem Text="Save as…" Icon="@SgIcons.FileText" Shortcut="Ctrl+Shift+S" />
+                                            </DropdownContent>
+                                        </SgRibbonSplit>
+                                        <SgRibbonSplit Icon="@SgIcons.Star" Text="Fav" Size="SgRibbonButtonSize.Small" OnClick="@(() => Log("Fav"))" Placement="SgRibbonSplitPlacement.BottomStart">
+                                            <DropdownContent>
+                                                <SgRibbonMenuItem Text="Add to favourites" Icon="@SgIcons.Star" />
+                                                <SgRibbonMenuItem Text="Manage…" Icon="@SgIcons.Settings" />
+                                            </DropdownContent>
+                                        </SgRibbonSplit>
+                                    </SgRibbonGroup>
+                                </SgRibbonTab>
+                            </ChildContent>
+                        </SgRibbon>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="8">
+                    <SgCard Title="Multi-Group Ribbon" Subtitle="Home tab with 4 groups + launcher + collapsible" Shadow="SgShadow.Sm" Compact="true">
+                        <SgRibbon @bind-Collapsed="_s3Collapsed" AllowCollapse="true">
+                            <ChildContent>
+                                <SgRibbonTab Title="Home">
+                                    <SgRibbonGroup Title="Clipboard" Icon="@SgIcons.Copy" Collapsible="true" @bind-Collapsed="_s3GrpClip"
+                                                   OnLauncherClick="@(() => Log("Clipboard launcher"))">
+                                        <SgRibbonSplit Icon="@SgIcons.Copy" Text="Paste" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Paste"))">
+                                            <DropdownContent>
+                                                <SgRibbonMenuItem Text="Paste" Shortcut="Ctrl+V" />
+                                                <SgRibbonMenuItem Text="Paste special…" />
+                                            </DropdownContent>
+                                        </SgRibbonSplit>
+                                        <SgRibbonButton Icon="@SgIcons.Copy" Text="Copy" Size="SgRibbonButtonSize.Small" OnClick="@(() => Log("Copy"))" />
+                                        <SgRibbonButton Icon="@SgIcons.Edit" Text="Cut" Size="SgRibbonButtonSize.Small" OnClick="@(() => Log("Cut"))" />
+                                    </SgRibbonGroup>
+                                    <SgRibbonGroup Title="Font" Icon="@_boldIcon" Orientation="SgOrientation.Vertical">
+                                        <SgRibbonButton Icon="@_boldIcon"   Text="Bold"      Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_bold" />
+                                        <SgRibbonButton Icon="@_italicIcon" Text="Italic"    Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_italic" />
+                                        <SgRibbonButton Icon="@_underIcon"  Text="Underline" Size="SgRibbonButtonSize.Small" IsToggle="true" @bind-Pressed="_under" />
+                                    </SgRibbonGroup>
+                                    <SgRibbonGroup Title="Styles" OnLauncherClick="@(() => Log("Styles launcher"))">
+                                        <SgRibbonButton Icon="@SgIcons.Type" Text="Normal" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Normal"))" />
+                                        <SgRibbonButton Icon="@SgIcons.FileText" Text="Heading" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Heading"))" />
+                                    </SgRibbonGroup>
+                                    <SgRibbonGroup Title="Editing">
+                                        <SgRibbonButton Icon="@SgIcons.Search" Text="Find" Size="SgRibbonButtonSize.Large" Shortcut="Ctrl+F" OnClick="@(() => Log("Find"))" />
+                                        <SgRibbonButton Icon="@SgIcons.Check" Text="Select" Size="SgRibbonButtonSize.Large" Shortcut="Ctrl+A" OnClick="@(() => Log("Select"))" />
+                                    </SgRibbonGroup>
+                                </SgRibbonTab>
+                            </ChildContent>
+                        </SgRibbon>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ═══════════════════════════════════════════════════════════════════════
+           SECTION 4: FILE MENU & APPLICATION MENU
+           ═══════════════════════════════════════════════════════════════════════ *@
+        <div class="rb-demo-page demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    File Menu &amp; Application Menu
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Office-style application button at the start of the tab bar. Opens a dropdown with sections, separators, shortcuts, and badges.
+                </SgTypography>
+            </div>
+
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12">
+                    <SgCard Title="SgRibbonFileMenu" Subtitle="Click 'File' to open" Shadow="SgShadow.Sm" Compact="true">
+                        <SgRibbon>
+                            <ChildContent>
+                                <SgRibbonFileMenu Text="File" Icon="@SgIcons.Folder" Tooltip="Application menu" OnSelect="@(item => Log("Menu → " + (item.Text ?? "")))">
+                                    <SgRibbonMenuSection Title="Recent">
+                                        <SgRibbonMenuItem Text="Document.docx" Icon="@SgIcons.FileText" Badge="2h" BadgeVariant="SgBadgeVariant.Muted" />
+                                        <SgRibbonMenuItem Text="Spreadsheet.xlsx" Icon="@SgIcons.Table" Badge="yesterday" BadgeVariant="SgBadgeVariant.Muted" />
+                                        <SgRibbonMenuItem Text="Presentation.pptx" Icon="@SgIcons.Monitor" Badge="3 days" BadgeVariant="SgBadgeVariant.Muted" />
+                                    </SgRibbonMenuSection>
+                                    <SgRibbonMenuSeparator />
+                                    <SgRibbonMenuSection Title="Commands">
+                                        <SgRibbonMenuItem Text="New" Icon="@SgIcons.FileText" Shortcut="Ctrl+N" />
+                                        <SgRibbonMenuItem Text="Open…" Icon="@SgIcons.Folder" Shortcut="Ctrl+O" />
+                                        <SgRibbonMenuItem Text="Save" Icon="@SgIcons.Download" Shortcut="Ctrl+S" />
+                                        <SgRibbonMenuItem Text="Save as…" Icon="@SgIcons.Download" Shortcut="Ctrl+Shift+S" Badge="Beta" BadgeVariant="SgBadgeVariant.Warn" />
+                                    </SgRibbonMenuSection>
+                                    <SgRibbonMenuSeparator />
+                                    <SgRibbonMenuSection Title="Danger zone">
+                                        <SgRibbonMenuItem Text="Close" Icon="@SgIcons.X" Shortcut="Ctrl+W" />
+                                        <SgRibbonMenuItem Text="Delete account" Icon="@SgIcons.Trash" Disabled="true" />
+                                    </SgRibbonMenuSection>
+                                </SgRibbonFileMenu>
+                                <SgRibbonTab Title="Home">
+                                    <SgRibbonGroup Title="Editing">
+                                        <SgRibbonButton Icon="@SgIcons.Download" Text="Save" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Save"))" />
+                                        <SgRibbonButton Icon="@SgIcons.Download" Text="Export" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Export"))" />
+                                    </SgRibbonGroup>
+                                </SgRibbonTab>
+                            </ChildContent>
+                        </SgRibbon>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ═══════════════════════════════════════════════════════════════════════
+           SECTION 5: CONTEXTUAL TABS & EXTENDED ITEMS
+           ═══════════════════════════════════════════════════════════════════════ *@
+        <div class="rb-demo-page demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Contextual Tabs &amp; Extended Items
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Contextual tab groups (appear conditionally with accent colour), plus ribbon-styled ColorPicker, ComboBox, and CheckBox.
+                </SgTypography>
+            </div>
+
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="Contextual Tabs" Subtitle="3 colour variants, conditionally visible" Shadow="SgShadow.Sm" Compact="true">
+                        <SgRibbon>
+                            <ChildContent>
+                                <SgRibbonTab Title="Home">
+                                    <SgRibbonGroup Title="Editing">
+                                        <SgRibbonButton Icon="@SgIcons.Download" Text="Save" Size="SgRibbonButtonSize.Medium" />
+                                    </SgRibbonGroup>
+                                </SgRibbonTab>
+                                <SgRibbonContextualTabs Color="SgContextualColor.Magenta">
+                                    <SgRibbonTab Title="Image Format" Highlight="true">
+                                        <SgRibbonGroup Title="Adjust">
+                                            <SgRibbonButton Icon="@SgIcons.Camera" Text="Crop" Size="SgRibbonButtonSize.Medium" />
+                                            <SgRibbonButton Icon="@SgIcons.Palette" Text="Color" Size="SgRibbonButtonSize.Medium" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                </SgRibbonContextualTabs>
+                                <SgRibbonContextualTabs Color="SgContextualColor.Blue">
+                                    <SgRibbonTab Title="Chart Design" Highlight="true">
+                                        <SgRibbonGroup Title="Type">
+                                            <SgRibbonButton Icon="@SgIcons.BarChart" Text="Column" Size="SgRibbonButtonSize.Medium" />
+                                            <SgRibbonButton Icon="@SgIcons.TrendingUp" Text="Line" Size="SgRibbonButtonSize.Medium" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                </SgRibbonContextualTabs>
+                                <SgRibbonContextualTabs Color="SgContextualColor.Green">
+                                    <SgRibbonTab Title="Table Tools" Highlight="true">
+                                        <SgRibbonGroup Title="Style">
+                                            <SgRibbonButton Icon="@SgIcons.Table" Text="Format" Size="SgRibbonButtonSize.Medium" />
+                                            <SgRibbonButton Icon="@SgIcons.Check" Text="Validate" Size="SgRibbonButtonSize.Medium" />
+                                        </SgRibbonGroup>
+                                    </SgRibbonTab>
+                                </SgRibbonContextualTabs>
+                            </ChildContent>
+                        </SgRibbon>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="Extended Items" Subtitle="ColorPicker + ComboBox + CheckBox" Shadow="SgShadow.Sm" Compact="true">
+                        <SgRibbon>
+                            <ChildContent>
+                                <SgRibbonTab Title="Format">
+                                    <SgRibbonGroup Title="Color">
+                                        <SgRibbonColorPicker @bind-Value="_s5Color1" Preset="SgColorPreset.Standard" Tooltip="Standard palette" />
+                                        <SgRibbonColorPicker @bind-Value="_s5Color2" Preset="SgColorPreset.Theme" Tooltip="Theme palette" />
+                                        <SgRibbonColorPicker @bind-Value="_s5Color3" Preset="SgColorPreset.Grayscale" Tooltip="Grayscale" />
+                                    </SgRibbonGroup>
+                                    <SgRibbonGroup Title="Style">
+                                        <SgRibbonComboBox @bind-Value="_s5Style" Items="@_s5Styles" Placeholder="Choose style" KeyTip="S" />
+                                        <SgRibbonComboBox @bind-Value="_s5Font" Items="@_s5Fonts" Placeholder="Font" Width="120px" />
+                                    </SgRibbonGroup>
+                                    <SgRibbonGroup Title="Options">
+                                        <SgRibbonCheckBox @bind-Value="_s5Bold" Label="Bold" />
+                                        <SgRibbonCheckBox @bind-Value="_s5Italic" Label="Italic" />
+                                        <SgRibbonCheckBox @bind-Value="_s5Underline" Label="Underline" Disabled="true" />
+                                    </SgRibbonGroup>
+                                </SgRibbonTab>
+                            </ChildContent>
+                        </SgRibbon>
+                        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center;">
+                            <SgBadge Text="@("Color1: " + _s5Color1)" Variant="SgBadgeVariant.Info" Standalone="true" />
+                            <SgBadge Text="@("Color2: " + _s5Color2)" Variant="SgBadgeVariant.Info" Standalone="true" />
+                            <SgBadge Text="@("Style: " + (_s5Style ?? "—"))" Variant="SgBadgeVariant.Muted" Standalone="true" />
+                            <SgBadge Text="@("Font: " + (_s5Font ?? "—"))" Variant="SgBadgeVariant.Muted" Standalone="true" />
+                        </div>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ═══════════════════════════════════════════════════════════════════════
+           SECTION 6: LIVE RIBBON CONSTRUCTOR
+           ═══════════════════════════════════════════════════════════════════════ *@
+        <div class="rb-demo-page demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Live Ribbon Constructor
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Configure the active tab, contextual color, badge, and behaviour on the left. The preview and generated code on the right update live.
+                </SgTypography>
+            </div>
+
+            <SgCard NoPadding="true" Shadow="SgShadow.Sm">
+                <ChildContent>
+                    <SgRow Space="SgSize.Md" Gutter="0">
+                        <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                            <SgStack Vertical="true" Space="SgSize.Md">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Active tab
+                                </SgTypography>
+                                <SgSegmented TValue="int" Value="_ctorActiveTab" ValueChanged="v => { _ctorActiveTab = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="_ctorTabOpts" />
+
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Contextual
+                                </SgTypography>
+                                <SgSegmented TValue="bool" Value="_ctorContextual" ValueChanged="v => { _ctorContextual = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="_ctorBoolOpts" />
+
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Tab badge
+                                </SgTypography>
+                                <SgSegmented TValue="string" Value="_ctorBadgeKind" ValueChanged="v => { _ctorBadgeKind = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="_ctorBadgeOpts" />
+
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Behaviour
+                                </SgTypography>
+                                <SgStack Vertical="true" Space="SgSize.Sm">
+                                    <SgStack Horizontal="true" Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">AllowCollapse</SgTypography>
+                                        <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorAllowCollapse.ToString()" Standalone="true" />
+                                    </SgStack>
+                                    <SgSegmented TValue="bool" Value="_ctorAllowCollapse" ValueChanged="v => { _ctorAllowCollapse = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="_ctorBoolOpts" />
+                                </SgStack>
+                                <SgStack Vertical="true" Space="SgSize.Sm">
+                                    <SgStack Horizontal="true" Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">ShowScrollArrows</SgTypography>
+                                        <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorScrollArrows.ToString()" Standalone="true" />
+                                    </SgStack>
+                                    <SgSegmented TValue="bool" Value="_ctorScrollArrows" ValueChanged="v => { _ctorScrollArrows = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="_ctorBoolOpts" />
+                                </SgStack>
+                                <SgStack Vertical="true" Space="SgSize.Sm">
+                                    <SgStack Horizontal="true" Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Animate</SgTypography>
+                                        <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorAnimate.ToString()" Standalone="true" />
+                                    </SgStack>
+                                    <SgSegmented TValue="bool" Value="_ctorAnimate" ValueChanged="v => { _ctorAnimate = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="_ctorBoolOpts" />
+                                </SgStack>
+                            </SgStack>
+                        </SgCol>
+
+                        <SgCol Xs="12" Md="7" Style="padding:24px;">
+                            <SgStack Vertical="true" Space="SgSize.Lg">
+                                <SgStack Vertical="true" Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                        Preview
+                                    </SgTypography>
+                                    <div class="constructor-preview">
+                                        <SgRibbon ActiveTabIndex="@_ctorActiveTab"
+                                                  AllowCollapse="@_ctorAllowCollapse"
+                                                  ShowScrollArrows="@_ctorScrollArrows"
+                                                  Animate="@_ctorAnimate">
+                                            <ChildContent>
+                                                <SgRibbonFileMenu Text="File" Icon="@SgIcons.Folder">
+                                                    <SgRibbonMenuItem Text="New" Icon="@SgIcons.FileText" Shortcut="Ctrl+N" OnClick="@(() => Log("New"))" />
+                                                    <SgRibbonMenuItem Text="Open…" Icon="@SgIcons.Folder" Shortcut="Ctrl+O" OnClick="@(() => Log("Open"))" />
+                                                </SgRibbonFileMenu>
+                                                <SgRibbonTab Title="Home">
+                                                    <SgRibbonGroup Title="Clipboard">
+                                                        <SgRibbonButton Icon="@SgIcons.Copy" Text="Copy" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Copy"))" />
+                                                    </SgRibbonGroup>
+                                                </SgRibbonTab>
+                                                <SgRibbonTab Title="Insert" Badge="@_ctorBadge" BadgeVariant="SgBadgeVariant.Success">
+                                                    <SgRibbonGroup Title="Objects">
+                                                        <SgRibbonButton Icon="@SgIcons.Plus" Text="Add" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Add"))" />
+                                                    </SgRibbonGroup>
+                                                </SgRibbonTab>
+                                                @if (_ctorContextual)
+                                                {
+                                                    <SgRibbonContextualTabs Color="SgContextualColor.Blue">
+                                                        <SgRibbonTab Title="Chart Design" Highlight="true">
+                                                            <SgRibbonGroup Title="Type">
+                                                                <SgRibbonButton Icon="@SgIcons.BarChart" Text="Column" Size="SgRibbonButtonSize.Medium" OnClick="@(() => Log("Column"))" />
+                                                            </SgRibbonGroup>
+                                                        </SgRibbonTab>
+                                                    </SgRibbonContextualTabs>
+                                                }
+                                            </ChildContent>
+                                        </SgRibbon>
+                                    </div>
+                                </SgStack>
+
+                                <SgStack Vertical="true" Space="SgSize.Sm">
+                                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                            Generated Code
+                                        </SgTypography>
+                                        <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCtorCode">
+                                            <span id="ctor-copy-icon">@_copyIcon</span>
+                                            <span id="ctor-copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                        </button>
+                                    </div>
+                                    <div class="code-block" id="ctor-code-block">
+                                        @foreach (var line in _ctorCodeLines)
+                                        {
+                                            <code>@line</code>
+                                        }
+                                    </div>
+                                </SgStack>
+                            </SgStack>
+                        </SgCol>
+                    </SgRow>
+                </ChildContent>
             </SgCard>
         </div>
 
-        @* Code constructor *@
-        <div style="margin-top:16px;">
-            <SgTypography Variant="SgTypographyVariant.Heading3">Code constructor</SgTypography>
-            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                Basic ribbon markup with tabs, groups, buttons and a split button.
-            </SgTypography>
-            <pre class="demo-code-block"><span class="demo-code-comment">&lt;!-- SgRibbon with tabs, groups, and buttons --&gt;</span>
-<span class="demo-code-keyword">&lt;SgRibbon</span> <span class="demo-code-attr">@@bind-Collapsed</span>=<span class="demo-code-string">"_collapsed"</span> <span class="demo-code-attr">AllowCollapse</span>=<span class="demo-code-string">"true"</span><span class="demo-code-keyword">&gt;</span>
-    <span class="demo-code-keyword">&lt;ChildContent&gt;</span>
-        <span class="demo-code-keyword">&lt;SgRibbonTab</span> <span class="demo-code-attr">Title</span>=<span class="demo-code-string">"Home"</span><span class="demo-code-keyword">&gt;</span>
-            <span class="demo-code-keyword">&lt;SgRibbonGroup</span> <span class="demo-code-attr">Title</span>=<span class="demo-code-string">"Clipboard"</span><span class="demo-code-keyword">&gt;</span>
-                <span class="demo-code-keyword">&lt;SgRibbonSplit</span> <span class="demo-code-attr">Icon</span>=<span class="demo-code-string">"@@SgIcons.Copy"</span>
-                              <span class="demo-code-attr">Text</span>=<span class="demo-code-string">"Paste"</span> <span class="demo-code-attr">OnClick</span>=<span class="demo-code-string">"@@() =&gt; Log("Paste")"</span><span class="demo-code-keyword">&gt;</span>
-                    <span class="demo-code-keyword">&lt;DropdownContent&gt;</span>
-                        <span class="demo-code-keyword">&lt;button</span> <span class="demo-code-attr">class</span>=<span class="demo-code-string">"sgc-ribbon-menu-item"</span>
-                                <span class="demo-code-attr">@@onclick</span>=<span class="demo-code-string">"@@() =&gt; Log("Paste as text")"</span><span class="demo-code-keyword">&gt;</span>
-                            Paste as text
-                        <span class="demo-code-keyword">&lt;/button&gt;</span>
-                    <span class="demo-code-keyword">&lt;/DropdownContent&gt;</span>
-                <span class="demo-code-keyword">&lt;/SgRibbonSplit&gt;</span>
-                <span class="demo-code-keyword">&lt;SgRibbonButton</span> <span class="demo-code-attr">Icon</span>=<span class="demo-code-string">"@@SgIcons.Copy"</span>
-                              <span class="demo-code-attr">Text</span>=<span class="demo-code-string">"Copy"</span>
-                              <span class="demo-code-attr">Size</span>=<span class="demo-code-string">"SgRibbonButtonSize.Small"</span> <span class="demo-code-keyword">/&gt;</span>
-            <span class="demo-code-keyword">&lt;/SgRibbonGroup&gt;</span>
-        <span class="demo-code-keyword">&lt;/SgRibbonTab&gt;</span>
-        <span class="demo-code-keyword">&lt;SgRibbonTab</span> <span class="demo-code-attr">Title</span>=<span class="demo-code-string">"Insert"</span> <span class="demo-code-attr">Badge</span>=<span class="demo-code-string">"New"</span>
-                      <span class="demo-code-attr">BadgeVariant</span>=<span class="demo-code-string">"SgBadgeVariant.Success"</span><span class="demo-code-keyword">&gt;</span>
-            <span class="demo-code-comment">&lt;!-- groups and buttons --&gt;</span>
-        <span class="demo-code-keyword">&lt;/SgRibbonTab&gt;</span>
-    <span class="demo-code-keyword">&lt;/ChildContent&gt;</span>
-    <span class="demo-code-keyword">&lt;TabBarFarContent&gt;</span>
-        <span class="demo-code-keyword">&lt;SgButton</span> <span class="demo-code-attr">Text</span>=<span class="demo-code-string">"Help"</span>
-                  <span class="demo-code-attr">Variant</span>=<span class="demo-code-string">"SgButtonVariant.Ghost"</span> <span class="demo-code-keyword">/&gt;</span>
-    <span class="demo-code-keyword">&lt;/TabBarFarContent&gt;</span>
-<span class="demo-code-keyword">&lt;/SgRibbon&gt;</span></pre>
-        </div>
-    </div>
+        @* ═══════════════════════════════════════════════════════════════════════
+           SECTION 7: API QUICK REFERENCE
+           ═══════════════════════════════════════════════════════════════════════ *@
+        <div class="rb-demo-page demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    API Quick Reference
+                </SgTypography>
+            </div>
 
-    @* ── Component Properties ─────────────────────────────────────────────── *@
-    <div class="sgc-demo-section">
-        <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">Component Properties</SgTypography>
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgRibbon" Shadow="SgShadow.Sm" Compact="true"><PropertyTable Items="_ribbonProps" /></SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgRibbonTab" Shadow="SgShadow.Sm" Compact="true"><PropertyTable Items="_tabProps" /></SgCard>
+                </SgCol>
+            </SgRow>
+            <SgRow Space="SgSize.Md" Style="margin-top:12px;">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgRibbonGroup" Shadow="SgShadow.Sm" Compact="true"><PropertyTable Items="_groupProps" /></SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgRibbonButton" Shadow="SgShadow.Sm" Compact="true"><PropertyTable Items="_buttonProps" /></SgCard>
+                </SgCol>
+            </SgRow>
+            <SgRow Space="SgSize.Md" Style="margin-top:12px;">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgRibbonSplit" Shadow="SgShadow.Sm" Compact="true"><PropertyTable Items="_splitProps" /></SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgRibbonFileMenu" Shadow="SgShadow.Sm" Compact="true"><PropertyTable Items="_fileMenuProps" /></SgCard>
+                </SgCol>
+            </SgRow>
+            <SgRow Space="SgSize.Md" Style="margin-top:12px;">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgRibbonContextualTabs" Shadow="SgShadow.Sm" Compact="true"><PropertyTable Items="_ctxTabsProps" /></SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgRibbonColorPicker / ComboBox / CheckBox" Shadow="SgShadow.Sm" Compact="true"><PropertyTable Items="_extrasProps" /></SgCard>
+                </SgCol>
+            </SgRow>
         </div>
 
-        <div class="demo-grid-adaptive" style="margin-top:12px;">
-            <SgCard Title="SgRibbon" Shadow="SgShadow.Sm">
-                <PropertyTable Items="_ribbonProps" />
-            </SgCard>
-            <SgCard Title="SgRibbonButton" Shadow="SgShadow.Sm">
-                <PropertyTable Items="_buttonProps" />
-            </SgCard>
-        </div>
-        <div class="demo-grid-adaptive" style="margin-top:12px;">
-            <SgCard Title="SgRibbonTab" Shadow="SgShadow.Sm">
-                <PropertyTable Items="_tabProps" />
-            </SgCard>
-            <SgCard Title="SgRibbonGroup" Shadow="SgShadow.Sm">
-                <PropertyTable Items="_groupProps" />
-            </SgCard>
-        </div>
-        <div class="demo-grid-adaptive" style="margin-top:12px;">
-            <SgCard Title="SgRibbonSplit" Shadow="SgShadow.Sm">
-                <PropertyTable Items="_splitProps" />
-            </SgCard>
-        </div>
-    </div>
-
+    </ChildContent>
 </SgCard>
 
-<style>
-    .ribbon-log-container {
-        margin-top: 12px;
-        padding: 10px 12px;
-        background: var(--sg-surface-alt);
-        border: 1px solid var(--sg-border);
-        border-radius: 8px;
-    }
-    .ribbon-log-title {
-        display: block;
-        margin-bottom: 6px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 10px;
-    }
-    .ribbon-log-entry {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 2px 0;
-        font-size: 12px;
-        font-family: 'Cascadia Code', 'Consolas', monospace;
-        color: var(--sg-text-muted);
-    }
-    .ribbon-log-dot {
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--sg-color-primary);
-        flex-shrink: 0;
-    }
-    .ribbon-log-text {
-        flex: 1;
-    }
-    .demo-ribbon-wrap {
-        margin-bottom: 4px;
-    }
-</style>
-
 @code {
-    // ── Dynamic state ─────────────────────────────────────────────────────────
-    private bool _collapsed;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SECTION STATE
+    // ═══════════════════════════════════════════════════════════════════════════
+    private bool _s1Collapsed;
+    private bool _s3Collapsed;
+    private bool _s3GrpClip;
+
+    private string _s5Color1 = "#006FEE";
+    private string _s5Color2 = "#8b5cf6";
+    private string _s5Color3 = "#404040";
+    private string? _s5Style;
+    private string? _s5Font;
+    private bool _s5Bold = true;
+    private bool _s5Italic;
+    private bool _s5Underline;
+
+    private readonly List<string> _s5Styles = new() { "Normal", "Heading 1", "Heading 2", "Quote", "Code" };
+    private readonly List<string> _s5Fonts  = new() { "Arial", "Calibri", "Segoe UI", "Verdana" };
+
     private bool _bold, _italic, _under;
-    private bool _ruler, _gridlines, _navPane;
     private readonly List<string> _log = new();
 
     private void Log(string msg)
@@ -294,82 +591,240 @@
         if (_log.Count > 5) _log.RemoveAt(_log.Count - 1);
     }
 
-    // ── Icons ─────────────────────────────────────────────────────────────────
-    private const string _boldIcon   = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z'/><path d='M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z'/></svg>";
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SVG ICONS (Bold/Italic/Underline not in SgIcons)
+    // ═══════════════════════════════════════════════════════════════════════════
+    private const string _boldIcon = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z'/><path d='M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z'/></svg>";
     private const string _italicIcon = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><line x1='19' y1='4' x2='10' y2='4'/><line x1='14' y1='20' x2='5' y2='20'/><line x1='15' y1='4' x2='9' y2='20'/></svg>";
-    private const string _underIcon  = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3'/><line x1='4' y1='21' x2='20' y2='21'/></svg>";
+    private const string _underIcon = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3'/><line x1='4' y1='21' x2='20' y2='21'/></svg>";
 
-    // ── Computed display properties ──────────────────────────────────────────────
-    private string _collapseBtnText => _collapsed ? "Expand ribbon" : "Collapse ribbon";
-    private string _collapseBadgeText => _collapsed ? "Collapsed" : "Expanded";
-    private SgBadgeVariant _collapseBadgeVariant => _collapsed ? SgBadgeVariant.Warn : SgBadgeVariant.Success;
     private string _boldState => _bold ? "ON" : "OFF";
     private string _italicState => _italic ? "ON" : "OFF";
     private string _underState => _under ? "ON" : "OFF";
     private SgBadgeVariant _boldVariant => _bold ? SgBadgeVariant.Info : SgBadgeVariant.Muted;
     private SgBadgeVariant _italicVariant => _italic ? SgBadgeVariant.Info : SgBadgeVariant.Muted;
     private SgBadgeVariant _underVariant => _under ? SgBadgeVariant.Info : SgBadgeVariant.Muted;
-    private string _rulerState => _ruler ? "ON" : "OFF";
-    private string _gridState => _gridlines ? "ON" : "OFF";
-    private string _navState => _navPane ? "ON" : "OFF";
-    private SgBadgeVariant _rulerVariant => _ruler ? SgBadgeVariant.Info : SgBadgeVariant.Muted;
-    private SgBadgeVariant _gridVariant => _gridlines ? SgBadgeVariant.Info : SgBadgeVariant.Muted;
-    private SgBadgeVariant _navVariant => _navPane ? SgBadgeVariant.Info : SgBadgeVariant.Muted;
 
-    // ── Property tables ───────────────────────────────────────────────────────
-    private List<PropertyPanelItem> _ribbonProps = new()
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LIVE CONSTRUCTOR STATE
+    // ═══════════════════════════════════════════════════════════════════════════
+    private int _ctorActiveTab;
+    private bool _ctorContextual = true;
+    private string _ctorBadgeKind = "New";
+    private bool _ctorAllowCollapse = true;
+    private bool _ctorScrollArrows = true;
+    private bool _ctorAnimate = true;
+    private string[] _ctorCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    private string? _ctorBadge => _ctorBadgeKind == "None" ? null : _ctorBadgeKind;
+
+    private readonly List<SgSegmentedOption<int>> _ctorTabOpts = new()
     {
-        new() { Label = "ChildContent",     Value = "RenderFragment",   BadgeText = "Tabs content",        BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Collapsed",        Value = "bool",             BadgeText = "Collapsed state",     BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "CollapsedChanged", Value = "EventCallback",    BadgeText = "Collapse event",      BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "AllowCollapse",    Value = "bool",             BadgeText = "Toggle button",       BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "ActiveTabIndex",   Value = "int",              BadgeText = "Tab index (two-way)", BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Animate",          Value = "bool",             BadgeText = "Animations",          BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "TabBarFarContent", Value = "RenderFragment",   BadgeText = "Far-right slot",      BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "CssClass",         Value = "string?",          BadgeText = "Additional class",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Value = 0, Label = "File" },
+        new() { Value = 1, Label = "Home" },
+        new() { Value = 2, Label = "Insert" },
+        new() { Value = 3, Label = "Chart" },
+    };
+    private readonly List<SgSegmentedOption<bool>> _ctorBoolOpts = new()
+    {
+        new() { Value = true,  Label = "On"  },
+        new() { Value = false, Label = "Off" },
+    };
+    private readonly List<SgSegmentedOption<string>> _ctorBadgeOpts = new()
+    {
+        new() { Value = "None", Label = "None" },
+        new() { Value = "New",  Label = "New"  },
+        new() { Value = "Beta", Label = "Beta" },
+        new() { Value = "5",    Label = "5"    },
     };
 
-    private List<PropertyPanelItem> _buttonProps = new()
+    protected override void OnInitialized()
     {
-        new() { Label = "Text",           Value = "string?",          BadgeText = "Label",               BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Icon",           Value = "string? (SVG)",    BadgeText = "Icon markup",         BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Size",           Value = "Large|Medium|Small", BadgeText = "Display size",       BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "IsToggle",       Value = "bool",             BadgeText = "Toggle mode",         BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Pressed",        Value = "bool",             BadgeText = "Pressed state",       BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "Danger",         Value = "bool",             BadgeText = "Danger style",        BadgeVariant = SgBadgeVariant.Danger  },
-        new() { Label = "Disabled",       Value = "bool",             BadgeText = "Disabled",            BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "Tooltip",        Value = "string?",          BadgeText = "Tooltip text",        BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Shortcut",       Value = "string?",          BadgeText = "Keyboard shortcut",   BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "OnClick",        Value = "EventCallback",    BadgeText = "Click event",         BadgeVariant = SgBadgeVariant.Success },
+        UpdateCtorCode();
+    }
+
+    private void UpdateCtorCode()
+    {
+        var lines = new List<string>
+        {
+            "<SgRibbon"
+        };
+        lines.Add($"         ActiveTabIndex=\"{_ctorActiveTab}\"");
+        if (!_ctorAllowCollapse) lines.Add("         AllowCollapse=\"false\"");
+        if (!_ctorScrollArrows) lines.Add("         ShowScrollArrows=\"false\"");
+        if (!_ctorAnimate)       lines.Add("         Animate=\"false\"");
+        lines.Add("         OnTabSelecting=\"@(args => Console.WriteLine(args.Tab.Title))\">");
+        lines.Add("    <ChildContent>");
+        lines.Add("        <SgRibbonFileMenu Text=\"File\" Icon=\"@SgIcons.Folder\">");
+        lines.Add("            <SgRibbonMenuItem Text=\"New\" Shortcut=\"Ctrl+N\" />");
+        lines.Add("        </SgRibbonFileMenu>");
+        lines.Add("        <SgRibbonTab Title=\"Home\">");
+        lines.Add("            <SgRibbonGroup Title=\"Clipboard\">");
+        lines.Add("                <SgRibbonButton Icon=\"@SgIcons.Copy\" Text=\"Copy\" Size=\"SgRibbonButtonSize.Medium\" OnClick=\"@(() => ...)\" />");
+        lines.Add("            </SgRibbonGroup>");
+        lines.Add("        </SgRibbonTab>");
+        if (_ctorBadge is null)
+        {
+            lines.Add("        <SgRibbonTab Title=\"Insert\">");
+        }
+        else
+        {
+            lines.Add($"        <SgRibbonTab Title=\"Insert\" Badge=\"{_ctorBadge}\" BadgeVariant=\"SgBadgeVariant.Success\">");
+        }
+        lines.Add("            <SgRibbonGroup Title=\"Objects\">");
+        lines.Add("                <SgRibbonButton Icon=\"@SgIcons.Plus\" Text=\"Add\" Size=\"SgRibbonButtonSize.Medium\" />");
+        lines.Add("            </SgRibbonGroup>");
+        lines.Add("        </SgRibbonTab>");
+        if (_ctorContextual)
+        {
+            lines.Add("        <SgRibbonContextualTabs Color=\"SgContextualColor.Blue\">");
+            lines.Add("            <SgRibbonTab Title=\"Chart Design\" Highlight=\"true\">");
+            lines.Add("                <SgRibbonGroup Title=\"Type\">");
+            lines.Add("                    <SgRibbonButton Icon=\"@SgIcons.BarChart\" Text=\"Column\" Size=\"SgRibbonButtonSize.Medium\" />");
+            lines.Add("                </SgRibbonGroup>");
+            lines.Add("            </SgRibbonTab>");
+            lines.Add("        </SgRibbonContextualTabs>");
+        }
+        lines.Add("    </ChildContent>");
+        lines.Add("</SgRibbon>");
+        _ctorCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCtorCode()
+    {
+        try
+        {
+            var code = string.Join("\n", _ctorCodeLines);
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PROPERTY TABLES
+    // ═══════════════════════════════════════════════════════════════════════════
+    private List<PropertyPanelItem> _ribbonProps = new()
+    {
+        new() { Label = "ChildContent",       Value = "RenderFragment",   BadgeText = "Tabs content",         BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ActiveTabIndex",     Value = "int",              BadgeText = "Active tab (two-way)", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ActiveTabIndexChanged", Value = "EventCallback<int>", BadgeText = "Tab change",        BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnTabSelecting",     Value = "EventCallback<TabSelectingEventArgs>", BadgeText = "Pre-switch hook", BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Collapsed",          Value = "bool",             BadgeText = "Collapse state",       BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "CollapsedChanged",   Value = "EventCallback",    BadgeText = "Collapse event",       BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "DefaultCollapsed",   Value = "bool",             BadgeText = "Initial state",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "AllowCollapse",      Value = "bool",             BadgeText = "Toggle button",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowScrollArrows",   Value = "bool",             BadgeText = "Tab overflow",         BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Animate",            Value = "bool",             BadgeText = "Animations",           BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Rtl",                Value = "bool",             BadgeText = "Right-to-left",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "TabBarFarContent",   Value = "RenderFragment",   BadgeText = "Far-right slot",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "AriaLabel",          Value = "string?",          BadgeText = "ARIA toolbar",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CssClass",           Value = "string?",          BadgeText = "Additional class",     BadgeVariant = SgBadgeVariant.Default },
     };
 
     private List<PropertyPanelItem> _tabProps = new()
     {
-        new() { Label = "Title",        Value = "string",             BadgeText = "Tab label",           BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Icon",         Value = "string? (SVG)",      BadgeText = "Tab icon",            BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Highlight",    Value = "bool",               BadgeText = "Contextual tab",      BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "Badge",        Value = "string?",            BadgeText = "Notification badge",  BadgeVariant = SgBadgeVariant.Danger  },
-        new() { Label = "BadgeVariant", Value = "SgBadgeVariant",     BadgeText = "Badge colour",        BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Disabled",     Value = "bool",               BadgeText = "Disabled",            BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "ChildContent", Value = "RenderFragment",     BadgeText = "Panel content",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Title",        Value = "string",                  BadgeText = "Tab label",           BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",         Value = "string? (SVG)",           BadgeText = "Tab icon",            BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Highlight",    Value = "bool",                    BadgeText = "Contextual tab",      BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Badge",        Value = "string?",                 BadgeText = "Notification badge",  BadgeVariant = SgBadgeVariant.Danger  },
+        new() { Label = "BadgeVariant", Value = "SgBadgeVariant",          BadgeText = "Badge colour",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Visible",      Value = "bool",                    BadgeText = "Show/hide tab",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "KeyTip",       Value = "string?",                 BadgeText = "Alt+key shortcut",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Disabled",     Value = "bool",                    BadgeText = "Disabled",            BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ChildContent", Value = "RenderFragment",          BadgeText = "Panel content",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "CssClass",     Value = "string?",                 BadgeText = "Additional class",    BadgeVariant = SgBadgeVariant.Default },
     };
 
     private List<PropertyPanelItem> _groupProps = new()
     {
-        new() { Label = "Title",        Value = "string?",           BadgeText = "Group label",          BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Icon",         Value = "string? (SVG)",     BadgeText = "Label icon",           BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "ChildContent", Value = "RenderFragment",    BadgeText = "Buttons/seps",         BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "CssClass",     Value = "string?",           BadgeText = "Additional class",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Title",           Value = "string?",          BadgeText = "Group label",         BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",            Value = "string? (SVG)",    BadgeText = "Label icon",          BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Orientation",     Value = "Horizontal|Vertical", BadgeText = "Body direction",   BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Collapsible",     Value = "bool",             BadgeText = "Allow collapse",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Collapsed",       Value = "bool",             BadgeText = "Collapse state",      BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "CollapsedChanged",Value = "EventCallback",    BadgeText = "Collapse event",      BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "LauncherClick",   Value = "EventCallback",    BadgeText = "↗ button click",      BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OverflowText",    Value = "string?",          BadgeText = "Collapsed label",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ChildContent",    Value = "RenderFragment",   BadgeText = "Buttons/seps",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "CssClass",        Value = "string?",          BadgeText = "Additional class",    BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _buttonProps = new()
+    {
+        new() { Label = "Text",         Value = "string?",                BadgeText = "Label",               BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",         Value = "string? (SVG)",          BadgeText = "Icon markup",         BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Size",         Value = "Large|Medium|Small",     BadgeText = "Display size",        BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "IsToggle",     Value = "bool",                   BadgeText = "Toggle mode",         BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Pressed",      Value = "bool",                   BadgeText = "Pressed state",       BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Danger",       Value = "bool",                   BadgeText = "Danger style",        BadgeVariant = SgBadgeVariant.Danger  },
+        new() { Label = "Disabled",     Value = "bool",                   BadgeText = "Disabled",            BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Visible",      Value = "bool",                   BadgeText = "Show/hide",           BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Tooltip",      Value = "string?",                BadgeText = "Tooltip text",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Shortcut",     Value = "string?",                BadgeText = "Keyboard shortcut",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "KeyTip",       Value = "string?",                BadgeText = "Alt+key shortcut",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "OnClick",      Value = "EventCallback",          BadgeText = "Click event",         BadgeVariant = SgBadgeVariant.Success },
     };
 
     private List<PropertyPanelItem> _splitProps = new()
     {
-        new() { Label = "Text",           Value = "string?",          BadgeText = "Label",               BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Icon",           Value = "string? (SVG)",    BadgeText = "Icon markup",         BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Size",           Value = "Large|Medium|Small", BadgeText = "Display size",       BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "DropdownContent",Value = "RenderFragment",   BadgeText = "Menu items",           BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "OnClick",        Value = "EventCallback",    BadgeText = "Main action click",    BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Disabled",       Value = "bool",             BadgeText = "Disabled",             BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "Tooltip",        Value = "string?",          BadgeText = "Tooltip text",         BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Text",            Value = "string?",              BadgeText = "Label",               BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",            Value = "string? (SVG)",        BadgeText = "Icon markup",         BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Size",            Value = "Large|Medium|Small",   BadgeText = "Display size",        BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Placement",       Value = "BottomStart|Bottom|BottomEnd|RightStart|RightEnd", BadgeText = "Dropdown position", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "KeyTip",          Value = "string?",              BadgeText = "Alt+key (main)",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "KeyTipArrow",     Value = "string?",              BadgeText = "Alt+key (arrow)",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Visible",         Value = "bool",                 BadgeText = "Show/hide",           BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "DropdownContent", Value = "RenderFragment",       BadgeText = "Menu items",          BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "OnClick",         Value = "EventCallback",        BadgeText = "Main action",         BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnSelect",        Value = "EventCallback<MenuItem>", BadgeText = "Item click",       BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Disabled",        Value = "bool",                 BadgeText = "Disabled",            BadgeVariant = SgBadgeVariant.Warn    },
+    };
+
+    private List<PropertyPanelItem> _fileMenuProps = new()
+    {
+        new() { Label = "Text",          Value = "string",                     BadgeText = "Button label",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",          Value = "string? (SVG)",              BadgeText = "Button icon",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Tooltip",       Value = "string?",                    BadgeText = "Tooltip text",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Disabled",      Value = "bool",                       BadgeText = "Disabled",       BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "OnSelect",      Value = "EventCallback<MenuItem>",    BadgeText = "Item click",     BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnOpenChanged", Value = "EventCallback<bool>",        BadgeText = "Open/close",     BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ChildContent",  Value = "RenderFragment",             BadgeText = "Sections/items", BadgeVariant = SgBadgeVariant.Info    },
+    };
+
+    private List<PropertyPanelItem> _ctxTabsProps = new()
+    {
+        new() { Label = "Color",        Value = "Primary|Magenta|Pink|Purple|Blue|Teal|Green|Orange|Red", BadgeText = "Accent colour",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Visible",      Value = "bool",          BadgeText = "Show/hide group",  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ChildContent",Value = "RenderFragment",BadgeText = "Tab children",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ActivateFirstTab()", Value = "void (method)", BadgeText = "Programmatic", BadgeVariant = SgBadgeVariant.Success },
+    };
+
+    private List<PropertyPanelItem> _extrasProps = new()
+    {
+        new() { Label = "SgRibbonColorPicker", Value = "Value|ValueChanged|Preset|Tooltip|KeyTip|Disabled|CssClass", BadgeText = "Inline colour picker", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRibbonComboBox",    Value = "Value|ValueChanged|Items|Placeholder|Width|Disabled|KeyTip", BadgeText = "Inline combobox",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRibbonCheckBox",    Value = "Value|ValueChanged|Label|Icon|Disabled|KeyTip|CssClass",     BadgeText = "Inline checkbox",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRibbonTemplate",    Value = "ChildContent|CssClass|Style|Width|Height",                    BadgeText = "Pass-through slot",     BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRibbonMenuItem",    Value = "Text|Icon|Shortcut|KeyTip|Badge|BadgeVariant|Disabled|OnClick", BadgeText = "Menu item",          BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRibbonMenuSection", Value = "Title|ChildContent|CssClass",                                  BadgeText = "Titled group",          BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRibbonMenuSeparator", Value = "CssClass",                                                 BadgeText = "Horizontal rule",       BadgeVariant = SgBadgeVariant.Info },
     };
 }
