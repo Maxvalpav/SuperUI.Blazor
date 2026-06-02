@@ -1,0 +1,86 @@
+@namespace SuperUI.Components
+@using SuperUI.Services
+@using SuperUI.Enums
+@inherits SgJsComponentBase
+
+@if (!_matches)
+{
+    @ChildContent
+}
+
+@code {
+    private bool _matches;
+    private string? _activeQuery;
+
+    /// <summary>Content shown when the breakpoint condition is NOT met.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Hide when viewport is at or above this breakpoint. Mutually exclusive with <see cref="Below"/>.</summary>
+    [Parameter] public SgBreakpoint? AtOrAbove { get; set; }
+
+    /// <summary>Hide when viewport is strictly below this breakpoint. Mutually exclusive with <see cref="AtOrAbove"/>.</summary>
+    [Parameter] public SgBreakpoint? Below { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        var q = BuildQuery();
+        if (string.IsNullOrEmpty(q)) return;
+        _activeQuery = q;
+        await SafeInvokeVoidAsync("observeMediaQuery", q, SelfRef);
+    }
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        var prevA = AtOrAbove;
+        var prevB = Below;
+
+        await base.SetParametersAsync(parameters);
+
+        if (IsJsInitialized && (prevA != AtOrAbove || prevB != Below))
+        {
+            var prevQ = _activeQuery;
+            var q = BuildQuery();
+            if (!string.IsNullOrEmpty(prevQ) && prevQ != q)
+                await SafeInvokeVoidAsync("unobserveMediaQueryFor", prevQ, SelfRef);
+            if (!string.IsNullOrEmpty(q))
+            {
+                _activeQuery = q;
+                await SafeInvokeVoidAsync("observeMediaQuery", q, SelfRef);
+            }
+        }
+    }
+
+    private string BuildQuery()
+    {
+        if (AtOrAbove.HasValue) return $"(min-width: {Threshold(AtOrAbove.Value)}px)";
+        if (Below.HasValue) return $"(max-width: {Threshold(Below.Value) - 0.02}px)";
+        return "(min-width: 0px)";
+    }
+
+    private static double Threshold(SgBreakpoint bp) => bp switch
+    {
+        SgBreakpoint.Xs  => 0,
+        SgBreakpoint.Sm  => 576,
+        SgBreakpoint.Md  => 768,
+        SgBreakpoint.Lg  => 992,
+        SgBreakpoint.Xl  => 1200,
+        SgBreakpoint.Xxl => 1400,
+        _                => 0,
+    };
+
+    [JSInvokable]
+    public void OnMatchChanged(bool matches)
+    {
+        if (_matches == matches) return;
+        _matches = matches;
+        StateHasChanged();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        if (!string.IsNullOrEmpty(_activeQuery))
+            await SafeInvokeVoidAsync("unobserveMediaQueryFor", _activeQuery, SelfRef);
+    }
+}

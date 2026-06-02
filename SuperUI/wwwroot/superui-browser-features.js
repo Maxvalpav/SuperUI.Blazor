@@ -92,25 +92,55 @@ export function vibrate(pattern) {
 }
 
 // ── MediaQuery ──────────────────────────────────────────────────────────
-let mqObserverRef = null;
-let mqQueryList = null;
+// Multi-instance safe: each unique query has its own MediaQueryList and
+// fan-out listener. Each DotNetObjectReference receives a per-instance
+// registration with its own unsubscribe handle.
+const mqLists = new Map();      // query string → MediaQueryList
+const mqRefs = new Map();        // query string → Set<DotNetObjectReference>
+const mqHandlers = new Map();    // query string → (e) => void
+
+function ensureMediaQueryList(query) {
+    let list = mqLists.get(query);
+    if (list) return list;
+    list = window.matchMedia(query);
+    const handler = (e) => {
+        const refs = mqRefs.get(query);
+        if (!refs) return;
+        for (const r of refs) {
+            try { r?.invokeMethodAsync('OnMatchChanged', e.matches)?.catch(() => {}); } catch {}
+        }
+    };
+    list.addEventListener('change', handler);
+    mqLists.set(query, list);
+    mqHandlers.set(query, handler);
+    mqRefs.set(query, new Set());
+    return list;
+}
 
 export function observeMediaQuery(query, dotNetRef) {
-    mqObserverRef = dotNetRef;
-    mqQueryList = window.matchMedia(query);
-    const handler = (e) => { try { dotNetRef?.invokeMethodAsync('OnMatchChanged', e.matches)?.catch(() => {}); } catch {} };
-    mqQueryList.addEventListener('change', handler);
-    mqQueryList._handler = handler;
-    try { dotNetRef?.invokeMethodAsync('OnMatchChanged', mqQueryList.matches)?.catch(() => {}); } catch {}
+    if (!dotNetRef) return;
+    const list = ensureMediaQueryList(query);
+    mqRefs.get(query).add(dotNetRef);
+    try { dotNetRef?.invokeMethodAsync('OnMatchChanged', list.matches)?.catch(() => {}); } catch {}
 }
 
 export function unobserveMediaQuery() {
-    if (mqQueryList && mqQueryList._handler) {
-        mqQueryList.removeEventListener('change', mqQueryList._handler);
-        delete mqQueryList._handler;
+    // Back-compat: if called without a query, do nothing. Multi-instance
+    // components use unobserveMediaQueryFor(query) instead.
+}
+
+export function unobserveMediaQueryFor(query, dotNetRef) {
+    const refs = mqRefs.get(query);
+    if (!refs) return;
+    if (dotNetRef) refs.delete(dotNetRef);
+    if (!dotNetRef || refs.size === 0) {
+        const list = mqLists.get(query);
+        const handler = mqHandlers.get(query);
+        if (list && handler) list.removeEventListener('change', handler);
+        mqLists.delete(query);
+        mqHandlers.delete(query);
+        mqRefs.delete(query);
     }
-    mqQueryList = null;
-    mqObserverRef = null;
 }
 
 // ── KeyboardShortcut ────────────────────────────────────────────────────

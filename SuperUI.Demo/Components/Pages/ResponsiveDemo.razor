@@ -1,199 +1,848 @@
 @page "/responsive-demo"
 @using SuperUI.Components
 @using SuperUI.Enums
+@using SuperUI.Services
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@inject SgBreakpointService Breakpoints
 
-<PageTitle>Responsive Container — SuperUI</PageTitle>
+<PageTitle>Responsive Primitives — SuperUI</PageTitle>
 
-<SgCard Title="SgResponsiveContainer — Container Queries"
-        Subtitle="Automatically switches layouts based on its own dimensions using ResizeObserver. Perfect for dashboard widgets and reusable components."
-        CssClass="sgc-card-flush">
+<SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" Status="SgCardStatus.Info" Animated="true" CssClass="rsp-demo-page">
+    <HeaderContent>
+        <DemoPageHeader Title="Responsive Primitives"
+                        Subtitle="Container queries, media queries, breakpoint service, visibility sensor, show-at / hide-at. SSR-safe and works in both WebAssembly and Server-Side Blazor."
+                        Icon="@SgHeroicons.Outline.AdjustmentsHorizontal" />
+    </HeaderContent>
+    <ChildContent>
 
-    @* ── Interactive Demo ─────────────────────────────────────────────────── *@
-    <div class="sgc-demo-section" style="padding: 32px;">
-        <div class="demo-section-header" style="margin-bottom: 24px;">
-            <SgTypography Variant="SgTypographyVariant.Heading2">Adaptive Showcase</SgTypography>
-            <span class="demo-live-badge">Live</span>
+        @* ═══════════════════════════════════════════════════════════════════
+           Hero strip — current viewport info
+           ═══════════════════════════════════════════════════════════════════ *@
+        <div class="rsp-hero">
+            <div class="rsp-hero-stat">
+                <span class="rsp-hero-stat-label">Width</span>
+                <span class="rsp-hero-stat-value">@($"{_vw:F0}px")</span>
+            </div>
+            <div class="rsp-hero-stat">
+                <span class="rsp-hero-stat-label">Breakpoint</span>
+                <span class="rsp-hero-stat-value">@Breakpoints.Breakpoint</span>
+            </div>
+            <div class="rsp-hero-stat">
+                <span class="rsp-hero-stat-label">Device Pixel Ratio</span>
+                <span class="rsp-hero-stat-value">@($"{_dpr:F2}×")</span>
+            </div>
+            <div class="rsp-hero-stat">
+                <span class="rsp-hero-stat-label">Containers</span>
+                <span class="rsp-hero-stat-value">3</span>
+            </div>
         </div>
-        
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" Style="margin-bottom: 40px; max-width: 800px; line-height: 1.6;">
-            Unlike standard media queries, <code>SgResponsiveContainer</code> reacts to its own width. 
-            Drag the splitter handle below to see how the content adapts to the available space.
-        </SgTypography>
 
-        <div class="demo-grid-adaptive" style="display: grid; grid-template-columns: 1fr 320px; gap: 32px; align-items: start;">
-            @* ── Main Preview ── *@
-            <div style="background: var(--sg-surface-alt); padding: 24px; border-radius: 16px; border: 1px solid var(--sg-border);">
-                <div style="height: 480px; background: var(--sg-bg); border-radius: 12px; border: 1px solid var(--sg-border); overflow: hidden; box-shadow: var(--sg-shadow-sm);">
-                    <SgSplitter Size="240" MinSize="150" MaxSize="500">
-                        <First>
-                            <div style="padding: 20px; height: 100%; background: var(--sg-surface-alt); border-right: 1px solid var(--sg-border); display: flex; flex-direction: column; gap: 16px;">
-                                <SgTypography Size="SgTypographySize.Base" Weight="SgTypographyWeight.Semibold">Navigation</SgTypography>
-                                <div style="display: flex; flex-direction: column; gap: 8px;">
-                                    <div style="height: 32px; background: var(--sg-border-subtle); border-radius: 6px; width: 80%;"></div>
-                                    <div style="height: 32px; background: var(--sg-border-subtle); border-radius: 6px; width: 90%;"></div>
-                                    <div style="height: 32px; background: var(--sg-border-subtle); border-radius: 6px; width: 70%;"></div>
-                                </div>
-                                
-                                <div style="margin-top: auto; padding: 12px; background: var(--sg-bg); border-radius: 8px; border: 1px solid var(--sg-border);">
-                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Style="display: block; margin-bottom: 8px;">Info</SgTypography>
-                                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                                        <div style="display: flex; justify-content: space-between; font-size: 11px;">
-                                            <span>Width:</span>
-                                            <span style="font-family: monospace; font-weight: 600; color: var(--sg-color-primary);">@($"{_currentWidth:F0}px")</span>
-                                        </div>
-                                        <div style="display: flex; justify-content: space-between; font-size: 11px;">
-                                            <span>State:</span>
-                                            <SgBadge Text="@_currentBreakpoint.ToUpper()" Variant="@_breakpointBadgeVariant" Size="SgSize.Sm" />
-                                        </div>
+        @* ═══════════════════════════════════════════════════════════════════
+           1. Container Queries — SgResponsiveContainer
+           ═══════════════════════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Container Queries
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgResponsiveContainer</SgTypography> reacts to its own width via <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ResizeObserver</SgTypography>. Resize the splitter to see live layout shifts.
+                </SgTypography>
+            </div>
+
+            <SgRow Space="SgSize.Md">
+                @* ── Main preview ── *@
+                <SgCol Xs="12" Md="8">
+                    <SgCard Title="Adaptive Showcase" Subtitle="Drag the splitter — content swaps at narrow / medium / wide thresholds" Shadow="SgShadow.Sm" Hoverable="true" Animated="true" NoPadding="true">
+                        <SgSplitter Size="380" MinSize="200" MaxSize="640" CssClass="rsp-splitter">
+                            <First>
+                                <div class="rsp-pane-left">
+                                    <SgTypography Size="SgTypographySize.Base" Weight="SgTypographyWeight.Semibold" Style="margin-bottom:12px;">Navigation</SgTypography>
+                                    <div class="rsp-mock-list">
+                                        <div class="rsp-mock-item" style="width:80%"></div>
+                                        <div class="rsp-mock-item" style="width:90%"></div>
+                                        <div class="rsp-mock-item" style="width:70%"></div>
+                                        <div class="rsp-mock-item" style="width:85%"></div>
+                                    </div>
+                                    <div class="rsp-mock-stats">
+                                        <SgStack Vertical Space="SgSize.Sm">
+                                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Width</SgTypography>
+                                                <SgTypography Font="SgTypographyFont.Mono" Size="SgTypographySize.Xs" Color="var(--sg-color-primary)">@($"{_currentWidth:F0}px")</SgTypography>
+                                            </SgStack>
+                                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">State</SgTypography>
+                                                <SgBadge Variant="@_breakpointBadgeVariant" Text="@_currentBreakpoint.ToUpper()" Standalone="true" />
+                                            </SgStack>
+                                        </SgStack>
                                     </div>
                                 </div>
-                            </div>
-                        </First>
-                        <Second>
-                            <SgResponsiveContainer NarrowThreshold="@_narrowThreshold"
+                            </First>
+                            <Second>
+                                <SgResponsiveContainer NarrowThreshold="@_narrowThreshold"
                                                      WideThreshold="@_wideThreshold"
                                                      TransitionEnabled="@_transitionEnabled"
                                                      ObserveDebounceMs="@_debounceMs"
+                                                     ShowBreakpointIndicator="@_showIndicator"
+                                                     DefaultBreakpoint="wide"
                                                      BreakpointChanged="@OnBreakpointChanged"
                                                      WidthChanged="@(w => { _currentWidth = w; StateHasChanged(); })"
                                                      MinHeight="100%"
-                                                     Padding="32px">
-                                <OnNarrow>
-                                    <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px;">
-                                        <div style="width: 64px; height: 64px; border-radius: 50%; background: color-mix(in srgb, var(--sg-color-danger) 10%, transparent); display: flex; align-items: center; justify-content: center;">
-                                            <SgIcon Icon="@SgIcons.Monitor" Size="32px" Color="var(--sg-color-danger)" />
-                                        </div>
-                                        <div>
-                                            <SgTypography Variant="SgTypographyVariant.Heading4">Compact View</SgTypography>
-                                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Style="display: block; margin-top: 8px;">
-                                                Single column layout optimized for narrow spaces.
-                                            </SgTypography>
-                                        </div>
-                                        <div style="width: 100%; height: 120px; background: var(--sg-surface-alt); border-radius: 8px; border: 1px dashed var(--sg-border);"></div>
-                                    </div>
-                                </OnNarrow>
-                                <OnMedium>
-                                    <div style="display: flex; flex-direction: column; gap: 24px;">
-                                        <div style="display: flex; align-items: center; gap: 16px;">
-                                            <SgIcon Icon="@SgIcons.Monitor" Size="40px" Color="var(--sg-color-info)" />
+                                                     Padding="24px">
+                                    <OnNarrow>
+                                        <div class="rsp-adaptive rsp-adaptive-narrow">
+                                            <div class="rsp-adaptive-icon rsp-adaptive-icon-danger">
+                                                <SgIcon Icon="@SgIcons.Monitor" Size="32px" Color="var(--sg-color-danger)" />
+                                            </div>
                                             <div>
-                                                <SgTypography Variant="SgTypographyVariant.Heading4">Standard View</SgTypography>
-                                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Balanced distribution of elements.</SgTypography>
+                                                <SgTypography Variant="SgTypographyVariant.Heading5">Compact View</SgTypography>
+                                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                                    Single column, optimized for narrow spaces.
+                                                </SgTypography>
+                                            </div>
+                                            <div class="rsp-adaptive-placeholder rsp-adaptive-placeholder-narrow"></div>
+                                        </div>
+                                    </OnNarrow>
+                                    <OnMedium>
+                                        <div class="rsp-adaptive rsp-adaptive-medium">
+                                            <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+                                                <SgIcon Icon="@SgIcons.Monitor" Size="36px" Color="var(--sg-color-info)" />
+                                                <SgStack Vertical Space="SgSize.Sm">
+                                                    <SgTypography Variant="SgTypographyVariant.Heading5">Standard View</SgTypography>
+                                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Balanced distribution of elements.</SgTypography>
+                                                </SgStack>
+                                            </SgStack>
+                                            <div class="rsp-adaptive-grid-2">
+                                                <div class="rsp-adaptive-placeholder"></div>
+                                                <div class="rsp-adaptive-placeholder"></div>
                                             </div>
                                         </div>
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                                            <div style="height: 100px; background: var(--sg-surface-alt); border-radius: 8px; border: 1px solid var(--sg-border);"></div>
-                                            <div style="height: 100px; background: var(--sg-surface-alt); border-radius: 8px; border: 1px solid var(--sg-border);"></div>
-                                        </div>
-                                    </div>
-                                </OnMedium>
-                                <OnWide>
-                                    <div style="display: flex; flex-direction: column; gap: 32px;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                                            <div style="display: flex; align-items: center; gap: 20px;">
-                                                <SgIcon Icon="@SgIcons.Monitor" Size="48px" Color="var(--sg-color-success)" />
-                                                <div>
-                                                    <SgTypography Variant="SgTypographyVariant.Heading3">Expanded View</SgTypography>
-                                                    <SgTypography Size="SgTypographySize.Base" Color="var(--sg-text-muted)">Full-featured desktop-grade layout.</SgTypography>
-                                                </div>
-                                            </div>
-                                            <SgButton Text="Action" Variant="SgButtonVariant.Primary" />
-                                        </div>
-                                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
-                                            <div style="height: 200px; background: var(--sg-surface-alt); border-radius: 12px; border: 1px solid var(--sg-border); display: flex; align-items: center; justify-content: center;">
-                                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Main Content Area</SgTypography>
-                                            </div>
-                                            <div style="display: flex; flex-direction: column; gap: 12px;">
-                                                <div style="height: 94px; background: var(--sg-surface-alt); border-radius: 12px; border: 1px solid var(--sg-border);"></div>
-                                                <div style="height: 94px; background: var(--sg-surface-alt); border-radius: 12px; border: 1px solid var(--sg-border);"></div>
+                                    </OnMedium>
+                                    <OnWide>
+                                        <div class="rsp-adaptive rsp-adaptive-wide">
+                                            <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                                <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+                                                    <SgIcon Icon="@SgIcons.Monitor" Size="44px" Color="var(--sg-color-success)" />
+                                                    <SgStack Vertical Space="SgSize.Sm">
+                                                        <SgTypography Variant="SgTypographyVariant.Heading4">Expanded View</SgTypography>
+                                                        <SgTypography Size="SgTypographySize.Base" Color="var(--sg-text-muted)">Full-featured desktop layout.</SgTypography>
+                                                    </SgStack>
+                                                </SgStack>
+                                                <SgButton Text="Action" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+                                            </SgStack>
+                                            <div class="rsp-adaptive-grid-21">
+                                                <div class="rsp-adaptive-placeholder rsp-adaptive-placeholder-tall">Main content</div>
+                                                <SgStack Vertical Space="SgSize.Sm">
+                                                    <div class="rsp-adaptive-placeholder" style="height:80px"></div>
+                                                    <div class="rsp-adaptive-placeholder" style="height:80px"></div>
+                                                </SgStack>
                                             </div>
                                         </div>
-                                    </div>
-                                </OnWide>
-                            </SgResponsiveContainer>
-                        </Second>
-                    </SgSplitter>
-                </div>
+                                    </OnWide>
+                                </SgResponsiveContainer>
+                            </Second>
+                        </SgSplitter>
+                    </SgCard>
+                </SgCol>
+
+                @* ── Configuration ── *@
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="Configuration" Shadow="SgShadow.Sm" Hoverable="true" Animated="true">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)">Narrow Threshold</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Danger" Text="@($"{_narrowThreshold}px")" Standalone="true" />
+                                </SgStack>
+                                <input type="range" min="200" max="500" step="10" @bind="_narrowThreshold" @bind:after="UpdateCtorCode" class="rsp-range" />
+                            </SgStack>
+
+                            <SgDivider />
+
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)">Wide Threshold</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Success" Text="@($"{_wideThreshold}px")" Standalone="true" />
+                                </SgStack>
+                                <input type="range" min="510" max="1000" step="10" @bind="_wideThreshold" @bind:after="UpdateCtorCode" class="rsp-range" />
+                            </SgStack>
+
+                            <SgDivider />
+
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)">Debounce (ms)</SgTypography>
+                                <SgSegmented TValue="int"
+                                             Value="@_debounceMs"
+                                             ValueChanged="v => { _debounceMs = v; UpdateCtorCode(); }"
+                                             Block="true" Size="sm"
+                                             Options="_debounceOptions" />
+                            </SgStack>
+
+                            <SgDivider />
+
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)">Transitions</SgTypography>
+                                <SgSwitch @bind-Value="_transitionEnabled" />
+                            </SgStack>
+
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)">Debug Indicator</SgTypography>
+                                <SgSwitch @bind-Value="_showIndicator" />
+                            </SgStack>
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ═══════════════════════════════════════════════════════════════════
+           2. Media Query — SgMediaQuery
+           ═══════════════════════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Media Query
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgMediaQuery</SgTypography> uses <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">window.matchMedia</SgTypography>. Use raw <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Query</SgTypography> or shorthand <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Above</SgTypography>/<SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Below</SgTypography>/<SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">BetweenStart</SgTypography>.
+                </SgTypography>
             </div>
 
-            @* ── Configuration ── *@
-            <SgCard Title="Configuration" Style="border-radius: 16px; height: 100%;">
-                <div class="demo-flex-col" style="gap: 24px; padding: 8px;">
-                    <div>
-                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" Style="display: block; margin-bottom: 12px;">Narrow Threshold</SgTypography>
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <input type="range" min="200" max="500" step="10" @bind="_narrowThreshold" style="flex: 1; accent-color: var(--sg-color-primary);" />
-                            <SgBadge Text="@($"{_narrowThreshold}px")" Variant="SgBadgeVariant.Info" />
-                        </div>
-                    </div>
-                    
-                    <SgDivider />
-                    
-                    <div>
-                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" Style="display: block; margin-bottom: 12px;">Wide Threshold</SgTypography>
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <input type="range" min="510" max="1000" step="10" @bind="_wideThreshold" style="flex: 1; accent-color: var(--sg-color-primary);" />
-                            <SgBadge Text="@($"{_wideThreshold}px")" Variant="SgBadgeVariant.Warn" />
-                        </div>
-                    </div>
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="Enum shorthand" Subtitle="Above · Below · Between" Shadow="SgShadow.Sm" Hoverable="true" Animated="true">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgMediaQuery Above="SgBreakpoint.Md">
+                                <div class="rsp-mq-card rsp-mq-success">
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                        <SgIcon Icon="@SgIcons.Check" Color="var(--sg-color-success)" />
+                                        <SgTypography Size="SgTypographySize.Sm"><SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Above="Md"</SgTypography> — visible at MD and above (≥ 768px)</SgTypography>
+                                    </SgStack>
+                                </div>
+                            </SgMediaQuery>
+                            <SgMediaQuery Below="SgBreakpoint.Md">
+                                <div class="rsp-mq-card rsp-mq-warn">
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                        <SgIcon Icon="@SgIcons.Info" Color="var(--sg-color-warning)" />
+                                        <SgTypography Size="SgTypographySize.Sm"><SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Below="Md"</SgTypography> — visible below MD (&lt; 768px)</SgTypography>
+                                    </SgStack>
+                                </div>
+                            </SgMediaQuery>
+                            <SgMediaQuery BetweenStart="SgBreakpoint.Sm" BetweenEnd="SgBreakpoint.Lg">
+                                <div class="rsp-mq-card rsp-mq-info">
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                        <SgIcon Icon="@SgIcons.Activity" Color="var(--sg-color-info)" />
+                                        <SgTypography Size="SgTypographySize.Sm"><SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">BetweenStart="Sm" BetweenEnd="Lg"</SgTypography> — 576 – 991px</SgTypography>
+                                    </SgStack>
+                                </div>
+                            </SgMediaQuery>
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
 
-                    <SgDivider />
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="Raw query" Subtitle="Query='(min-width: 1200px)'" Shadow="SgShadow.Sm" Hoverable="true" Animated="true">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgMediaQuery Query="(min-width: 1200px)">
+                                <Matching>
+                                    <div class="rsp-mq-card rsp-mq-primary">
+                                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                            <SgIcon Icon="@SgIcons.Monitor" Color="var(--sg-color-primary)" />
+                                            <SgTypography Size="SgTypographySize.Sm">Desktop layout active (≥ 1200px)</SgTypography>
+                                        </SgStack>
+                                    </div>
+                                </Matching>
+                                <NotMatching>
+                                    <div class="rsp-mq-card rsp-mq-muted">
+                                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                            <SgIcon Icon="@SgIcons.Monitor" Color="var(--sg-text-muted)" />
+                                            <SgTypography Size="SgTypographySize.Sm">Not a desktop viewport (&lt; 1200px)</SgTypography>
+                                        </SgStack>
+                                    </div>
+                                </NotMatching>
+                            </SgMediaQuery>
+                            <SgMediaQuery Query="(orientation: portrait)">
+                                <Matching>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="Portrait" Standalone="true" />
+                                </Matching>
+                                <NotMatching>
+                                    <SgBadge Variant="SgBadgeVariant.Success" Text="Landscape" Standalone="true" />
+                                </NotMatching>
+                            </SgMediaQuery>
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
 
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)">Transitions</SgTypography>
-                        <SgSwitch @bind-Value="_transitionEnabled" />
-                    </div>
+        @* ═══════════════════════════════════════════════════════════════════
+           3. Breakpoint Service — SgBreakpointService (inject)
+           ═══════════════════════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Breakpoint Service
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Inject <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgBreakpointService</SgTypography> and react to the current viewport breakpoint — Bootstrap 5 thresholds, reuses <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgViewportService</SgTypography>.
+                </SgTypography>
+            </div>
 
-                    <SgDivider />
-
-                    <div>
-                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" Style="display: block; margin-bottom: 8px;">Live Code</SgTypography>
-                        <pre class="demo-code-block" style="font-size: 10px; margin: 0; padding: 12px;"><span class="demo-code-keyword">&lt;SgResponsiveContainer</span>
-  <span class="demo-code-attr">Narrow</span>=<span class="demo-code-string">"@_narrowThreshold"</span>
-  <span class="demo-code-attr">Wide</span>=<span class="demo-code-string">"@_wideThreshold"</span> <span class="demo-code-keyword">/&gt;</span></pre>
-                    </div>
-                </div>
+            <SgCard Title="Live viewport state" Subtitle="Updates when window is resized" Shadow="SgShadow.Sm" Hoverable="true" Animated="true">
+                <SgRow Space="SgSize.Md">
+                    @foreach (var bp in _allBreakpoints)
+                    {
+                        var isActive = Breakpoints.Breakpoint == bp.Key;
+                        var color = bp.Color;
+                        <SgCol Xs="6" Sm="4" Md="2">
+                            <div class="rsp-bp-card @(isActive ? "rsp-bp-active" : "")" style="--bp-color:@color">
+                                <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                    <SgTypography Size="SgTypographySize.Lg" Weight="SgTypographyWeight.Bold" Color="@(isActive ? color : "var(--sg-text-muted)")">@bp.Key</SgTypography>
+                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@bp.Range</SgTypography>
+                                    @if (isActive)
+                                    {
+                                        <SgBadge Variant="@bp.BadgeVariant" Text="Active" Standalone="true" Size="SgSize.Sm" />
+                                    }
+                                </SgStack>
+                            </div>
+                        </SgCol>
+                    }
+                </SgRow>
             </SgCard>
         </div>
 
-        @* ── History Log ── *@
-        @if (_log.Count > 0)
-        {
-            <div style="margin-top: 32px;">
-                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)" Style="text-transform: uppercase; letter-spacing: 0.05em;">Breakpoint Transitions</SgTypography>
-                <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
-                    @foreach (var entry in _log.Take(6))
-                    {
-                        <div style="padding: 4px 10px; background: var(--sg-surface-alt); border: 1px solid var(--sg-border); border-radius: 20px; font-size: 11px; color: var(--sg-text-muted); display: flex; align-items: center; gap: 6px;">
-                            <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--sg-color-primary);"></span>
-                            @entry
-                        </div>
-                    }
-                </div>
+        @* ═══════════════════════════════════════════════════════════════════
+           4. ShowAt / HideAt — convenient named shortcuts
+           ═══════════════════════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    ShowAt &amp; HideAt
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Render content only at specified breakpoints — common in dashboards and responsive navigation.
+                </SgTypography>
             </div>
-        }
-    </div>
 
-    @* ── Component Properties ─────────────────────────────────────────────── *@
-    <div class="sgc-demo-section" style="padding: 32px; background: var(--sg-surface-alt);">
-        <div class="demo-section-header" style="margin-bottom: 24px;">
-            <SgTypography Variant="SgTypographyVariant.Heading2">Properties Reference</SgTypography>
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgShowAt" Subtitle="Show at breakpoint and above" Shadow="SgShadow.Sm" Hoverable="true" Animated="true">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgShowAt Below="SgBreakpoint.Sm">
+                                <div class="rsp-mq-card rsp-mq-warn">
+                                    <SgTypography Size="SgTypographySize.Sm"><SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Below="Sm"</SgTypography> — only on tiny screens</SgTypography>
+                                </div>
+                            </SgShowAt>
+                            <SgShowAt AtOrAbove="SgBreakpoint.Md">
+                                <div class="rsp-mq-card rsp-mq-info">
+                                    <SgTypography Size="SgTypographySize.Sm"><SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">AtOrAbove="Md"</SgTypography> — tablets, laptops, desktops</SgTypography>
+                                </div>
+                            </SgShowAt>
+                            <SgShowAt AtOrAbove="SgBreakpoint.Xl">
+                                <div class="rsp-mq-card rsp-mq-success">
+                                    <SgTypography Size="SgTypographySize.Sm"><SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">AtOrAbove="Xl"</SgTypography> — large desktops only</SgTypography>
+                                </div>
+                            </SgShowAt>
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgHideAt" Subtitle="Hide at breakpoint and above" Shadow="SgShadow.Sm" Hoverable="true" Animated="true">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgHideAt AtOrAbove="SgBreakpoint.Lg">
+                                <div class="rsp-mq-card rsp-mq-danger">
+                                    <SgTypography Size="SgTypographySize.Sm"><SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">AtOrAbove="Lg"</SgTypography> — hidden on laptops and above (compact hint)</SgTypography>
+                                </div>
+                            </SgHideAt>
+                            <SgHideAt Below="SgBreakpoint.Md">
+                                <div class="rsp-mq-card rsp-mq-primary">
+                                    <SgTypography Size="SgTypographySize.Sm"><SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Below="Md"</SgTypography> — hidden on phones, shown on tablets and up</SgTypography>
+                                </div>
+                            </SgHideAt>
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
         </div>
 
-        <SgCard Style="border-radius: 16px;">
-            <PropertyTable Items="_props" />
-        </SgCard>
-    </div>
+        @* ═══════════════════════════════════════════════════════════════════
+           5. Visibility Sensor — SgVisibilitySensor
+           ═══════════════════════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Visibility Sensor
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgVisibilitySensor</SgTypography> uses <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">IntersectionObserver</SgTypography> — scroll down to trigger lazy loading and reveal animations.
+                </SgTypography>
+            </div>
 
+            <SgRow Space="SgSize.Md">
+                @for (int i = 0; i < 3; i++)
+                {
+                    var idx = i;
+                    var revealed = _revealed[idx];
+                    <SgCol Xs="12" Md="4">
+                        <SgVisibilitySensor Threshold="0.3" OnVisible="@(() => OnCardRevealed(idx))" Once="true">
+                            <div class="rsp-vis-card @(revealed ? "rsp-vis-revealed" : "rsp-vis-hidden")">
+                                <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                    <div class="rsp-vis-icon" style="background:color-mix(in srgb,@_visColors[idx] 18%,transparent);color:@_visColors[idx]">
+                                        <SgIcon Icon="@(idx == 0 ? SgIcons.Eye : idx == 1 ? SgIcons.Sparkles : SgIcons.Zap)" Size="28px" Color="@_visColors[idx]" />
+                                    </div>
+                                    <SgTypography Weight="SgTypographyWeight.Semibold">Card @(_visLabels[idx])</SgTypography>
+                                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Align="SgTypographyAlign.Center">@((revealed ? "Visible — observer fired" : "Hidden — scroll to reveal"))</SgTypography>
+                                    <SgBadge Variant="@(revealed ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(revealed ? "Revealed" : "Waiting")" Standalone="true" />
+                                </SgStack>
+                            </div>
+                        </SgVisibilitySensor>
+                    </SgCol>
+                }
+            </SgRow>
+        </div>
+
+        @* ═══════════════════════════════════════════════════════════════════
+           6. Live SgResponsiveContainer Constructor
+           ═══════════════════════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Live SgResponsiveContainer Constructor
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Configure every SgResponsiveContainer parameter in real time · copy the code.
+                </SgTypography>
+            </div>
+
+            <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+                <SgRow Space="SgSize.Md">
+                    @* ── Control Panel ── *@
+                    <SgCol Xs="12" Md="5" Style="padding:14px;border-right:1px solid var(--sg-border);">
+                        <SgStack Vertical Space="SgSize.Md">
+                            @* Narrow / Wide threshold *@
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Narrow Threshold</SgTypography>
+                                        <SgSegmented TValue="int"
+                                                     Value="@_ctorNarrow"
+                                                     ValueChanged="v => { _ctorNarrow = v; UpdateCtorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_ctorNarrowOptions" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Wide Threshold</SgTypography>
+                                        <SgSegmented TValue="int"
+                                                     Value="@_ctorWide"
+                                                     ValueChanged="v => { _ctorWide = v; UpdateCtorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_ctorWideOptions" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+
+                            @* Debounce / Default BP *@
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Debounce (ms)</SgTypography>
+                                        <SgSegmented TValue="int"
+                                                     Value="@_ctorDebounce"
+                                                     ValueChanged="v => { _ctorDebounce = v; UpdateCtorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_debounceOptions" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Default BP (SSR)</SgTypography>
+                                        <SgSegmented TValue="string"
+                                                     Value="@_ctorDefault"
+                                                     ValueChanged="v => { _ctorDefault = v; UpdateCtorCode(); }"
+                                                     Block="true" Size="sm"
+                                                     Options="_defaultOptions" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+
+                            @* Toggles *@
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Transitions</SgTypography>
+                                        <SgSegmented TValue="bool" Value="@_ctorTransitions" ValueChanged="v => { _ctorTransitions = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="_boolOptions" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Debug Indicator</SgTypography>
+                                        <SgSegmented TValue="bool" Value="@_ctorIndicator" ValueChanged="v => { _ctorIndicator = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="_boolOptions" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+
+                            @* Tag (semantic HTML) *@
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Semantic Tag</SgTypography>
+                                <SgSegmented TValue="string"
+                                             Value="@_ctorTag"
+                                             ValueChanged="v => { _ctorTag = v; UpdateCtorCode(); }"
+                                             Block="true" Size="sm"
+                                             Options="_tagOptions" />
+                            </SgStack>
+                        </SgStack>
+                    </SgCol>
+
+                    @* ── Preview + Code ── *@
+                    <SgCol Xs="12" Md="7" Style="padding:14px;">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                                <div class="constructor-preview">
+                                    <SgResponsiveContainer NarrowThreshold="@_ctorNarrow"
+                                                         WideThreshold="@_ctorWide"
+                                                         ObserveDebounceMs="@_ctorDebounce"
+                                                         TransitionEnabled="@_ctorTransitions"
+                                                         ShowBreakpointIndicator="@_ctorIndicator"
+                                                         DefaultBreakpoint="@_ctorDefault"
+                                                         Tag="@_ctorTag"
+                                                         MinHeight="120"
+                                                         Padding="12px"
+                                                         ClassName="rsp-ctor">
+                                        <OnNarrow>
+                                            <div class="rsp-ctor-pill" style="background:var(--sg-color-danger-subtle);color:var(--sg-color-danger);">Narrow · &lt; @_ctorNarrow px</div>
+                                        </OnNarrow>
+                                        <OnMedium>
+                                            <div class="rsp-ctor-pill" style="background:var(--sg-color-info-subtle);color:var(--sg-color-info);">Medium · @_ctorNarrow – @_ctorWide px</div>
+                                        </OnMedium>
+                                        <OnWide>
+                                            <div class="rsp-ctor-pill" style="background:var(--sg-color-success-subtle);color:var(--sg-color-success);">Wide · ≥ @_ctorWide px</div>
+                                        </OnWide>
+                                    </SgResponsiveContainer>
+                                </div>
+                            </SgStack>
+
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <div class="rsp-code-header">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                    <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCtorCode">
+                                        <span>@_ctorCopyIcon</span>
+                                        <span style="font-size:11px;font-weight:600;">@_ctorCopyLabel</span>
+                                    </button>
+                                </div>
+                                <div class="code-block">
+                                    @foreach (var line in _ctorGeneratedCode)
+                                    {
+                                        <code>@line</code>
+                                    }
+                                </div>
+                            </SgStack>
+                        </SgStack>
+                    </SgCol>
+                </SgRow>
+            </SgCard>
+        </div>
+
+        @* ═══════════════════════════════════════════════════════════════════
+           7. Properties Reference
+           ═══════════════════════════════════════════════════════════════════ *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    SgResponsiveContainer — Properties Reference
+                </SgTypography>
+            </div>
+            <SgCard Shadow="SgShadow.Sm" Hoverable="true" Animated="true">
+                <PropertyTable Items="_props" />
+            </SgCard>
+        </div>
+
+    </ChildContent>
 </SgCard>
 
+<style>
+    .rsp-demo-page .demo-section { margin-top: 28px; }
+    .rsp-demo-page .demo-section-header { margin-bottom: 14px; }
+    .rsp-demo-page .demo-section-header h5 { margin-bottom: 4px; }
+
+    .rsp-hero {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1px;
+        background: var(--sg-border);
+        border: 1px solid var(--sg-border);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 18px;
+    }
+    .rsp-hero-stat {
+        background: var(--sg-surface);
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .rsp-hero-stat-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--sg-text-muted);
+        font-weight: 600;
+    }
+    .rsp-hero-stat-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--sg-color-primary);
+        font-family: 'JetBrains Mono', monospace;
+        line-height: 1.1;
+    }
+    @@media (max-width: 768px) {
+        .rsp-hero { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .rsp-splitter { height: 460px; }
+    .rsp-pane-left {
+        padding: 16px;
+        height: 100%;
+        background: var(--sg-surface-alt);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    .rsp-mock-list { display: flex; flex-direction: column; gap: 8px; }
+    .rsp-mock-item {
+        height: 32px;
+        background: var(--sg-border-subtle);
+        border-radius: 6px;
+    }
+    .rsp-mock-stats {
+        margin-top: auto;
+        padding: 12px;
+        background: var(--sg-bg);
+        border-radius: 8px;
+        border: 1px solid var(--sg-border);
+    }
+
+    .rsp-range {
+        width: 100%;
+        accent-color: var(--sg-color-primary);
+        height: 4px;
+    }
+
+    .rsp-adaptive {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+    }
+    .rsp-adaptive-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .rsp-adaptive-icon-danger {
+        background: color-mix(in srgb, var(--sg-color-danger) 10%, transparent);
+    }
+    .rsp-adaptive-placeholder {
+        background: var(--sg-surface-alt);
+        border-radius: 8px;
+        border: 1px dashed var(--sg-border);
+        height: 100px;
+    }
+    .rsp-adaptive-placeholder-narrow { width: 100%; }
+    .rsp-adaptive-placeholder-tall {
+        height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--sg-text-muted);
+        font-size: 13px;
+    }
+    .rsp-adaptive-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .rsp-adaptive-grid-21 { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; }
+    .rsp-adaptive-narrow { align-items: center; text-align: center; }
+    .rsp-adaptive-narrow .rsp-adaptive-icon { margin: 0 auto; }
+
+    .rsp-mq-card {
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--sg-border);
+        background: var(--sg-surface);
+    }
+    .rsp-mq-success { background: color-mix(in srgb, var(--sg-color-success) 8%, var(--sg-surface)); border-color: color-mix(in srgb, var(--sg-color-success) 20%, var(--sg-border)); }
+    .rsp-mq-warn    { background: color-mix(in srgb, var(--sg-color-warning) 8%, var(--sg-surface)); border-color: color-mix(in srgb, var(--sg-color-warning) 20%, var(--sg-border)); }
+    .rsp-mq-info    { background: color-mix(in srgb, var(--sg-color-info) 8%, var(--sg-surface)); border-color: color-mix(in srgb, var(--sg-color-info) 20%, var(--sg-border)); }
+    .rsp-mq-danger  { background: color-mix(in srgb, var(--sg-color-danger) 8%, var(--sg-surface)); border-color: color-mix(in srgb, var(--sg-color-danger) 20%, var(--sg-border)); }
+    .rsp-mq-primary { background: color-mix(in srgb, var(--sg-color-primary) 8%, var(--sg-surface)); border-color: color-mix(in srgb, var(--sg-color-primary) 20%, var(--sg-border)); }
+    .rsp-mq-muted   { background: var(--sg-surface-alt); }
+
+    .rsp-bp-card {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 10px;
+        padding: 18px 8px;
+        text-align: center;
+        transition: all var(--sg-transition-fast);
+        position: relative;
+    }
+    .rsp-bp-card::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: var(--bp-color);
+        opacity: 0.3;
+        transition: opacity var(--sg-transition-fast);
+    }
+    .rsp-bp-active {
+        background: color-mix(in srgb, var(--bp-color) 8%, var(--sg-surface));
+        border-color: var(--bp-color);
+        box-shadow: 0 0 0 1px var(--bp-color);
+    }
+    .rsp-bp-active::before { opacity: 1; }
+
+    .rsp-vis-card {
+        background: var(--sg-surface);
+        border: 1px solid var(--sg-border);
+        border-radius: 12px;
+        padding: 24px 16px;
+        text-align: center;
+        transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .rsp-vis-hidden { opacity: 0.35; transform: scale(0.94); }
+    .rsp-vis-revealed { opacity: 1; transform: scale(1); }
+    .rsp-vis-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px;
+        min-height: 120px;
+        transition: all var(--sg-transition-normal);
+    }
+
+    .rsp-code-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .rsp-ctor {
+        background: var(--sg-surface);
+        border-radius: 6px;
+    }
+    .rsp-ctor-pill {
+        padding: 18px 12px;
+        text-align: center;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    .sgc-responsive-container { position: relative; }
+    .sgc-responsive-transition {
+        transition: opacity 240ms ease, transform 240ms ease;
+    }
+    .sgc-responsive-transition-out { opacity: 0; transform: translateY(4px); }
+    .sgc-responsive-transition-in  { opacity: 1; transform: translateY(0); }
+    .sgc-responsive-indicator {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        background: color-mix(in srgb, var(--sg-color-primary) 12%, transparent);
+        color: var(--sg-color-primary);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
+        pointer-events: none;
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        border: 1px solid color-mix(in srgb, var(--sg-color-primary) 20%, transparent);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .sgc-responsive-indicator-bp {
+        font-weight: 700;
+    }
+    .sgc-responsive-indicator-px {
+        opacity: 0.7;
+    }
+
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.8;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all var(--sg-transition-fast);
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active { transform: scale(0.95); }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+</style>
+
 @code {
+    // ── Hero stats ──
+    private double _vw;
+    private double _dpr = 1.0;
+
+    [Inject] private SgViewportService Viewport { get; set; } = default!;
+
+    // ── Section 1: Container Queries ──
     private int _narrowThreshold = 350;
     private int _wideThreshold = 650;
     private bool _transitionEnabled = true;
     private int _debounceMs = 50;
+    private bool _showIndicator = true;
     private double _currentWidth;
-    private string _currentBreakpoint = "medium";
+    private string _currentBreakpoint = "wide";
     private readonly List<string> _log = new();
 
     private SgBadgeVariant _breakpointBadgeVariant => _currentBreakpoint switch
@@ -204,10 +853,15 @@
         _ => SgBadgeVariant.Default
     };
 
+    // ── Section 5: Visibility Sensor ──
+    private readonly bool[] _revealed = new bool[3];
+    private readonly string[] _visLabels = { "1 of 3", "2 of 3", "3 of 3" };
+    private readonly string[] _visColors = { "var(--sg-color-primary)", "var(--sg-color-info)", "var(--sg-color-success)" };
+
     private void OnBreakpointChanged(string bp)
     {
         _currentBreakpoint = bp;
-        Log($"Breakpoint: {bp}");
+        Log($"Breakpoint: {bp} · {_currentWidth:F0}px");
         StateHasChanged();
     }
 
@@ -217,18 +871,174 @@
         if (_log.Count > 10) _log.RemoveAt(_log.Count - 1);
     }
 
+    private void OnCardRevealed(int idx)
+    {
+        _revealed[idx] = true;
+        StateHasChanged();
+    }
+
+    // ── Section 6: Live Constructor ──
+    private int _ctorNarrow = 350;
+    private int _ctorWide = 700;
+    private int _ctorDebounce = 50;
+    private string _ctorDefault = "wide";
+    private bool _ctorTransitions = true;
+    private bool _ctorIndicator;
+    private string _ctorTag = "div";
+
+    private string[] _ctorGeneratedCode = Array.Empty<string>();
+    private string _ctorCopyIcon = "📋";
+    private string _ctorCopyLabel = "Copy";
+
+    // ── Constructor options ──
+    private readonly List<SgSegmentedOption<int>> _ctorNarrowOptions = new()
+    {
+        new() { Value = 250, Label = "250" },
+        new() { Value = 350, Label = "350" },
+        new() { Value = 450, Label = "450" },
+    };
+    private readonly List<SgSegmentedOption<int>> _ctorWideOptions = new()
+    {
+        new() { Value = 600, Label = "600" },
+        new() { Value = 700, Label = "700" },
+        new() { Value = 900, Label = "900" },
+    };
+    private readonly List<SgSegmentedOption<int>> _debounceOptions = new()
+    {
+        new() { Value = 0,   Label = "0" },
+        new() { Value = 50,  Label = "50" },
+        new() { Value = 100, Label = "100" },
+        new() { Value = 200, Label = "200" },
+    };
+    private readonly List<SgSegmentedOption<string>> _defaultOptions = new()
+    {
+        new() { Value = "narrow", Label = "narrow" },
+        new() { Value = "medium", Label = "medium" },
+        new() { Value = "wide",   Label = "wide" },
+    };
+    private readonly List<SgSegmentedOption<bool>> _boolOptions = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true,  Label = "On" },
+    };
+    private readonly List<SgSegmentedOption<string>> _tagOptions = new()
+    {
+        new() { Value = "div",     Label = "div" },
+        new() { Value = "section", Label = "section" },
+        new() { Value = "article", Label = "article" },
+        new() { Value = "aside",   Label = "aside" },
+        new() { Value = "main",    Label = "main" },
+    };
+
+    // ── Section 3: Breakpoint cards ──
+    private record BpCard(SgBreakpoint Key, string Color, string Range, SgBadgeVariant BadgeVariant);
+
+    private readonly List<BpCard> _allBreakpoints = new()
+    {
+        new(SgBreakpoint.Xs,  "var(--sg-color-danger)",  "0 – 575",       SgBadgeVariant.Danger),
+        new(SgBreakpoint.Sm,  "var(--sg-color-warning)", "576 – 767",     SgBadgeVariant.Warn),
+        new(SgBreakpoint.Md,  "var(--sg-color-info)",    "768 – 991",     SgBadgeVariant.Info),
+        new(SgBreakpoint.Lg,  "var(--sg-color-primary)", "992 – 1199",    SgBadgeVariant.Default),
+        new(SgBreakpoint.Xl,  "var(--sg-color-success)", "1200 – 1399",   SgBadgeVariant.Success),
+        new(SgBreakpoint.Xxl, "var(--sg-color-emphasis)","≥ 1400",        SgBadgeVariant.Default),
+    };
+
+    // ── Properties table ──
     private List<PropertyPanelItem> _props = new()
     {
-        new() { Label = "OnNarrow",              Value = "RenderFragment?",           BadgeText = "Width < NarrowThreshold",    BadgeVariant = SgBadgeVariant.Danger },
-        new() { Label = "OnMedium",              Value = "RenderFragment?",           BadgeText = "Narrow–Wide threshold",       BadgeVariant = SgBadgeVariant.Info   },
-        new() { Label = "OnWide",                Value = "RenderFragment?",           BadgeText = "Width ≥ WideThreshold",      BadgeVariant = SgBadgeVariant.Success},
-        new() { Label = "NarrowThreshold",       Value = "int (default 400)",          BadgeText = "Narrow upper bound (px)",    BadgeVariant = SgBadgeVariant.Warn   },
-        new() { Label = "WideThreshold",         Value = "int (default 800)",          BadgeText = "Wide lower bound (px)",      BadgeVariant = SgBadgeVariant.Warn   },
-        new() { Label = "TransitionEnabled",     Value = "bool",                      BadgeText = "Animate breakpoint changes", BadgeVariant = SgBadgeVariant.Success},
-        new() { Label = "ObserveDebounceMs",     Value = "int (default 50)",           BadgeText = "Resize debounce (ms)",        BadgeVariant = SgBadgeVariant.Info   },
-        new() { Label = "ClassName",             Value = "string?",                   BadgeText = "CSS class",                  BadgeVariant = SgBadgeVariant.Default},
-        new() { Label = "MinHeight",             Value = "string? (default \"100%\")", BadgeText = "Min height",                 BadgeVariant = SgBadgeVariant.Info   },
-        new() { Label = "Padding",               Value = "string? (default \"0\")",    BadgeText = "Padding",                    BadgeVariant = SgBadgeVariant.Info   },
-        new() { Label = "BreakpointChanged",     Value = "EventCallback<string>",     BadgeText = "Breakpoint callback",        BadgeVariant = SgBadgeVariant.Success},
+        new() { Label = "OnNarrow",          Value = "RenderFragment?",   BadgeText = "< NarrowThreshold",    BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "OnMedium",          Value = "RenderFragment?",   BadgeText = "Narrow–Wide",          BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "OnWide",            Value = "RenderFragment?",   BadgeText = "≥ WideThreshold",      BadgeVariant = SgBadgeVariant.Success},
+        new() { Label = "NarrowThreshold",   Value = "int (default 400)", BadgeText = "Narrow upper (px)",    BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "WideThreshold",     Value = "int (default 800)", BadgeText = "Wide lower (px)",      BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "ObserveDebounceMs", Value = "int (default 50)",  BadgeText = "Resize debounce (ms)", BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "TransitionEnabled", Value = "bool",              BadgeText = "Animate BP change",    BadgeVariant = SgBadgeVariant.Success},
+        new() { Label = "Tag",               Value = "string (default \"div\")", BadgeText = "Semantic HTML", BadgeVariant = SgBadgeVariant.Default},
+        new() { Label = "DefaultBreakpoint", Value = "string (default \"wide\")", BadgeText = "SSR fallback", BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "ShowBreakpointIndicator", Value = "bool",       BadgeText = "Debug overlay",        BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "BreakpointChanged", Value = "EventCallback<string>",  BadgeText = "BP callback",    BadgeVariant = SgBadgeVariant.Success},
+        new() { Label = "WidthChanged",      Value = "EventCallback<double>",  BadgeText = "Width callback", BadgeVariant = SgBadgeVariant.Success},
     };
+
+    // ── Lifecycle ──
+    protected override async Task OnInitializedAsync()
+    {
+        UpdateCtorCode();
+        Viewport.Changed += OnViewportChanged;
+        await SafeStartViewport();
+    }
+
+    private async Task SafeStartViewport()
+    {
+        try
+        {
+            await Viewport.StartAsync();
+            _vw = Viewport.Width;
+            _dpr = Viewport.DevicePixelRatio;
+            StateHasChanged();
+        }
+        catch
+        {
+            // SSR or JS not available yet — leave at 0
+        }
+    }
+
+    private void OnViewportChanged()
+    {
+        _vw = Viewport.Width;
+        _dpr = Viewport.DevicePixelRatio;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Viewport.Changed -= OnViewportChanged;
+    }
+
+    // ── Code generation ──
+    private void UpdateCtorCode()
+    {
+        var lines = new List<string>();
+        var tag = string.IsNullOrEmpty(_ctorTag) || _ctorTag == "div" ? "SgResponsiveContainer" : $"SgResponsiveContainer Tag=\"{_ctorTag}\"";
+        lines.Add($"<{tag}");
+        if (_ctorNarrow != 400) lines.Add($"              NarrowThreshold=\"{_ctorNarrow}\"");
+        if (_ctorWide != 800) lines.Add($"              WideThreshold=\"{_ctorWide}\"");
+        if (_ctorDebounce != 50) lines.Add($"              ObserveDebounceMs=\"{_ctorDebounce}\"");
+        if (_ctorTransitions) lines.Add($"              TransitionEnabled=\"true\"");
+        if (_ctorIndicator) lines.Add($"              ShowBreakpointIndicator=\"true\"");
+        if (_ctorDefault != "wide") lines.Add($"              DefaultBreakpoint=\"{_ctorDefault}\"");
+        lines.Add($"              MinHeight=\"120\"");
+        lines.Add($"              Padding=\"12px\">");
+        lines.Add($"    <OnNarrow>...</OnNarrow>");
+        lines.Add($"    <OnMedium>...</OnMedium>");
+        lines.Add($"    <OnWide>...</OnWide>");
+        lines.Add($"</SgResponsiveContainer>");
+        _ctorGeneratedCode = lines.ToArray();
+    }
+
+    private async Task CopyCtorCode()
+    {
+        var code = string.Join("\n", _ctorGeneratedCode);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _ctorCopyIcon = "✓";
+            _ctorCopyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _ctorCopyIcon = "📋";
+            _ctorCopyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _ctorCopyIcon = "✗";
+            _ctorCopyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _ctorCopyIcon = "📋";
+            _ctorCopyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
 }
