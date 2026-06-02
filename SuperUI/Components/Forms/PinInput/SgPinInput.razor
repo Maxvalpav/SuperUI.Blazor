@@ -1,8 +1,9 @@
 @namespace SuperUI.Components
 @inherits SgInputBase<string>
 @inject IJSRuntime JS
+@inject SuperUI.Base.Utilities.SgJsModuleCache ModuleCache
 
-<div class="@RootClass" style="@Style" role="group" aria-label="PIN input"
+<div class="@RootClass" style="@Style" role="group" aria-label="@Localizer["PinInput_Aria"]"
      @attributes="AdditionalAttributes">
 
     @for (var i = 0; i < Length; i++)
@@ -16,6 +17,7 @@
                autocomplete="one-time-code"
                disabled="@Disabled"
                readonly="@ReadOnly"
+               @ref="_refs[idx]"
                @oninput="@(e => OnInput(idx, e.Value?.ToString() ?? ""))"
                @onkeydown="@(e => OnKeyDown(idx, e))"
                @onfocus="@(() => OnFocus(idx))" />
@@ -24,8 +26,10 @@
 
 @code {
     private string[] _chars = [];
+    private ElementReference[] _refs = [];
     private string _baseId = "sg-pin-" + Guid.NewGuid().ToString("N")[..8];
     private bool _disposed;
+    private IJSObjectReference? _module;
 
     /// <summary>Number of input boxes (4-8 recommended).</summary>
     [Parameter] public int Length { get; set; } = 6;
@@ -61,7 +65,10 @@
     private void EnsureArray()
     {
         if (_chars.Length != Length)
+        {
             _chars = new string[Length];
+            _refs = new ElementReference[Length];
+        }
     }
 
     private void SyncFromValue()
@@ -85,7 +92,6 @@
         if (raw.Length > 1)
         {
             await DistributePaste(raw);
-            await SyncDom();
             return;
         }
 
@@ -93,7 +99,8 @@
 
         if (!string.IsNullOrEmpty(ch) && !IsValidChar(ch[0]))
         {
-            await ClearDomInput(index);
+            // invalid input: clear by re-rendering with the previous valid value
+            StateHasChanged();
             return;
         }
 
@@ -161,28 +168,31 @@
 
     private async Task FocusInput(int index)
     {
-        if ((uint)index >= (uint)Length) return;
-        await JS.InvokeVoidAsync("eval",
-            $"document.getElementById('{InputId(index)}')?.focus()");
+        if (_disposed) return;
+        if ((uint)index >= (uint)_refs.Length) return;
+        try
+        {
+            await _refs[index].FocusAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private async Task SelectInput(int index)
     {
-        if ((uint)index >= (uint)Length) return;
-        await JS.InvokeVoidAsync("eval",
-            $"document.getElementById('{InputId(index)}')?.select()");
-    }
-
-    private async Task ClearDomInput(int index)
-    {
-        await JS.InvokeVoidAsync("eval",
-            $"document.getElementById('{InputId(index)}').value = ''");
-    }
-
-    private async Task SyncDom()
-    {
-        // Force re-render to sync DOM values after paste
-        StateHasChanged();
+        if (_disposed) return;
+        if ((uint)index >= (uint)_refs.Length) return;
+        try
+        {
+            _module ??= await ModuleCache.GetAsync(JS, "./_content/SuperUI/superui.js");
+            if (_disposed) return;
+            await _module.InvokeVoidAsync("selectText", _refs[index]);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (JSException) { }
     }
 
     private bool IsValidChar(char c) =>
