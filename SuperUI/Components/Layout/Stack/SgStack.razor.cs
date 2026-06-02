@@ -42,11 +42,17 @@ public partial class SgStack : SgComponentBase
     /// <summary>Spacing size from theme. If set, overrides <see cref="Gap"/>.</summary>
     [Parameter] public SgSize? Space { get; set; }
 
+    /// <summary>Visual density of the stack. Scales internal gap and padding via CSS tokens.</summary>
+    [Parameter] public SgDensity Density { get; set; } = SgDensity.Default;
+
     /// <summary>If <c>true</c>, adds a divider between items.</summary>
     [Parameter] public bool ShowDividers { get; set; }
 
     /// <summary>Cross-axis alignment of items. Default <see cref="SgAlignItems.Stretch"/>.</summary>
     [Parameter] public SgAlignItems Align { get; set; } = SgAlignItems.Stretch;
+
+    /// <summary>If <c>true</c>, forces all children to stretch across the cross axis (overrides <see cref="Align"/>).</summary>
+    [Parameter] public bool Stretch { get; set; }
 
     /// <summary>Main-axis distribution. Default <see cref="SgJustifyContent.Start"/>.</summary>
     [Parameter] public SgJustifyContent Justify { get; set; } = SgJustifyContent.Start;
@@ -65,6 +71,9 @@ public partial class SgStack : SgComponentBase
 
     /// <summary>If set, controls flex-shrink factor explicitly.</summary>
     [Parameter] public int? FlexShrink { get; set; }
+
+    /// <summary>Default <c>flex-basis</c> for direct children (any CSS length, e.g. <c>"120px"</c>, <c>"20%"</c>).</summary>
+    [Parameter] public string? ItemBasis { get; set; }
 
     /// <summary>Optional CSS padding.</summary>
     [Parameter] public string? Padding { get; set; }
@@ -99,8 +108,23 @@ public partial class SgStack : SgComponentBase
     /// <summary>If <c>true</c>, the stack fills the full height of its parent.</summary>
     [Parameter] public bool FullHeight { get; set; }
 
-    /// <summary>HTML tag to render. Default <c>div</c>. Allowed: <c>div, section, header, footer, nav, main</c>.</summary>
-    [Parameter] public string Tag { get; set; } = "div";
+    /// <summary>HTML tag to render. Default <c>SgRowTag.Div</c>.</summary>
+    [Parameter] public SgRowTag Tag { get; set; } = SgRowTag.Div;
+
+    /// <summary>Legacy: HTML tag to render as a string (div/section/header/footer/nav/main). Use <see cref="Tag"/> instead.</summary>
+    [Obsolete("Use the strongly-typed Tag parameter (SgRowTag) instead.")]
+    [Parameter] public string? TagName
+    {
+        get => null;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            if (Enum.TryParse<SgRowTag>(value, ignoreCase: true, out var parsed))
+            {
+                Tag = parsed;
+            }
+        }
+    }
 
     /// <summary>If <c>true</c>, the stack lifts on hover with a subtle shadow transition.</summary>
     [Parameter] public bool Hoverable { get; set; }
@@ -108,19 +132,30 @@ public partial class SgStack : SgComponentBase
     /// <summary>Click event on the stack root.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
 
+    private SgRowTag ResolvedTag => Tag;
+
+    private bool hasOnClick => OnClick.HasDelegate;
+
     private SgOrientation ResolvedOrientation =>
         Vertical ? SgOrientation.Vertical :
         Horizontal ? SgOrientation.Horizontal :
         Orientation;
 
-    private string AlignCss => Align switch
+    private string AlignCss
     {
-        SgAlignItems.Start    => "flex-start",
-        SgAlignItems.Center   => "center",
-        SgAlignItems.End      => "flex-end",
-        SgAlignItems.Baseline => "baseline",
-        _                     => "stretch"
-    };
+        get
+        {
+            if (Stretch) return "stretch";
+            return Align switch
+            {
+                SgAlignItems.Start    => "flex-start",
+                SgAlignItems.Center   => "center",
+                SgAlignItems.End      => "flex-end",
+                SgAlignItems.Baseline => "baseline",
+                _                     => "stretch"
+            };
+        }
+    }
 
     private string JustifyCss => Justify switch
     {
@@ -147,6 +182,7 @@ public partial class SgStack : SgComponentBase
         .AddClass("sg-stack-vertical",  ResolvedOrientation == SgOrientation.Vertical)
         .AddClass("sg-stack-horizontal",ResolvedOrientation != SgOrientation.Vertical)
         .AddClass("sg-stack-dividers",  ShowDividers)
+        .AddClass("sg-stack-stretch",   Stretch)
         .AddClass("sg-row-hoverable",   Hoverable)
         .Build();
 
@@ -160,30 +196,57 @@ public partial class SgStack : SgComponentBase
         return value;
     }
 
-    private string? ResolvedGap => Space switch
+    private double DensityGapScale => Density switch
     {
-        SgSize.Sm     => "var(--sg-space-4)",
-        SgSize.Md     => "var(--sg-space-8)",
-        SgSize.Lg     => "var(--sg-space-16)",
-        SgSize.Xl     => "var(--sg-space-24)",
-        SgSize.FibMd  => "var(--sg-space-fib-4)",
-        SgSize.FibLg  => "var(--sg-space-fib-5)",
-        SgSize.FibXl  => "var(--sg-space-fib-6)",
-        SgSize.FibXxl => "var(--sg-space-fib-7)",
-        _ => !string.IsNullOrWhiteSpace(Gap) ? FixUnit(Gap) : null
+        SgDensity.Compact      => 0.5,
+        SgDensity.Comfortable  => 1.5,
+        _                      => 1.0
     };
+
+    private string? ScaledGap(string? baseGap)
+    {
+        var g = FixUnit(baseGap);
+        if (g is null) return null;
+        if (Density == SgDensity.Default) return g;
+        if (double.TryParse(g.TrimEnd('p','x','%','e','m','r','t'), NumberStyles.Any, CultureInfo.InvariantCulture, out var n) && g.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+        {
+            return (n * DensityGapScale).ToString("0.##", CultureInfo.InvariantCulture) + "px";
+        }
+        return g;
+    }
+
+    private string? ResolvedGap
+    {
+        get
+        {
+            var g = Space switch
+            {
+                SgSize.Sm     => "var(--sg-space-4)",
+                SgSize.Md     => "var(--sg-space-8)",
+                SgSize.Lg     => "var(--sg-space-16)",
+                SgSize.Xl     => "var(--sg-space-24)",
+                SgSize.FibMd  => "var(--sg-space-fib-4)",
+                SgSize.FibLg  => "var(--sg-space-fib-5)",
+                SgSize.FibXl  => "var(--sg-space-fib-6)",
+                SgSize.FibXxl => "var(--sg-space-fib-7)",
+                _ => !string.IsNullOrWhiteSpace(Gap) ? Gap : null
+            };
+            return g is null ? null : ScaledGap(g);
+        }
+    }
 
     private string ComputedStyle => Styles()
         .AddStyle("display",          Inline ? "inline-flex" : "flex")
         .AddStyle("flex-direction",   FlexDirectionCss)
-        .AddStyle("row-gap",          FixUnit(RowGap) ?? ResolvedGap, ResolvedGap != null || RowGap != null)
-        .AddStyle("column-gap",       FixUnit(ColumnGap) ?? ResolvedGap, ResolvedGap != null || ColumnGap != null)
+        .AddStyle("row-gap",          ScaledGap(RowGap) ?? ResolvedGap, ResolvedGap != null || RowGap != null)
+        .AddStyle("column-gap",       ScaledGap(ColumnGap) ?? ResolvedGap, ResolvedGap != null || ColumnGap != null)
         .AddStyle("align-items",      AlignCss)
         .AddStyle("justify-content",  JustifyCss)
         .AddStyle("flex-wrap",        Wrap ? "wrap" : "nowrap")
         .AddStyle("flex-grow",        FlexGrow?.ToString(), FlexGrow.HasValue)
         .AddStyle("flex",             "1 1 auto", Grow && !FlexGrow.HasValue)
         .AddStyle("flex-shrink",      FlexShrink?.ToString(), FlexShrink.HasValue)
+        .AddStyle("--sg-stack-item-basis", FixUnit(ItemBasis), !string.IsNullOrWhiteSpace(ItemBasis))
         .AddStyle("width",            "100%",  FullWidth)
         .AddStyle("width",            Width,   !FullWidth && !string.IsNullOrWhiteSpace(Width))
         .AddStyle("height",           "100%",  FullHeight)
