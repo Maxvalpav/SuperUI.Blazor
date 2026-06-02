@@ -1,5 +1,6 @@
 @namespace SuperUI.Components
 @inherits SgComponentBase
+@using System.Globalization
 
 <div class="@Css("sgc-rating")
     .AddClass("sgc-rating-disabled", Disabled)
@@ -11,7 +12,12 @@
      role="slider"
      aria-valuemin="0"
      aria-valuemax="@Max"
-     aria-valuenow="@Value"
+     aria-valuenow="@Value.ToString(CultureInfo.InvariantCulture)"
+     aria-readonly="@ReadOnly.ToString().ToLowerInvariant()"
+     aria-disabled="@Disabled.ToString().ToLowerInvariant()"
+     tabindex="@(Disabled ? -1 : 0)"
+     @onkeydown="OnKeyDown"
+     @onkeydown:preventDefault="false"
      style="@(Color is not null ? $"--sgc-rating-color:{Color}" : null)"
      @attributes="AttributesWithoutClassAndStyle">
     @if (!string.IsNullOrEmpty(Label))
@@ -33,10 +39,10 @@
         if (isHalfStar) cls += " sgc-rating-half";
 
         <span class="@cls"
-              @onclick="() => SetValue(starValue)"
+              @onclick="() => OnStarClick(starValue)"
               @onmouseenter="() => Hover(starValue)"
               @onmouseleave="() => Hover(0)"
-              aria-label="@(starValue + " stars")"
+              aria-label="@(Localizer["Rating_StarAria"] is { Length: > 0 } t ? string.Format(CultureInfo.CurrentCulture, t, starValue, Max) : $"{starValue} of {Max}")"
               title="@(Tooltip is not null ? Tooltip(starValue) : null)">
             @if (!string.IsNullOrEmpty(Character))
             {
@@ -66,7 +72,7 @@
     }
     @if (ShowValue && !string.IsNullOrEmpty(Label))
     {
-        <span class="sgc-rating-value">@Value.ToString("0.#") / @Max</span>
+        <span class="sgc-rating-value">@Value.ToString("0.#", CultureInfo.InvariantCulture) / @Max.ToString(CultureInfo.InvariantCulture)</span>
     }
 </div>
 
@@ -144,6 +150,12 @@
         _hoverValue = value;
     }
 
+    private async Task OnStarClick(double starValue)
+    {
+        if (Disabled || ReadOnly) return;
+        await SetValue(starValue);
+    }
+
     private async Task SetValue(double starValue)
     {
         if (Disabled || ReadOnly) return;
@@ -166,6 +178,45 @@
         {
             newValue = 0;
         }
+
+        Value = newValue;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (Disabled || ReadOnly) return;
+
+        var precision = CalcPrecision;
+        var step = precision >= 1 ? 1.0 : precision;
+        var newValue = Value;
+
+        switch (e.Key)
+        {
+            case "ArrowRight":
+            case "ArrowUp":
+                newValue = Math.Min(Value + step, Max);
+                break;
+            case "ArrowLeft":
+            case "ArrowDown":
+                newValue = Math.Max(Value - step, 0);
+                break;
+            case "Home":
+                newValue = 0;
+                break;
+            case "End":
+                newValue = Max;
+                break;
+            case "0":
+            case "Delete":
+                newValue = 0;
+                break;
+            default:
+                return;
+        }
+
+        if (Math.Abs(newValue - Value) < double.Epsilon) return;
 
         Value = newValue;
         if (ValueChanged.HasDelegate)
