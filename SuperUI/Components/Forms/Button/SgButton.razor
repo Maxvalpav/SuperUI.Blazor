@@ -1,7 +1,7 @@
 @namespace SuperUI.Components
 @inherits SgComponentBase
 
-@if (!string.IsNullOrEmpty(Href))
+@if (!string.IsNullOrEmpty(Href) && !Disabled)
 {
     <a href="@Href"
        target="@Target"
@@ -184,8 +184,15 @@ else
     [Parameter] public RenderFragment? IconRight { get; set; }
 
     /// <summary>
-    /// Gets or sets the position of the loading spinner. "left" (default), "right", or "center".
+    /// Gets or sets the position of the loading spinner as a strongly-typed enum.
+    /// Preferred over the string-based <see cref="LoadingPosition"/>.
+    /// </summary>
+    [Parameter] public SgButtonLoadingPosition? LoadingPositionEnum { get; set; }
+
+    /// <summary>
+    /// Gets or sets the position of the loading spinner. "left", "right", or "center".
     /// When "center", icon and text are hidden during loading.
+    /// Prefer <see cref="LoadingPositionEnum"/> for type-safe usage.
     /// </summary>
     [Parameter] public string LoadingPosition { get; set; } = "center";
 
@@ -242,9 +249,24 @@ else
         _         => ""
     };
 
-    private bool ShowSpinnerLeft => Loading && LoadingPosition == "left";
-    private bool ShowSpinnerRight => Loading && LoadingPosition == "right";
-    private bool ShowSpinnerCenter => Loading && LoadingPosition == "center";
+    private bool ShowSpinnerLeft => Loading && ResolvedLoadingPosition == SgButtonLoadingPosition.Left;
+    private bool ShowSpinnerRight => Loading && ResolvedLoadingPosition == SgButtonLoadingPosition.Right;
+    private bool ShowSpinnerCenter => Loading && ResolvedLoadingPosition == SgButtonLoadingPosition.Center;
+
+    private SgButtonLoadingPosition ResolvedLoadingPosition
+    {
+        get
+        {
+            if (LoadingPositionEnum.HasValue) return LoadingPositionEnum.Value;
+            if (string.IsNullOrEmpty(LoadingPosition)) return SgButtonLoadingPosition.Center;
+            return LoadingPosition.ToLowerInvariant() switch
+            {
+                "left" => SgButtonLoadingPosition.Left,
+                "right" => SgButtonLoadingPosition.Right,
+                _ => SgButtonLoadingPosition.Center
+            };
+        }
+    }
 
     private async Task OnClickAsync(MouseEventArgs e)
     {
@@ -260,6 +282,7 @@ else
         if (!string.IsNullOrEmpty(ConfirmText) && !_dangerConfirmActive)
         {
             _dangerConfirmActive = true;
+            _confirmText = ConfirmText;
             _dangerConfirmCts?.Cancel();
             _dangerConfirmCts?.Dispose();
             _dangerConfirmCts = new CancellationTokenSource();
