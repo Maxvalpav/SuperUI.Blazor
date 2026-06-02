@@ -37,9 +37,11 @@
           "type": "object",
           "required": ["sans", "mono"],
           "properties": {
-            "sans":  { "type": "string" },
-            "mono":  { "type": "string" },
-            "serif": { "type": ["string", "null"] }
+            "sans":    { "type": "string" },
+            "mono":    { "type": "string" },
+            "serif":   { "type": ["string", "null"] },
+            "display": { "type": ["string", "null"], "description": "v2.0: Hero/display font." },
+            "medical": { "type": ["string", "null"], "description": "v2.0: Medical/tabular font." }
           }
         },
         "radius": {
@@ -129,7 +131,12 @@
         "radius":   { "$ref": "#/$defs/radiusScale" },
         "transition": { "$ref": "#/$defs/transitionGroup" },
         "focusRing": { "$ref": "#/$defs/focusRingGroup" },
-        "z":         { "$ref": "#/$defs/zGroup" }
+        "z":         { "$ref": "#/$defs/zGroup" },
+
+        "elevation": { "$ref": "#/$defs/elevationGroup", "description": "v2.0: 5-level elevation scale." },
+        "motion":    { "$ref": "#/$defs/motionGroup",    "description": "v2.0: Fibonacci duration scale + easings." },
+        "density":   { "$ref": "#/$defs/densityGroup",   "description": "v2.0: Compact/Comfortable/Spacious multipliers." },
+        "measure":   { "$ref": "#/$defs/measureGroup",   "description": "v2.0: ch-based reading width tokens." }
       }
     },
 
@@ -275,53 +282,308 @@
         "tooltip":  { "type": "integer" }
       }
     },
+    "elevationGroup": {
+      "type": "object",
+      "description": "v2.0: 5 elevation levels (surface, raised, dropdown, sticky, popover, modal).",
+      "properties": {
+        "1": { "type": "string" },
+        "2": { "type": "string" },
+        "3": { "type": "string" },
+        "4": { "type": "string" },
+        "5": { "type": "string" }
+      }
+    },
+    "motionGroup": {
+      "type": "object",
+      "description": "v2.0: Fibonacci ms + cubic-bezier easings.",
+      "properties": {
+        "instant":        { "type": "string", "default": "89ms" },
+        "fast":           { "type": "string", "default": "144ms" },
+        "base":           { "type": "string", "default": "233ms" },
+        "slow":           { "type": "string", "default": "377ms" },
+        "slower":         { "type": "string", "default": "610ms" },
+        "easingStandard": { "type": "string", "default": "cubic-bezier(0.4, 0, 0.2, 1)" },
+        "easingEmphasis": { "type": "string", "default": "cubic-bezier(0.2, 0, 0, 1)" },
+        "easingDecel":    { "type": "string", "default": "cubic-bezier(0, 0, 0.2, 1)" }
+      }
+    },
+    "densityGroup": {
+      "type": "object",
+      "description": "v2.0: Density multipliers as CSS calc offsets.",
+      "properties": {
+        "compact":     { "type": "string", "default": "-2px" },
+        "comfortable": { "type": "string", "default": "0px" },
+        "spacious":    { "type": "string", "default": "+2px" }
+      }
+    },
+    "measureGroup": {
+      "type": "object",
+      "description": "v2.0: ch-based reading-width tokens.",
+      "properties": {
+        "narrow":  { "type": "string", "default": "45ch" },
+        "optimal": { "type": "string", "default": "66ch" },
+        "wide":    { "type": "string", "default": "75ch" }
+      }
+    },
+    "spacingScale": {
+      "type": "object",
+      "description": "v2.0: Fibonacci spacing scale (0/2/3/5/8/13/21/34/55 px).",
+      "properties": {
+        "0": { "type": "string" },
+        "1": { "type": "string" },
+        "2": { "type": "string" },
+        "3": { "type": "string" },
+        "4": { "type": "string" },
+        "5": { "type": "string" },
+        "6": { "type": "string" },
+        "7": { "type": "string" },
+        "8": { "type": "string" }
+      }
+    },
+    "iconSizeScale": {
+      "type": "object",
+      "description": "v2.0: Icon size scale (12/16/20/24/32).",
+      "properties": {
+        "sm":  { "type": "string" },
+        "md":  { "type": "string" },
+        "lg":  { "type": "string" },
+        "xl":  { "type": "string" },
+        "2xl": { "type": "string" }
+      }
+    },
+    "borderWidthScale": {
+      "type": "object",
+      "description": "v2.0: Border-width scale.",
+      "properties": {
+        "default": { "type": "string" },
+        "strong":  { "type": "string" },
+        "accent":  { "type": "string" }
+      }
+    },
 
     "components": {
       "type": "object",
       "description": "Per-component overrides. All groups optional.",
       "properties": {
-        "button": { "$ref": "#/$defs/buttonTokens" },
-        "input":  { "$ref": "#/$defs/inputTokens" },
-        "card":   { "$ref": "#/$defs/cardTokens" },
-        "modal":  { "type": "object", "properties": { "radius": { "type": "string" } } },
-        "table":  { "type": "object", "properties": { "radius": { "type": "string" }, "headerFontWeight": { "type": "string" } } },
-        "tabs":   { "type": "object", "properties": { "indicatorHeight": { "type": "string" } } },
-        "tooltip":{ "type": "object", "properties": { "maxWidth": { "type": "string" } } },
-        "header": { "type": "object", "properties": { "bg": { "type": "string" }, "fg": { "type": "string" } } },
-        "nav":    { "type": "object", "properties": { "bg": { "type": "string" }, "fg": { "type": "string" }, "activeBg": { "type": "string" }, "activeFg": { "type": "string" } } }
+        "button":   { "$ref": "#/$defs/buttonTokens" },
+        "input":    { "$ref": "#/$defs/inputTokens" },
+        "select":   { "$ref": "#/$defs/selectTokens", "description": "v2.0." },
+        "checkbox": { "$ref": "#/$defs/checkboxTokens", "description": "v2.0." },
+        "switch":   { "$ref": "#/$defs/switchTokens", "description": "v2.0." },
+        "card":     { "$ref": "#/$defs/cardTokens" },
+        "modal":    { "$ref": "#/$defs/modalTokens" },
+        "dropdown": { "$ref": "#/$defs/dropdownTokens", "description": "v2.0." },
+        "tooltip":  { "$ref": "#/$defs/tooltipTokens" },
+        "tabs":     { "$ref": "#/$defs/tabsTokens" },
+        "table":    { "$ref": "#/$defs/tableTokens" },
+        "alert":    { "$ref": "#/$defs/alertTokens", "description": "v2.0." },
+        "badge":    { "$ref": "#/$defs/badgeTokens", "description": "v2.0." },
+        "chip":     { "$ref": "#/$defs/chipTokens", "description": "v2.0." },
+        "spinner":  { "$ref": "#/$defs/spinnerTokens", "description": "v2.0." },
+        "progress": { "$ref": "#/$defs/progressTokens", "description": "v2.0." },
+        "header":   { "type": "object", "properties": { "bg": { "type": "string" }, "fg": { "type": "string" } } },
+        "nav":      { "$ref": "#/$defs/navTokens" }
       }
     },
     "buttonTokens": {
       "type": "object",
       "required": ["radius", "fontSize", "fontWeight", "height", "heightSm", "heightLg"],
       "properties": {
-        "radius":    { "type": "string" },
-        "fontSize":  { "type": "string" },
-        "fontWeight":{ "type": "string" },
-        "height":    { "type": "string" },
-        "heightSm":  { "type": "string" },
-        "heightLg":  { "type": "string" }
+        "radius":     { "type": "string" },
+        "fontSize":   { "type": "string" },
+        "fontWeight": { "type": "string" },
+        "height":     { "type": "string" },
+        "heightSm":   { "type": "string" },
+        "heightLg":   { "type": "string" },
+        "paddingX":   { "type": "string", "description": "v2.0." },
+        "paddingY":   { "type": "string", "description": "v2.0." },
+        "gap":        { "type": "string", "description": "v2.0." },
+        "iconSize":   { "type": "string", "description": "v2.0." },
+        "minWidth":   { "type": "string", "description": "v2.0: Fitts' law minimum." }
       }
     },
     "inputTokens": {
       "type": "object",
       "required": ["radius", "fontSize", "height", "heightSm", "heightLg"],
       "properties": {
+        "radius":      { "type": "string" },
+        "fontSize":    { "type": "string" },
+        "height":      { "type": "string" },
+        "heightSm":    { "type": "string" },
+        "heightLg":    { "type": "string" },
+        "paddingX":    { "type": "string", "description": "v2.0." },
+        "paddingY":    { "type": "string", "description": "v2.0." },
+        "borderWidth": { "type": "string", "description": "v2.0." },
+        "iconSize":    { "type": "string", "description": "v2.0." }
+      }
+    },
+    "selectTokens": {
+      "type": "object",
+      "properties": {
         "radius":   { "type": "string" },
         "fontSize": { "type": "string" },
         "height":   { "type": "string" },
         "heightSm": { "type": "string" },
-        "heightLg": { "type": "string" }
+        "heightLg": { "type": "string" },
+        "paddingX": { "type": "string" },
+        "iconSize": { "type": "string" }
+      }
+    },
+    "checkboxTokens": {
+      "type": "object",
+      "properties": {
+        "size":        { "type": "string" },
+        "sizeSm":      { "type": "string" },
+        "sizeLg":      { "type": "string" },
+        "radius":      { "type": "string" },
+        "iconSize":    { "type": "string" },
+        "borderWidth": { "type": "string" }
+      }
+    },
+    "switchTokens": {
+      "type": "object",
+      "properties": {
+        "width":     { "type": "string" },
+        "height":    { "type": "string" },
+        "thumbSize": { "type": "string" },
+        "radius":    { "type": "string" },
+        "padding":   { "type": "string" }
       }
     },
     "cardTokens": {
       "type": "object",
       "required": ["radius", "padding", "borderColor", "bg"],
       "properties": {
-        "radius":      { "type": "string" },
-        "padding":     { "type": "string" },
-        "borderColor": { "type": "string" },
-        "bg":          { "type": "string" }
+        "radius":           { "type": "string" },
+        "padding":          { "type": "string" },
+        "paddingSm":        { "type": "string", "description": "v2.0." },
+        "paddingLg":        { "type": "string", "description": "v2.0." },
+        "borderColor":      { "type": "string" },
+        "bg":               { "type": "string" },
+        "headerFontWeight": { "type": "string", "description": "v2.0." },
+        "gap":              { "type": "string", "description": "v2.0." }
+      }
+    },
+    "modalTokens": {
+      "type": "object",
+      "properties": {
+        "radius":       { "type": "string" },
+        "width":        { "type": "string", "description": "v2.0." },
+        "widthSm":      { "type": "string", "description": "v2.0." },
+        "widthLg":      { "type": "string", "description": "v2.0." },
+        "widthXl":      { "type": "string", "description": "v2.0." },
+        "padding":      { "type": "string", "description": "v2.0." },
+        "backdropBlur": { "type": "string", "description": "v2.0." }
+      }
+    },
+    "dropdownTokens": {
+      "type": "object",
+      "properties": {
+        "radius":       { "type": "string" },
+        "padding":      { "type": "string" },
+        "itemHeight":   { "type": "string" },
+        "itemPaddingX": { "type": "string" },
+        "itemPaddingY": { "type": "string" },
+        "gap":          { "type": "string" }
+      }
+    },
+    "tooltipTokens": {
+      "type": "object",
+      "properties": {
+        "maxWidth":  { "type": "string" },
+        "radius":    { "type": "string", "description": "v2.0." },
+        "padding":   { "type": "string", "description": "v2.0." },
+        "fontSize":  { "type": "string", "description": "v2.0." },
+        "arrowSize": { "type": "string", "description": "v2.0." }
+      }
+    },
+    "tabsTokens": {
+      "type": "object",
+      "properties": {
+        "indicatorHeight": { "type": "string" },
+        "radius":          { "type": "string", "description": "v2.0." },
+        "height":          { "type": "string", "description": "v2.0." },
+        "paddingX":        { "type": "string", "description": "v2.0." },
+        "paddingY":        { "type": "string", "description": "v2.0." },
+        "gap":             { "type": "string", "description": "v2.0." }
+      }
+    },
+    "tableTokens": {
+      "type": "object",
+      "properties": {
+        "radius":          { "type": "string" },
+        "headerFontWeight":{ "type": "string" },
+        "rowHeight":       { "type": "string", "description": "v2.0." },
+        "rowHeightSm":     { "type": "string", "description": "v2.0." },
+        "headerHeight":    { "type": "string", "description": "v2.0." },
+        "cellPaddingX":    { "type": "string", "description": "v2.0." },
+        "cellPaddingY":    { "type": "string", "description": "v2.0." },
+        "borderWidth":     { "type": "string", "description": "v2.0." }
+      }
+    },
+    "alertTokens": {
+      "type": "object",
+      "properties": {
+        "radius":    { "type": "string" },
+        "padding":   { "type": "string" },
+        "paddingSm": { "type": "string" },
+        "iconSize":  { "type": "string" },
+        "gap":       { "type": "string" }
+      }
+    },
+    "badgeTokens": {
+      "type": "object",
+      "properties": {
+        "radius":     { "type": "string" },
+        "height":     { "type": "string" },
+        "heightSm":   { "type": "string" },
+        "heightLg":   { "type": "string" },
+        "paddingX":   { "type": "string" },
+        "fontSize":   { "type": "string" },
+        "fontWeight": { "type": "string" }
+      }
+    },
+    "chipTokens": {
+      "type": "object",
+      "properties": {
+        "radius":   { "type": "string" },
+        "height":   { "type": "string" },
+        "heightSm": { "type": "string" },
+        "heightLg": { "type": "string" },
+        "paddingX": { "type": "string" },
+        "gap":      { "type": "string" },
+        "iconSize": { "type": "string" }
+      }
+    },
+    "spinnerTokens": {
+      "type": "object",
+      "properties": {
+        "size":         { "type": "string" },
+        "sizeSm":       { "type": "string" },
+        "sizeLg":       { "type": "string" },
+        "borderWidth":  { "type": "string" },
+        "trackOpacity": { "type": "string" }
+      }
+    },
+    "progressTokens": {
+      "type": "object",
+      "properties": {
+        "height":          { "type": "string" },
+        "heightSm":        { "type": "string" },
+        "heightLg":        { "type": "string" },
+        "radius":          { "type": "string" },
+        "indicatorRadius": { "type": "string" }
+      }
+    },
+    "navTokens": {
+      "type": "object",
+      "properties": {
+        "bg":           { "type": "string" },
+        "fg":           { "type": "string" },
+        "activeBg":     { "type": "string" },
+        "activeFg":     { "type": "string" },
+        "itemHeight":   { "type": "string", "description": "v2.0." },
+        "itemPaddingX": { "type": "string", "description": "v2.0." }
       }
     },
 
@@ -333,6 +595,9 @@
         "googleFontsImportUrl": { "type": "string" },
         "embedGoogleFontsImport": { "type": "boolean", "default": true },
         "headingFont": { "type": ["string", "null"] },
+        "serifFont":   { "type": ["string", "null"], "description": "v2.0: Long-form content font." },
+        "displayFont": { "type": ["string", "null"], "description": "v2.0: Hero/display font." },
+        "medicalFont": { "type": ["string", "null"], "description": "v2.0: Medical/tabular font." },
         "headings": {
           "type": "object",
           "required": ["h1", "h2", "h3", "h4", "h5", "h6"],
@@ -344,7 +609,33 @@
             "h5": { "$ref": "#/$defs/headingSettings" },
             "h6": { "$ref": "#/$defs/headingSettings" }
           }
-        }
+        },
+        "phiScale": { "$ref": "#/$defs/phiScale",      "description": "v2.0: Fibonacci × 16 text scale." },
+        "phiLineHeight": { "$ref": "#/$defs/phiLineHeightScale", "description": "v2.0: Fibonacci line-height scale." }
+      }
+    },
+    "phiScale": {
+      "type": "object",
+      "description": "v2.0: φ-based (Fibonacci × 16) text size scale.",
+      "properties": {
+        "micro":   { "type": "string", "default": "0.702rem" },
+        "caption": { "type": "string", "default": "0.875rem" },
+        "body":    { "type": "string", "default": "1rem" },
+        "lead":    { "type": "string", "default": "1.125rem" },
+        "h3":      { "type": "string", "default": "1.618rem" },
+        "h2":      { "type": "string", "default": "2.618rem" },
+        "h1":      { "type": "string", "default": "4.236rem" },
+        "display": { "type": "string", "default": "6.854rem" },
+        "poster":  { "type": "string", "default": "11.09rem" }
+      }
+    },
+    "phiLineHeightScale": {
+      "type": "object",
+      "description": "v2.0: φ-based line-height scale.",
+      "properties": {
+        "caption": { "type": "string", "default": "1.4" },
+        "body":    { "type": "string", "default": "1.5" },
+        "display": { "type": "string", "default": "1.1" }
       }
     },
     "headingSettings": {

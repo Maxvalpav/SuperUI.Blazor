@@ -13,6 +13,9 @@ public sealed class JsonPrimitives : IThemePrimitives
     [JsonPropertyName("info")]    public JsonScale4  Info    { get; set; } = new();
     [JsonPropertyName("fonts")]   public JsonFonts   Fonts   { get; set; } = new();
     [JsonPropertyName("radius")]  public JsonRadiusScale Radius { get; set; } = new();
+    [JsonPropertyName("spacing")] public JsonSpacingScale Spacing { get; set; } = new();
+    [JsonPropertyName("iconSize")] public JsonIconSizeScale IconSize { get; set; } = new();
+    [JsonPropertyName("borderWidth")] public JsonBorderWidthScale BorderWidth { get; set; } = new();
 
     [JsonIgnore] public string Neutral0   => Neutral.N0;
     [JsonIgnore] public string Neutral50  => Neutral.N50;
@@ -59,9 +62,11 @@ public sealed class JsonPrimitives : IThemePrimitives
     [JsonIgnore] public string Info500 => Info.N500;
     [JsonIgnore] public string Info600 => Info.N600;
 
-    [JsonIgnore] public string FontSans  => Fonts.Sans;
-    [JsonIgnore] public string FontMono  => Fonts.Mono;
-    [JsonIgnore] public string FontSerif => Fonts.Serif ?? Fonts.Sans;
+    [JsonIgnore] public string FontSans    => Fonts.Sans;
+    [JsonIgnore] public string FontMono    => Fonts.Mono;
+    [JsonIgnore] public string FontSerif   => Fonts.Serif ?? Fonts.Sans;
+    [JsonIgnore] public string FontDisplay => Fonts.Display ?? Fonts.Sans;
+    [JsonIgnore] public string FontMedical => Fonts.Medical ?? Fonts.Sans;
 
     [JsonIgnore] public string RadiusNone => Radius.None;
     [JsonIgnore] public string RadiusXs   => Radius.Xs;
@@ -71,6 +76,26 @@ public sealed class JsonPrimitives : IThemePrimitives
     [JsonIgnore] public string RadiusXl   => Radius.Xl;
     [JsonIgnore] public string Radius2Xl  => Radius.N2xl;
     [JsonIgnore] public string RadiusFull => Radius.Full;
+
+    [JsonIgnore] public string Spacing0 => Spacing.N0;
+    [JsonIgnore] public string Spacing1 => Spacing.N1;
+    [JsonIgnore] public string Spacing2 => Spacing.N2;
+    [JsonIgnore] public string Spacing3 => Spacing.N3;
+    [JsonIgnore] public string Spacing4 => Spacing.N4;
+    [JsonIgnore] public string Spacing5 => Spacing.N5;
+    [JsonIgnore] public string Spacing6 => Spacing.N6;
+    [JsonIgnore] public string Spacing7 => Spacing.N7;
+    [JsonIgnore] public string Spacing8 => Spacing.N8;
+
+    [JsonIgnore] public string IconSizeSm  => IconSize.Sm;
+    [JsonIgnore] public string IconSizeMd  => IconSize.Md;
+    [JsonIgnore] public string IconSizeLg  => IconSize.Lg;
+    [JsonIgnore] public string IconSizeXl  => IconSize.Xl;
+    [JsonIgnore] public string IconSize2Xl => IconSize.N2xl;
+
+    [JsonIgnore] public string BorderWidthDefault => BorderWidth.Default;
+    [JsonIgnore] public string BorderWidthStrong  => BorderWidth.Strong;
+    [JsonIgnore] public string BorderWidthAccent  => BorderWidth.Accent;
 }
 
 public sealed class JsonNeutralScale
@@ -121,9 +146,11 @@ public sealed class JsonScale4
 
 public sealed class JsonFonts
 {
-    [JsonPropertyName("sans")]  public string Sans { get; set; } = "system-ui, sans-serif";
-    [JsonPropertyName("mono")]  public string Mono { get; set; } = "ui-monospace, monospace";
-    [JsonPropertyName("serif")] public string? Serif { get; set; }
+    [JsonPropertyName("sans")]    public string Sans    { get; set; } = "system-ui, sans-serif";
+    [JsonPropertyName("mono")]    public string Mono    { get; set; } = "ui-monospace, monospace";
+    [JsonPropertyName("serif")]   public string? Serif   { get; set; }
+    [JsonPropertyName("display")] public string? Display { get; set; }
+    [JsonPropertyName("medical")] public string? Medical { get; set; }
 }
 
 public sealed class JsonRadiusScale
@@ -136,4 +163,34 @@ public sealed class JsonRadiusScale
     [JsonPropertyName("xl")]   public string Xl   { get; set; } = "24px";
     [JsonPropertyName("2xl")]  public string N2xl { get; set; } = "32px";
     [JsonPropertyName("full")] public string Full { get; set; } = "9999px";
+}
+
+/// <summary>Fibonacci spacing scale (px).</summary>
+public sealed class JsonSpacingScale
+{
+    [JsonPropertyName("0")] public string N0 { get; set; } = "0";
+    [JsonPropertyName("1")] public string N1 { get; set; } = "2px";
+    [JsonPropertyName("2")] public string N2 { get; set; } = "3px";
+    [JsonPropertyName("3")] public string N3 { get; set; } = "5px";
+    [JsonPropertyName("4")] public string N4 { get; set; } = "8px";
+    [JsonPropertyName("5")] public string N5 { get; set; } = "13px";
+    [JsonPropertyName("6")] public string N6 { get; set; } = "21px";
+    [JsonPropertyName("7")] public string N7 { get; set; } = "34px";
+    [JsonPropertyName("8")] public string N8 { get; set; } = "55px";
+}
+
+public sealed class JsonIconSizeScale
+{
+    [JsonPropertyName("sm")]  public string Sm   { get; set; } = "12px";
+    [JsonPropertyName("md")]  public string Md   { get; set; } = "16px";
+    [JsonPropertyName("lg")]  public string Lg   { get; set; } = "20px";
+    [JsonPropertyName("xl")]  public string Xl   { get; set; } = "24px";
+    [JsonPropertyName("2xl")] public string N2xl { get; set; } = "32px";
+}
+
+public sealed class JsonBorderWidthScale
+{
+    [JsonPropertyName("default")] public string Default { get; set; } = "1px";
+    [JsonPropertyName("strong")]  public string Strong  { get; set; } = "2px";
+    [JsonPropertyName("accent")]  public string Accent  { get; set; } = "3px";
 }

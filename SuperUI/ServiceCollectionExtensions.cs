@@ -77,6 +77,8 @@ public static class ServiceCollectionExtensions
 
         // ── Cross-cutting infrastructure (Phase 3) ──────────────────────────
         // Scoped: per-circuit on Blazor Server, per-session on Blazor WASM.
+        services.TryAddScoped<SgAnimationCoordinator>();
+        services.TryAddScoped<SgFocusManager>();
         services.TryAddScoped<SgEventAggregator>();
         services.TryAddScoped<SgStorageService>();
         services.TryAddScoped<SgClipboardService>();

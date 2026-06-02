@@ -24,6 +24,10 @@ public sealed class JsonSemantic : IThemeSemantic
     [JsonPropertyName("transition")]   public JsonTransitionGroup Transition { get; set; } = new();
     [JsonPropertyName("focusRing")]    public JsonFocusRingGroup FocusRing   { get; set; } = new();
     [JsonPropertyName("z")]            public JsonZGroup        Z            { get; set; } = new();
+    [JsonPropertyName("elevation")]    public JsonElevationScale Elevation    { get; set; } = new();
+    [JsonPropertyName("motion")]       public JsonMotionGroup   Motion       { get; set; } = new();
+    [JsonPropertyName("density")]      public JsonDensityGroup  Density      { get; set; } = new();
+    [JsonPropertyName("measure")]      public JsonMeasureGroup  Measure      { get; set; } = new();
 
     string IThemeSemantic.BgDefault     => Bg.Default;
     string IThemeSemantic.BgSubtle      => Bg.Subtle;
@@ -122,6 +126,49 @@ public sealed class JsonSemantic : IThemeSemantic
     int IThemeSemantic.ZModal    => Z0.Modal;
     int IThemeSemantic.ZToast    => Z0.Toast;
     int IThemeSemantic.ZTooltip  => Z0.Tooltip;
+
+    // v2.0 state tokens (sane defaults derived from existing tokens).
+    string IThemeSemantic.ColorPrimaryActiveBg   => ColorPrimary0.Hover;
+    string IThemeSemantic.ColorPrimaryDisabled   => Fg.Disabled;
+    string IThemeSemantic.ColorPrimaryDisabledBg => Bg.Muted;
+    string IThemeSemantic.ColorPrimarySelectedBg => ColorPrimary0.Subtle;
+    string IThemeSemantic.ColorSuccessActiveBg   => ColorSuccess0.Hover;
+    string IThemeSemantic.ColorSuccessDisabled   => Fg.Disabled;
+    string IThemeSemantic.ColorDangerActiveBg    => ColorDanger0.Hover;
+    string IThemeSemantic.ColorDangerDisabled    => Fg.Disabled;
+    string IThemeSemantic.ColorWarningActiveBg   => ColorWarning0.Hover;
+    string IThemeSemantic.ColorWarningDisabled   => Fg.Disabled;
+    string IThemeSemantic.ColorInfoActiveBg      => ColorInfo0.Hover;
+    string IThemeSemantic.ColorInfoDisabled      => Fg.Disabled;
+
+    string IThemeSemantic.FgPlaceholder   => Fg.Muted;
+    string IThemeSemantic.SurfaceHover    => Bg.Subtle;
+    string IThemeSemantic.SurfaceActive   => Bg.Muted;
+    string IThemeSemantic.SurfaceSelected => ColorPrimary0.Subtle;
+    string IThemeSemantic.BorderHover     => Border.Strong;
+
+    string IThemeSemantic.Elevation1 => Shadow0.Xs;
+    string IThemeSemantic.Elevation2 => Shadow0.Sm;
+    string IThemeSemantic.Elevation3 => Shadow0.Md;
+    string IThemeSemantic.Elevation4 => Shadow0.Lg;
+    string IThemeSemantic.Elevation5 => Shadow0.Xl;
+
+    string IThemeSemantic.MotionInstant => Motion.Instant;
+    string IThemeSemantic.MotionFast    => Motion.Fast;
+    string IThemeSemantic.MotionBase    => Motion.Base;
+    string IThemeSemantic.MotionSlow    => Motion.Slow;
+    string IThemeSemantic.MotionSlower  => Motion.Slower;
+    string IThemeSemantic.EasingStandard => Motion.EasingStandard;
+    string IThemeSemantic.EasingEmphasis => Motion.EasingEmphasis;
+    string IThemeSemantic.EasingDecel    => Motion.EasingDecel;
+
+    string IThemeSemantic.DensityCompact      => Density.Compact;
+    string IThemeSemantic.DensityComfortable  => Density.Comfortable;
+    string IThemeSemantic.DensitySpacious     => Density.Spacious;
+
+    string IThemeSemantic.MeasureNarrow  => Measure.Narrow;
+    string IThemeSemantic.MeasureOptimal => Measure.Optimal;
+    string IThemeSemantic.MeasureWide    => Measure.Wide;
 
     // Backing fields for the explicit interface implementations above.
     private JsonSurfaceGroup Surface0    => Surface;
@@ -255,4 +302,39 @@ public sealed class JsonZGroup
     [JsonPropertyName("modal")]    public int Modal    { get; set; } = 1050;
     [JsonPropertyName("toast")]    public int Toast    { get; set; } = 1070;
     [JsonPropertyName("tooltip")]  public int Tooltip  { get; set; } = 1100;
+}
+
+public sealed class JsonElevationScale
+{
+    [JsonPropertyName("1")] public string N1 { get; set; } = "0 1px 1px 0 rgb(0 0 0 / 0.04)";
+    [JsonPropertyName("2")] public string N2 { get; set; } = "0 1px 2px 0 rgb(0 0 0 / 0.05), 0 1px 1px -1px rgb(0 0 0 / 0.04)";
+    [JsonPropertyName("3")] public string N3 { get; set; } = "0 2px 4px -1px rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04)";
+    [JsonPropertyName("4")] public string N4 { get; set; } = "0 8px 16px -4px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.04)";
+    [JsonPropertyName("5")] public string N5 { get; set; } = "0 16px 32px -8px rgb(0 0 0 / 0.10), 0 4px 8px -4px rgb(0 0 0 / 0.06)";
+}
+
+public sealed class JsonMotionGroup
+{
+    [JsonPropertyName("instant")]       public string Instant       { get; set; } = "89ms";
+    [JsonPropertyName("fast")]          public string Fast          { get; set; } = "144ms";
+    [JsonPropertyName("base")]          public string Base          { get; set; } = "233ms";
+    [JsonPropertyName("slow")]          public string Slow          { get; set; } = "377ms";
+    [JsonPropertyName("slower")]        public string Slower        { get; set; } = "610ms";
+    [JsonPropertyName("easingStandard")] public string EasingStandard { get; set; } = "cubic-bezier(0.4, 0, 0.2, 1)";
+    [JsonPropertyName("easingEmphasis")] public string EasingEmphasis { get; set; } = "cubic-bezier(0.2, 0, 0, 1)";
+    [JsonPropertyName("easingDecel")]    public string EasingDecel    { get; set; } = "cubic-bezier(0, 0, 0.2, 1)";
+}
+
+public sealed class JsonDensityGroup
+{
+    [JsonPropertyName("compact")]     public string Compact     { get; set; } = "-2px";
+    [JsonPropertyName("comfortable")] public string Comfortable { get; set; } = "0px";
+    [JsonPropertyName("spacious")]    public string Spacious    { get; set; } = "+2px";
+}
+
+public sealed class JsonMeasureGroup
+{
+    [JsonPropertyName("narrow")]  public string Narrow  { get; set; } = "45ch";
+    [JsonPropertyName("optimal")] public string Optimal { get; set; } = "66ch";
+    [JsonPropertyName("wide")]    public string Wide    { get; set; } = "75ch";
 }

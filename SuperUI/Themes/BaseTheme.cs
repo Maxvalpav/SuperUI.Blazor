@@ -69,6 +69,33 @@ internal class BasePrimitives : IThemePrimitives
     public virtual string RadiusXl   => "21px";   // fib-5
     public virtual string Radius2Xl  => "34px";   // fib-6
     public virtual string RadiusFull => "9999px";
+
+    // ── v2.0 additional font slots ────────────────────────────────
+    public virtual string FontDisplay => FontSans;
+    public virtual string FontMedical => FontMono;
+
+    // ── v2.0 Fibonacci spacing scale (px) ─────────────────────────
+    public virtual string Spacing0 => "0";
+    public virtual string Spacing1 => "2px";      // fib-1
+    public virtual string Spacing2 => "3px";      // fib-2
+    public virtual string Spacing3 => "5px";      // fib-3
+    public virtual string Spacing4 => "8px";      // fib-4
+    public virtual string Spacing5 => "13px";     // fib-5
+    public virtual string Spacing6 => "21px";     // fib-6
+    public virtual string Spacing7 => "34px";     // fib-7
+    public virtual string Spacing8 => "55px";     // fib-8
+
+    // ── v2.0 Icon size scale (px) ─────────────────────────────────
+    public virtual string IconSizeSm  => "8px";
+    public virtual string IconSizeMd  => "13px";
+    public virtual string IconSizeLg  => "21px";
+    public virtual string IconSizeXl  => "34px";
+    public virtual string IconSize2Xl => "55px";
+
+    // ── v2.0 Border width scale ───────────────────────────────────
+    public virtual string BorderWidthDefault => "1px";
+    public virtual string BorderWidthStrong  => "2px";
+    public virtual string BorderWidthAccent  => "3px";
 }
 
 /// <summary>
@@ -183,6 +210,52 @@ internal class BaseSemanticLight : IThemeSemantic
     public virtual int ZModal    => 1050;
     public virtual int ZToast    => 1070;
     public virtual int ZTooltip  => 1100;
+
+    // ── v2.0 State tokens ─────────────────────────────────────────
+    public virtual string ColorPrimaryActiveBg   => ColorPrimaryActive;
+    public virtual string ColorPrimaryDisabled   => FgDisabled;
+    public virtual string ColorPrimaryDisabledBg => BgMuted;
+    public virtual string ColorPrimarySelectedBg => ColorPrimarySubtle;
+    public virtual string ColorSuccessActiveBg   => ColorSuccessHover;
+    public virtual string ColorSuccessDisabled   => FgDisabled;
+    public virtual string ColorDangerActiveBg    => ColorDangerHover;
+    public virtual string ColorDangerDisabled    => FgDisabled;
+    public virtual string ColorWarningActiveBg   => ColorWarningHover;
+    public virtual string ColorWarningDisabled   => FgDisabled;
+    public virtual string ColorInfoActiveBg      => ColorInfoHover;
+    public virtual string ColorInfoDisabled      => FgDisabled;
+    public virtual string FgPlaceholder          => FgMuted;
+    public virtual string SurfaceHover           => BgSubtle;
+    public virtual string SurfaceActive          => BgMuted;
+    public virtual string SurfaceSelected        => ColorPrimarySubtle;
+    public virtual string BorderHover            => BorderStrong;
+
+    // ── v2.0 Elevation scale (5 levels) ──────────────────────────
+    public virtual string Elevation1 => ShadowXs;
+    public virtual string Elevation2 => ShadowSm;
+    public virtual string Elevation3 => ShadowMd;
+    public virtual string Elevation4 => ShadowLg;
+    public virtual string Elevation5 => ShadowXl;
+
+    // ── v2.0 Motion (Fibonacci ms + easings) ──────────────────────
+    public virtual string MotionInstant   => "89ms";
+    public virtual string MotionFast      => "144ms";
+    public virtual string MotionBase      => "233ms";
+    public virtual string MotionSlow      => "377ms";
+    public virtual string MotionSlower    => "610ms";
+    public virtual string EasingStandard  => "cubic-bezier(0.4, 0, 0.2, 1)";
+    public virtual string EasingEmphasis  => "cubic-bezier(0.2, 0, 0, 1)";
+    public virtual string EasingDecel     => "cubic-bezier(0, 0, 0.2, 1)";
+
+    // ── v2.0 Density (offset multipliers) ─────────────────────────
+    public virtual string DensityCompact     => "-2px";
+    public virtual string DensityComfortable => "0px";
+    public virtual string DensitySpacious    => "+2px";
+
+    // ── v2.0 Measure (ch) ─────────────────────────────────────────
+    public virtual string MeasureNarrow  => "45ch";
+    public virtual string MeasureOptimal => "66ch";
+    public virtual string MeasureWide    => "75ch";
 }
 
 /// <summary>
@@ -292,6 +365,52 @@ internal class BaseSemanticDark : IThemeSemantic
     public virtual int ZModal    => 1050;
     public virtual int ZToast    => 1070;
     public virtual int ZTooltip  => 1100;
+
+    // ── v2.0 State tokens ─────────────────────────────────────────
+    public virtual string ColorPrimaryActiveBg   => ColorPrimaryActive;
+    public virtual string ColorPrimaryDisabled   => FgDisabled;
+    public virtual string ColorPrimaryDisabledBg => BgMuted;
+    public virtual string ColorPrimarySelectedBg => ColorPrimarySubtle;
+    public virtual string ColorSuccessActiveBg   => ColorSuccessHover;
+    public virtual string ColorSuccessDisabled   => FgDisabled;
+    public virtual string ColorDangerActiveBg    => ColorDangerHover;
+    public virtual string ColorDangerDisabled    => FgDisabled;
+    public virtual string ColorWarningActiveBg   => ColorWarningHover;
+    public virtual string ColorWarningDisabled   => FgDisabled;
+    public virtual string ColorInfoActiveBg      => ColorInfoHover;
+    public virtual string ColorInfoDisabled      => FgDisabled;
+    public virtual string FgPlaceholder          => FgMuted;
+    public virtual string SurfaceHover           => BgSubtle;
+    public virtual string SurfaceActive          => BgMuted;
+    public virtual string SurfaceSelected        => ColorPrimarySubtle;
+    public virtual string BorderHover            => BorderStrong;
+
+    // ── v2.0 Elevation scale (5 levels) ──────────────────────────
+    public virtual string Elevation1 => ShadowXs;
+    public virtual string Elevation2 => ShadowSm;
+    public virtual string Elevation3 => ShadowMd;
+    public virtual string Elevation4 => ShadowLg;
+    public virtual string Elevation5 => ShadowXl;
+
+    // ── v2.0 Motion (Fibonacci ms + easings) ──────────────────────
+    public virtual string MotionInstant   => "89ms";
+    public virtual string MotionFast      => "144ms";
+    public virtual string MotionBase      => "233ms";
+    public virtual string MotionSlow      => "377ms";
+    public virtual string MotionSlower    => "610ms";
+    public virtual string EasingStandard  => "cubic-bezier(0.4, 0, 0.2, 1)";
+    public virtual string EasingEmphasis  => "cubic-bezier(0.2, 0, 0, 1)";
+    public virtual string EasingDecel     => "cubic-bezier(0, 0, 0.2, 1)";
+
+    // ── v2.0 Density (offset multipliers) ─────────────────────────
+    public virtual string DensityCompact     => "-2px";
+    public virtual string DensityComfortable => "0px";
+    public virtual string DensitySpacious    => "+2px";
+
+    // ── v2.0 Measure (ch) ─────────────────────────────────────────
+    public virtual string MeasureNarrow  => "45ch";
+    public virtual string MeasureOptimal => "66ch";
+    public virtual string MeasureWide    => "75ch";
 }
 
 /// <summary>
@@ -415,6 +534,52 @@ internal class BaseDarkConsistent : IThemeSemantic
     public virtual int ZModal    => 1050;
     public virtual int ZToast    => 1070;
     public virtual int ZTooltip  => 1100;
+
+    // ── v2.0 State tokens ─────────────────────────────────────────
+    public virtual string ColorPrimaryActiveBg   => ColorPrimaryActive;
+    public virtual string ColorPrimaryDisabled   => FgDisabled;
+    public virtual string ColorPrimaryDisabledBg => BgMuted;
+    public virtual string ColorPrimarySelectedBg => ColorPrimarySubtle;
+    public virtual string ColorSuccessActiveBg   => ColorSuccessHover;
+    public virtual string ColorSuccessDisabled   => FgDisabled;
+    public virtual string ColorDangerActiveBg    => ColorDangerHover;
+    public virtual string ColorDangerDisabled    => FgDisabled;
+    public virtual string ColorWarningActiveBg   => ColorWarningHover;
+    public virtual string ColorWarningDisabled   => FgDisabled;
+    public virtual string ColorInfoActiveBg      => ColorInfoHover;
+    public virtual string ColorInfoDisabled      => FgDisabled;
+    public virtual string FgPlaceholder          => FgMuted;
+    public virtual string SurfaceHover           => BgSubtle;
+    public virtual string SurfaceActive          => BgMuted;
+    public virtual string SurfaceSelected        => ColorPrimarySubtle;
+    public virtual string BorderHover            => BorderStrong;
+
+    // ── v2.0 Elevation scale (5 levels) ──────────────────────────
+    public virtual string Elevation1 => ShadowXs;
+    public virtual string Elevation2 => ShadowSm;
+    public virtual string Elevation3 => ShadowMd;
+    public virtual string Elevation4 => ShadowLg;
+    public virtual string Elevation5 => ShadowXl;
+
+    // ── v2.0 Motion (Fibonacci ms + easings) ──────────────────────
+    public virtual string MotionInstant   => "89ms";
+    public virtual string MotionFast      => "144ms";
+    public virtual string MotionBase      => "233ms";
+    public virtual string MotionSlow      => "377ms";
+    public virtual string MotionSlower    => "610ms";
+    public virtual string EasingStandard  => "cubic-bezier(0.4, 0, 0.2, 1)";
+    public virtual string EasingEmphasis  => "cubic-bezier(0.2, 0, 0, 1)";
+    public virtual string EasingDecel     => "cubic-bezier(0, 0, 0.2, 1)";
+
+    // ── v2.0 Density (offset multipliers) ─────────────────────────
+    public virtual string DensityCompact     => "-2px";
+    public virtual string DensityComfortable => "0px";
+    public virtual string DensitySpacious    => "+2px";
+
+    // ── v2.0 Measure (ch) ─────────────────────────────────────────
+    public virtual string MeasureNarrow  => "45ch";
+    public virtual string MeasureOptimal => "66ch";
+    public virtual string MeasureWide    => "75ch";
 }
 
 /// <summary>
@@ -539,6 +704,52 @@ internal class BaseLightConsistent : IThemeSemantic
     public virtual int ZModal    => 1050;
     public virtual int ZToast    => 1070;
     public virtual int ZTooltip  => 1100;
+
+    // ── v2.0 State tokens ─────────────────────────────────────────
+    public virtual string ColorPrimaryActiveBg   => ColorPrimaryActive;
+    public virtual string ColorPrimaryDisabled   => FgDisabled;
+    public virtual string ColorPrimaryDisabledBg => BgMuted;
+    public virtual string ColorPrimarySelectedBg => ColorPrimarySubtle;
+    public virtual string ColorSuccessActiveBg   => ColorSuccessHover;
+    public virtual string ColorSuccessDisabled   => FgDisabled;
+    public virtual string ColorDangerActiveBg    => ColorDangerHover;
+    public virtual string ColorDangerDisabled    => FgDisabled;
+    public virtual string ColorWarningActiveBg   => ColorWarningHover;
+    public virtual string ColorWarningDisabled   => FgDisabled;
+    public virtual string ColorInfoActiveBg      => ColorInfoHover;
+    public virtual string ColorInfoDisabled      => FgDisabled;
+    public virtual string FgPlaceholder          => FgMuted;
+    public virtual string SurfaceHover           => BgSubtle;
+    public virtual string SurfaceActive          => BgMuted;
+    public virtual string SurfaceSelected        => ColorPrimarySubtle;
+    public virtual string BorderHover            => BorderStrong;
+
+    // ── v2.0 Elevation scale (5 levels) ──────────────────────────
+    public virtual string Elevation1 => ShadowXs;
+    public virtual string Elevation2 => ShadowSm;
+    public virtual string Elevation3 => ShadowMd;
+    public virtual string Elevation4 => ShadowLg;
+    public virtual string Elevation5 => ShadowXl;
+
+    // ── v2.0 Motion (Fibonacci ms + easings) ──────────────────────
+    public virtual string MotionInstant   => "89ms";
+    public virtual string MotionFast      => "144ms";
+    public virtual string MotionBase      => "233ms";
+    public virtual string MotionSlow      => "377ms";
+    public virtual string MotionSlower    => "610ms";
+    public virtual string EasingStandard  => "cubic-bezier(0.4, 0, 0.2, 1)";
+    public virtual string EasingEmphasis  => "cubic-bezier(0.2, 0, 0, 1)";
+    public virtual string EasingDecel     => "cubic-bezier(0, 0, 0.2, 1)";
+
+    // ── v2.0 Density (offset multipliers) ─────────────────────────
+    public virtual string DensityCompact     => "-2px";
+    public virtual string DensityComfortable => "0px";
+    public virtual string DensitySpacious    => "+2px";
+
+    // ── v2.0 Measure (ch) ─────────────────────────────────────────
+    public virtual string MeasureNarrow  => "45ch";
+    public virtual string MeasureOptimal => "66ch";
+    public virtual string MeasureWide    => "75ch";
 }
 
 /// <summary>
@@ -553,30 +764,129 @@ internal class BaseComponents : IThemeComponents
     public virtual string BtnHeight     => "30px";
     public virtual string BtnHeightSm   => "24px";
     public virtual string BtnHeightLg   => "36px";
+    public virtual string BtnPaddingX   => "8px";
+    public virtual string BtnPaddingY   => "3px";
+    public virtual string BtnGap        => "3px";
+    public virtual string BtnIconSize   => "12px";
+    public virtual string BtnMinWidth   => "55px";
 
-    public virtual string InputRadius   => "3px";    // fib-1
-    public virtual string InputFontSize => "0.8125rem";
-    public virtual string InputHeight   => "30px";
-    public virtual string InputHeightSm => "24px";
-    public virtual string InputHeightLg => "36px";
+    public virtual string InputRadius      => "3px";    // fib-1
+    public virtual string InputFontSize    => "0.8125rem";
+    public virtual string InputHeight      => "30px";
+    public virtual string InputHeightSm    => "24px";
+    public virtual string InputHeightLg    => "36px";
+    public virtual string InputPaddingX    => "5px";
+    public virtual string InputPaddingY    => "3px";
+    public virtual string InputBorderWidth => "1px";
+    public virtual string InputIconSize    => "12px";
 
-    public virtual string CardRadius      => "5px";  // fib-2
-    public virtual string CardPadding     => "8px";  // fib-3
-    public virtual string CardBorderColor => "var(--sg-border)";
-    public virtual string CardBg          => "var(--sg-surface)";
+    public virtual string SelectRadius   => "3px";
+    public virtual string SelectFontSize => "0.8125rem";
+    public virtual string SelectHeight   => "30px";
+    public virtual string SelectHeightSm => "24px";
+    public virtual string SelectHeightLg => "36px";
+    public virtual string SelectPaddingX => "5px";
+    public virtual string SelectIconSize => "12px";
 
-    public virtual string ModalRadius => "8px";     // fib-3
+    public virtual string CheckboxSize        => "13px";
+    public virtual string CheckboxSizeSm      => "8px";
+    public virtual string CheckboxSizeLg      => "21px";
+    public virtual string CheckboxRadius      => "2px";
+    public virtual string CheckboxIconSize    => "8px";
+    public virtual string CheckboxBorderWidth => "1px";
 
-    public virtual string TableRadius          => "5px";   // fib-2
-    public virtual string TableHeaderFontWeight => "600";
+    public virtual string SwitchWidth     => "34px";
+    public virtual string SwitchHeight    => "21px";
+    public virtual string SwitchThumbSize => "13px";
+    public virtual string SwitchRadius    => "9999px";
+    public virtual string SwitchPadding   => "2px";
+
+    public virtual string CardRadius            => "5px";  // fib-2
+    public virtual string CardPadding           => "8px";  // fib-3
+    public virtual string CardPaddingSm         => "5px";
+    public virtual string CardPaddingLg         => "13px";
+    public virtual string CardBorderColor       => "var(--sg-border)";
+    public virtual string CardBg                => "var(--sg-surface)";
+    public virtual string CardHeaderFontWeight  => "600";
+    public virtual string CardGap               => "5px";
+
+    public virtual string ModalRadius        => "8px";     // fib-3
+    public virtual string ModalWidth         => "377px";   // fib-13
+    public virtual string ModalWidthSm       => "233px";
+    public virtual string ModalWidthLg       => "610px";
+    public virtual string ModalWidthXl       => "987px";
+    public virtual string ModalPadding       => "13px";
+    public virtual string ModalBackdropBlur  => "5px";
+
+    public virtual string DropdownRadius       => "5px";
+    public virtual string DropdownPadding      => "3px";
+    public virtual string DropdownItemHeight   => "21px";
+    public virtual string DropdownItemPaddingX => "8px";
+    public virtual string DropdownItemPaddingY => "0";
+    public virtual string DropdownGap          => "2px";
+
+    public virtual string TooltipMaxWidth  => "233px";
+    public virtual string TooltipRadius    => "3px";
+    public virtual string TooltipPadding   => "5px 8px";
+    public virtual string TooltipFontSize  => "0.75rem";
+    public virtual string TooltipArrowSize => "3px";
 
     public virtual string TabsIndicatorHeight => "2px";
-    public virtual string TooltipMaxWidth     => "240px";
+    public virtual string TabsRadius          => "3px";
+    public virtual string TabsHeight          => "34px";
+    public virtual string TabsPaddingX        => "8px";
+    public virtual string TabsPaddingY        => "0";
+    public virtual string TabsGap             => "2px";
 
-    public virtual string HeaderBg    => "var(--sg-bg)";
-    public virtual string HeaderFg    => "var(--sg-fg)";
-    public virtual string NavBg       => "var(--sg-bg-subtle)";
-    public virtual string NavFg       => "var(--sg-fg-subtle)";
-    public virtual string NavActiveBg => "var(--sg-bg-subtle)";
-    public virtual string NavActiveFg => "var(--sg-color-primary)";
+    public virtual string TableRadius             => "5px";   // fib-2
+    public virtual string TableHeaderFontWeight   => "600";
+    public virtual string TableRowHeight          => "34px";
+    public virtual string TableRowHeightSm        => "21px";
+    public virtual string TableHeaderHeight       => "34px";
+    public virtual string TableCellPaddingX       => "8px";
+    public virtual string TableCellPaddingY       => "0";
+    public virtual string TableBorderWidth        => "1px";
+
+    public virtual string AlertRadius     => "5px";
+    public virtual string AlertPadding    => "8px 13px";
+    public virtual string AlertPaddingSm  => "5px 8px";
+    public virtual string AlertIconSize   => "13px";
+    public virtual string AlertGap        => "8px";
+
+    public virtual string BadgeRadius     => "9999px";
+    public virtual string BadgeHeight     => "13px";
+    public virtual string BadgeHeightSm   => "8px";
+    public virtual string BadgeHeightLg   => "21px";
+    public virtual string BadgePaddingX   => "5px";
+    public virtual string BadgeFontSize   => "0.625rem";
+    public virtual string BadgeFontWeight => "600";
+
+    public virtual string ChipRadius     => "9999px";
+    public virtual string ChipHeight     => "21px";
+    public virtual string ChipHeightSm   => "13px";
+    public virtual string ChipHeightLg   => "34px";
+    public virtual string ChipPaddingX   => "8px";
+    public virtual string ChipGap        => "3px";
+    public virtual string ChipIconSize   => "8px";
+
+    public virtual string SpinnerSize         => "13px";
+    public virtual string SpinnerSizeSm       => "8px";
+    public virtual string SpinnerSizeLg       => "21px";
+    public virtual string SpinnerBorderWidth  => "1px";
+    public virtual string SpinnerTrackOpacity => "0.2";
+
+    public virtual string ProgressHeight          => "5px";
+    public virtual string ProgressHeightSm        => "2px";
+    public virtual string ProgressHeightLg        => "8px";
+    public virtual string ProgressRadius          => "9999px";
+    public virtual string ProgressIndicatorRadius => "9999px";
+
+    public virtual string HeaderBg         => "var(--sg-bg)";
+    public virtual string HeaderFg         => "var(--sg-fg)";
+    public virtual string NavBg            => "var(--sg-bg-subtle)";
+    public virtual string NavFg            => "var(--sg-fg-subtle)";
+    public virtual string NavActiveBg      => "var(--sg-bg-subtle)";
+    public virtual string NavActiveFg      => "var(--sg-color-primary)";
+    public virtual string NavItemHeight     => "34px";
+    public virtual string NavItemPaddingX  => "8px";
 }

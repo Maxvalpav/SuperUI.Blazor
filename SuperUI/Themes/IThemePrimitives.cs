@@ -54,6 +54,8 @@ public interface IThemePrimitives
     string FontSans { get; }
     string FontMono { get; }
     string FontSerif { get; }
+    string FontDisplay { get; }
+    string FontMedical { get; }
 
     string RadiusNone { get; }
     string RadiusXs { get; }
@@ -63,4 +65,29 @@ public interface IThemePrimitives
     string RadiusXl { get; }
     string Radius2Xl { get; }
     string RadiusFull { get; }
+
+    // ── v2.0 Organic proportional additions ────────────────────────
+
+    /// <summary>Fibonacci spacing scale (px). Defaults: 0/2/3/5/8/13/21/34/55/89.</summary>
+    string Spacing0 { get; }
+    string Spacing1 { get; }
+    string Spacing2 { get; }
+    string Spacing3 { get; }
+    string Spacing4 { get; }
+    string Spacing5 { get; }
+    string Spacing6 { get; }
+    string Spacing7 { get; }
+    string Spacing8 { get; }
+
+    /// <summary>Icon size scale (px). Defaults: sm=12, md=16, lg=20, xl=24, 2xl=32.</summary>
+    string IconSizeSm { get; }
+    string IconSizeMd { get; }
+    string IconSizeLg { get; }
+    string IconSizeXl { get; }
+    string IconSize2Xl { get; }
+
+    /// <summary>Border-width scale. Defaults: default=1, strong=2, accent=3.</summary>
+    string BorderWidthDefault { get; }
+    string BorderWidthStrong { get; }
+    string BorderWidthAccent { get; }
 }

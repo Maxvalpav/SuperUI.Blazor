@@ -103,4 +103,58 @@ public interface IThemeSemantic
     int ZModal { get; }
     int ZToast { get; }
     int ZTooltip { get; }
+
+    // ── v2.0 Organic proportional additions ────────────────────────
+
+    // State tokens (per primary/success/danger/warning/info).
+    string ColorPrimaryActiveBg { get; }
+    string ColorPrimaryDisabled { get; }
+    string ColorPrimaryDisabledBg { get; }
+    string ColorPrimarySelectedBg { get; }
+
+    string ColorSuccessActiveBg { get; }
+    string ColorSuccessDisabled { get; }
+
+    string ColorDangerActiveBg { get; }
+    string ColorDangerDisabled { get; }
+
+    string ColorWarningActiveBg { get; }
+    string ColorWarningDisabled { get; }
+
+    string ColorInfoActiveBg { get; }
+    string ColorInfoDisabled { get; }
+
+    // Interactive state for fg/border/surface.
+    string FgPlaceholder { get; }
+    string SurfaceHover { get; }
+    string SurfaceActive { get; }
+    string SurfaceSelected { get; }
+    string BorderHover { get; }
+
+    // Elevation scale.
+    string Elevation1 { get; }
+    string Elevation2 { get; }
+    string Elevation3 { get; }
+    string Elevation4 { get; }
+    string Elevation5 { get; }
+
+    // Motion (Fibonacci ms).
+    string MotionInstant { get; }
+    string MotionFast { get; }
+    string MotionBase { get; }
+    string MotionSlow { get; }
+    string MotionSlower { get; }
+    string EasingStandard { get; }
+    string EasingEmphasis { get; }
+    string EasingDecel { get; }
+
+    // Density multipliers.
+    string DensityCompact { get; }
+    string DensityComfortable { get; }
+    string DensitySpacious { get; }
+
+    // Measure (ch).
+    string MeasureNarrow { get; }
+    string MeasureOptimal { get; }
+    string MeasureWide { get; }
 }
