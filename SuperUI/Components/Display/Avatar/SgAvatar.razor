@@ -10,6 +10,8 @@
       title="@Title"
       style="@BuildStyle()"
       @onclick="HandleClickAsync"
+      @onkeydown="HandleKeyDownAsync"
+      @onkeydown:preventDefault="@(Clickable && !Disabled)"
       @attributes="AdditionalAttributes">
 
     @if (Loading)
@@ -22,7 +24,8 @@
              alt="@(Title ?? "")"
              loading="lazy"
              decoding="async"
-             draggable="false" />
+             draggable="false"
+             @onerror="HandleImageError" />
     }
     else if (!string.IsNullOrEmpty(ComputedInitials))
     {
@@ -171,8 +174,8 @@
         if (string.IsNullOrWhiteSpace(name)) return "";
         var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return "";
-        if (parts.Length == 1) return parts[0][0].ToString().ToUpper();
-        return (parts[0][0].ToString() + parts[1][0].ToString()).ToUpper();
+        if (parts.Length == 1) return parts[0][0].ToString().ToUpperInvariant();
+        return (parts[0][0].ToString() + parts[1][0].ToString()).ToUpperInvariant();
     }
 
     private string BuildStyle()
@@ -180,10 +183,12 @@
         var sb = new System.Text.StringBuilder();
         if (PixelSize.HasValue)
         {
-            sb.Append($"width:{PixelSize.Value}px;height:{PixelSize.Value}px;font-size:{PixelSize.Value / 2.5}px;");
+            var px = PixelSize.Value;
+            var fs = px / 2.5;
+            sb.Append(FormattableString.Invariant($"width:{px}px;height:{px}px;font-size:{fs}px;"));
         }
-        if (!string.IsNullOrEmpty(Color)) sb.Append($"background-color:{Color};");
-        if (!string.IsNullOrEmpty(TextColor)) sb.Append($"color:{TextColor};");
+        if (!string.IsNullOrEmpty(Color)) sb.Append(FormattableString.Invariant($"background-color:{Color};"));
+        if (!string.IsNullOrEmpty(TextColor)) sb.Append(FormattableString.Invariant($"color:{TextColor};"));
         if (!string.IsNullOrEmpty(Style)) sb.Append(Style);
         return sb.ToString();
     }
@@ -191,5 +196,20 @@
     private async Task HandleClickAsync(MouseEventArgs e)
     {
         if (!Disabled && OnClick.HasDelegate) await OnClick.InvokeAsync(e);
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled || !Clickable) return;
+        if ((e.Key == "Enter" || e.Key == " ") && OnClick.HasDelegate)
+        {
+            await OnClick.InvokeAsync(new MouseEventArgs());
+        }
+    }
+
+    private void HandleImageError(ErrorEventArgs _)
+    {
+        ImageUrl = null;
+        StateHasChanged();
     }
 }
