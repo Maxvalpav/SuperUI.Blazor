@@ -1,7 +1,9 @@
 @namespace SuperUI.Components
 @using SuperUI.Enums
+@using SuperUI.Base.Utilities
 @inherits SgInputBase<bool>
 @inject IJSRuntime JS
+@inject SgJsModuleCache ModuleCache
 
 <div class="sgc-check-field @(Block ? "sgc-block" : "") @(Tile ? "sgc-check-tile-wrapper" : "") @CssClass">
     <label class="sgc-check @(Disabled ? "sgc-disabled" : "") @(ReadOnly ? "sgc-readonly" : "") @(Indeterminate ? "sgc-indeterminate" : "") @(IsInvalid ? "sgc-check-invalid" : "") @(Animation ? "sgc-check-animated" : "") @(Ripple ? "sgc-check-ripple" : "") @SizeClass @(Tile ? "sgc-check-tile" : "")"
@@ -39,7 +41,6 @@
     private ElementReference _inputRef;
     private IJSObjectReference? _module;
     private bool _lastIndeterminate;
-    private bool _isDisposed;
 
     /// <summary>Label text shown next to the checkbox. Ignored when <see cref="ChildContent"/> is set.</summary>
     [Parameter] public string? Label { get; set; }
@@ -120,7 +121,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_isDisposed) return;
+        if (_disposed) return;
         if (firstRender || _lastIndeterminate != Indeterminate)
         {
             _lastIndeterminate = Indeterminate;
@@ -132,12 +133,14 @@
     {
         try
         {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
-            if (_isDisposed) return;
+            _module ??= await ModuleCache.GetAsync(JS, "./_content/SuperUI/superui.js");
+            if (_disposed) return;
             await _module.InvokeVoidAsync("setIndeterminate", _inputRef, Indeterminate);
         }
-        catch (JSException) { }
+        catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (JSException) { }
     }
 
     private async Task OnChangeAsync(ChangeEventArgs e)
@@ -159,11 +162,9 @@
         if (OnChange.HasDelegate) await OnChange.InvokeAsync(newVal);
     }
 
-    public override void Dispose()
+    public override ValueTask DisposeAsync()
     {
-        _isDisposed = true;
-        if (_module is not null)
-            _ = _module.DisposeAsync();
-        base.Dispose();
+        _module = null;
+        return base.DisposeAsync();
     }
 }
