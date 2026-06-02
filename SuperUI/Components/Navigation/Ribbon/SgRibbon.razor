@@ -1,8 +1,10 @@
 @namespace SuperUI.Components
+@inject IJSRuntime JS
 
 <div class="sgc-ribbon @(Collapsed ? "sgc-ribbon-collapsed" : "") @(Animate ? "sgc-ribbon-animated" : "") @CssClass"
      role="toolbar"
-     aria-label="@(AriaLabel ?? "Ribbon")">
+     aria-label="@(AriaLabel ?? "Ribbon")"
+     dir="@(Rtl ? "rtl" : "ltr")">
 
     @* Render ChildContent invisibly so SgRibbonTab children can register themselves *@
     <div style="display:none" aria-hidden="true">
@@ -13,25 +15,57 @@
 
     @* ── Tab bar ── *@
     <div class="sgc-ribbon-tabbar" role="tablist">
-        @foreach (var (tab, idx) in _tabs.Select((t, i) => (t, i)))
+        @* Left scroll arrow (CSS-only — visible when scroll position > 0) *@
+        @if (ShowScrollArrows)
         {
-            var t = tab;
             <button type="button"
-                    class="sgc-ribbon-tab @(_activeTab == t ? "sgc-ribbon-tab-active" : "") @(t.Highlight ? "sgc-ribbon-tab-highlight" : "")"
-                    role="tab"
-                    aria-selected="@(_activeTab == t ? "true" : "false")"
-                    aria-controls="@($"ribbon-panel-{t.Id}")"
-                    disabled="@t.Disabled"
-                    @onclick="() => ActivateTab(t, idx)">
-                @if (!string.IsNullOrEmpty(t.Icon))
-                {
-                    <span class="sgc-ribbon-tab-icon">@((MarkupString)t.Icon)</span>
-                }
-                <span class="sgc-ribbon-tab-text">@t.Title</span>
-                @if (!string.IsNullOrEmpty(t.Badge))
-                {
-                    <span class="sgc-ribbon-tab-badge @t.BadgeVariantClass">@t.Badge</span>
-                }
+                    class="sgc-ribbon-scroll-btn sgc-ribbon-scroll-btn-left"
+                    aria-label="Scroll tabs left"
+                    @onclick="ScrollTabsLeft">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            </button>
+        }
+
+        <div class="sgc-ribbon-tabs-scroll" @ref="_tabsScrollRef">
+            @foreach (var (tab, idx) in _visibleTabs.Select((t, i) => (t, i)))
+            {
+                var t = tab;
+                <button type="button"
+                        class="sgc-ribbon-tab @(_activeTab == t ? "sgc-ribbon-tab-active" : "") @(t.Highlight ? "sgc-ribbon-tab-highlight" : "") @t.CssClass"
+                        role="tab"
+                        aria-selected="@(_activeTab == t ? "true" : "false")"
+                        aria-controls="@($"ribbon-panel-{t.Id}")"
+                        disabled="@t.Disabled"
+                        @onclick="() => ActivateTab(t, idx)">
+                    @if (!string.IsNullOrEmpty(t.Icon))
+                    {
+                        <span class="sgc-ribbon-tab-icon">@((MarkupString)t.Icon)</span>
+                    }
+                    <span class="sgc-ribbon-tab-text">@t.Title</span>
+                    @if (!string.IsNullOrEmpty(t.Badge))
+                    {
+                        <span class="sgc-ribbon-tab-badge @t.BadgeVariantClass">@t.Badge</span>
+                    }
+                    @if (!string.IsNullOrEmpty(t.KeyTip))
+                    {
+                        <span class="sgc-ribbon-keytip" aria-hidden="true">@t.KeyTip</span>
+                    }
+                </button>
+            }
+        </div>
+
+        @* Right scroll arrow *@
+        @if (ShowScrollArrows)
+        {
+            <button type="button"
+                    class="sgc-ribbon-scroll-btn sgc-ribbon-scroll-btn-right"
+                    aria-label="Scroll tabs right"
+                    @onclick="ScrollTabsRight">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
             </button>
         }
 
@@ -73,6 +107,9 @@
     private readonly List<SgRibbonTab> _tabs = new();
     private SgRibbonTab? _activeTab;
     private int _activeTabIndex = -1;
+    private ElementReference _tabsScrollRef;
+
+    private IEnumerable<SgRibbonTab> _visibleTabs => _tabs.Where(t => t.Visible);
 
     // ── Parameters ────────────────────────────────────────────────────────────
 
@@ -90,6 +127,9 @@
 
     /// <summary>When true, the ribbon content panel is hidden (only tab bar visible).</summary>
     [Parameter] public bool Collapsed { get; set; }
+
+    /// <summary>One-way initial collapsed state. Use Collapsed/CollapsedChanged for two-way binding.</summary>
+    [Parameter] public bool DefaultCollapsed { get; set; }
 
     /// <summary>Callback when Collapsed state changes.</summary>
     [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
@@ -118,6 +158,25 @@
     /// <summary>Optional content rendered on the far-right of the tab bar.</summary>
     [Parameter] public RenderFragment? TabBarFarContent { get; set; }
 
+    /// <summary>Callback fired BEFORE a tab switch — can be cancelled by setting args.Cancel = true.</summary>
+    [Parameter] public EventCallback<SgRibbonTabSelectingEventArgs> OnTabSelecting { get; set; }
+
+    /// <summary>When true, left/right scroll arrows are shown if tabs overflow. Default true.</summary>
+    [Parameter] public bool ShowScrollArrows { get; set; } = true;
+
+    /// <summary>When true, switches the ribbon to right-to-left layout (affects scroll arrows + far-content).</summary>
+    [Parameter] public bool Rtl { get; set; }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        if (DefaultCollapsed && !Collapsed)
+        {
+            Collapsed = true;
+        }
+    }
+
     // ── Internal API for child tabs ───────────────────────────────────────────
 
     internal void RegisterTab(SgRibbonTab tab)
@@ -125,7 +184,7 @@
         if (!_tabs.Contains(tab))
         {
             _tabs.Add(tab);
-            if (_activeTab is null && !tab.Disabled)
+            if (_activeTab is null && !tab.Disabled && tab.Visible)
             {
                 _activeTab = tab;
                 _activeTabIndex = _tabs.Count - 1;
@@ -140,7 +199,7 @@
         _tabs.Remove(tab);
         if (_activeTab == tab)
         {
-            _activeTab = _tabs.FirstOrDefault(t => !t.Disabled);
+            _activeTab = _visibleTabs.FirstOrDefault(t => !t.Disabled);
             _activeTabIndex = _activeTab is not null ? _tabs.IndexOf(_activeTab) : -1;
         }
         else if (idx < _activeTabIndex)
@@ -150,20 +209,52 @@
         StateHasChanged();
     }
 
-    private void ActivateTab(SgRibbonTab tab, int index)
+    /// <summary>Called by <see cref="SgRibbonTab"/> when its <c>Visible</c> parameter changes.</summary>
+    internal void NotifyTabVisibilityChanged(SgRibbonTab tab, bool visible)
+    {
+        if (!visible && _activeTab == tab)
+        {
+            _activeTab = _visibleTabs.FirstOrDefault(t => !t.Disabled && t != tab);
+            _activeTabIndex = _activeTab is not null ? _tabs.IndexOf(_activeTab) : -1;
+        }
+        else if (visible && _activeTab is null)
+        {
+            _activeTab = tab;
+            _activeTabIndex = _tabs.IndexOf(tab);
+        }
+        StateHasChanged();
+    }
+
+    private async Task ActivateTab(SgRibbonTab tab, int index)
     {
         if (tab.Disabled) return;
+
         if (_activeTab == tab && AllowCollapse)
         {
-            _ = ToggleCollapse();
+            await ToggleCollapse();
             return;
         }
+
+        if (OnTabSelecting.HasDelegate)
+        {
+            var args = new SgRibbonTabSelectingEventArgs
+            {
+                Tab = tab,
+                OldTab = _activeTab,
+                NewIndex = _tabs.IndexOf(tab),
+                OldIndex = _activeTab is null ? -1 : _tabs.IndexOf(_activeTab),
+                Cancel = false
+            };
+            await OnTabSelecting.InvokeAsync(args);
+            if (args.Cancel) return;
+        }
+
         _activeTab = tab;
         _activeTabIndex = index;
         if (ActiveTabIndexChanged.HasDelegate)
-            _ = ActiveTabIndexChanged.InvokeAsync(index);
+            await ActiveTabIndexChanged.InvokeAsync(index);
         if (Collapsed)
-            _ = SetCollapsed(false);
+            await SetCollapsed(false);
     }
 
     private async Task ToggleCollapse()
@@ -184,6 +275,24 @@
     {
         var idx = _tabs.FindIndex(t => t.Title == title);
         if (idx >= 0)
-            ActivateTab(_tabs[idx], idx);
+            _ = ActivateTab(_tabs[idx], idx);
+    }
+
+    private async Task ScrollTabsLeft()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", $"document.querySelector('.sgc-ribbon-tabs-scroll[data-rid=\"{_tabsScrollRef.Id}\"]')?.scrollBy({{left:-120,behavior:'smooth'}})");
+        }
+        catch { /* JS not available in some render modes */ }
+    }
+
+    private async Task ScrollTabsRight()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", $"document.querySelector('.sgc-ribbon-tabs-scroll[data-rid=\"{_tabsScrollRef.Id}\"]')?.scrollBy({{left:120,behavior:'smooth'}})");
+        }
+        catch { /* JS not available in some render modes */ }
     }
 }

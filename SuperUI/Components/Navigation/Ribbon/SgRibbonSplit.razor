@@ -2,7 +2,7 @@
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 
-<div class="sgc-ribbon-split @SizeClass @(Disabled ? "sgc-ribbon-btn-disabled" : "") @CssClass"
+<div class="sgc-ribbon-split @SizeClass @PlacementClass @(Disabled ? "sgc-ribbon-btn-disabled" : "") @(!Visible ? "sgc-ribbon-btn-hidden" : "") @CssClass"
      @onkeydown="HandleKeyDown"
      @onfocusout:stopPropagation="true"
      @onclick:stopPropagation="true">
@@ -19,6 +19,10 @@
         @if (!string.IsNullOrEmpty(Text))
         {
             <span class="sgc-ribbon-btn-text">@Text</span>
+        }
+        @if (!string.IsNullOrEmpty(KeyTip))
+        {
+            <span class="sgc-ribbon-keytip" aria-hidden="true">@KeyTip</span>
         }
     </button>
 
@@ -60,11 +64,26 @@
     /// <summary>Button display size. Default is <see cref="SgRibbonButtonSize.Large"/>.</summary>
     [Parameter] public SgRibbonButtonSize Size { get; set; } = SgRibbonButtonSize.Large;
 
+    /// <summary>Where the dropdown opens relative to the button. Default <see cref="SgRibbonSplitPlacement.BottomEnd"/>.</summary>
+    [Parameter] public SgRibbonSplitPlacement Placement { get; set; } = SgRibbonSplitPlacement.BottomEnd;
+
     /// <summary>When true, the button is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
 
+    /// <summary>When false, the button is hidden.</summary>
+    [Parameter] public bool Visible { get; set; } = true;
+
+    /// <summary>Single-letter Alt+key shortcut for the main action.</summary>
+    [Parameter] public string? KeyTip { get; set; }
+
+    /// <summary>Single-letter Alt+key shortcut for the dropdown arrow.</summary>
+    [Parameter] public string? KeyTipArrow { get; set; }
+
     /// <summary>Main action click callback.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>Called when a child <c>SgRibbonMenuItem</c> inside <see cref="DropdownContent"/> is clicked.</summary>
+    [Parameter] public EventCallback<SgRibbonMenuItem> OnSelect { get; set; }
 
     /// <summary>Content rendered inside the dropdown menu.</summary>
     [Parameter] public RenderFragment? DropdownContent { get; set; }
@@ -77,6 +96,15 @@
         SgRibbonButtonSize.Small => "sgc-ribbon-btn-sm",
         SgRibbonButtonSize.Medium => "sgc-ribbon-btn-md",
         _ => "sgc-ribbon-btn-lg"
+    };
+
+    private string PlacementClass => Placement switch
+    {
+        SgRibbonSplitPlacement.BottomStart => "sgc-ribbon-split-placement-bottom-start",
+        SgRibbonSplitPlacement.Bottom      => "sgc-ribbon-split-placement-bottom",
+        SgRibbonSplitPlacement.RightStart  => "sgc-ribbon-split-placement-right-start",
+        SgRibbonSplitPlacement.RightEnd    => "sgc-ribbon-split-placement-right-end",
+        _                                  => "sgc-ribbon-split-placement-bottom-end"
     };
 
     private async Task OnMainClickAsync(MouseEventArgs e)
@@ -101,5 +129,6 @@
         }
     }
 
-
+    /// <summary>Closes the dropdown (called by parent ribbon or by child menu items via cascading parameter).</summary>
+    internal void CloseDropdown() => _open = false;
 }

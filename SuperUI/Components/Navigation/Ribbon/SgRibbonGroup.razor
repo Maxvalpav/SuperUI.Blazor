@@ -1,17 +1,35 @@
 @namespace SuperUI.Components
+@using SuperUI.Enums
 
-<div class="sgc-ribbon-group @CssClass" role="group" aria-label="@Title">
+<div class="sgc-ribbon-group @OrientationClass @CollapsedClass @CssClass" role="group" aria-label="@Title" aria-expanded="@(Collapsible ? (!Collapsed).ToString().ToLowerInvariant() : null)">
     <div class="sgc-ribbon-group-body">
         @ChildContent
     </div>
-    @if (!string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Icon))
+    @if (Collapsible || !string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Icon))
     {
-        <div class="sgc-ribbon-group-label">
+        <div class="sgc-ribbon-group-label @(Collapsible ? "sgc-ribbon-group-label-clickable" : "")"
+             role="@(Collapsible ? "button" : null)"
+             tabindex="@(Collapsible ? "0" : null)"
+             @onclick="OnLabelClick"
+             @onkeydown="OnLabelKeyDown">
             @if (!string.IsNullOrEmpty(Icon))
             {
                 <span class="sgc-ribbon-group-label-icon">@((MarkupString)Icon)</span>
             }
             <span class="sgc-ribbon-group-label-text">@Title</span>
+            @if (LauncherClick.HasDelegate)
+            {
+                <button type="button"
+                        class="sgc-ribbon-group-launcher"
+                        title="More options"
+                        aria-label="@($"Open {Title} dialog")"
+                        @onclick="OnLauncherClick"
+                        @onclick:stopPropagation="true">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M7 17L17 7M17 7H7M17 7V17" />
+                    </svg>
+                </button>
+            }
         </div>
     }
 </div>
@@ -23,9 +41,63 @@
     /// <summary>Optional SVG icon shown before the group label.</summary>
     [Parameter] public string? Icon { get; set; }
 
+    /// <summary>Layout direction for items inside the group. Default <see cref="SgOrientation.Horizontal"/>.</summary>
+    [Parameter] public SgOrientation Orientation { get; set; } = SgOrientation.Horizontal;
+
+    /// <summary>When true, the group can be collapsed/expanded by clicking the label.</summary>
+    [Parameter] public bool Collapsible { get; set; }
+
+    /// <summary>When true, the group is collapsed (body hidden).</summary>
+    [Parameter] public bool Collapsed { get; set; }
+
+    /// <summary>Two-way binding callback for <see cref="Collapsed"/>.</summary>
+    [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
+
+    /// <summary>Callback fired when the launcher (small ↗) icon is clicked. When set, the icon is shown on hover.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> LauncherClick { get; set; }
+
+    /// <summary>Text used in the overflow popup (reserved for future use).</summary>
+    [Parameter] public string? OverflowText { get; set; }
+
     /// <summary>Content — should contain <see cref="SgRibbonButton"/>, <see cref="SgRibbonSplit"/>, or <see cref="SgRibbonSeparator"/> components.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>Additional CSS class.</summary>
     [Parameter] public string? CssClass { get; set; }
+
+    private string OrientationClass => Orientation switch
+    {
+        SgOrientation.Vertical => "sgc-ribbon-group-orient-vertical",
+        _ => "sgc-ribbon-group-orient-horizontal"
+    };
+
+    private string CollapsedClass => Collapsed ? "sgc-ribbon-group-collapsed" : "";
+
+    private async Task OnLabelClick(MouseEventArgs e)
+    {
+        if (!Collapsible) return;
+        await ToggleCollapsed();
+    }
+
+    private async Task OnLabelKeyDown(KeyboardEventArgs e)
+    {
+        if (!Collapsible) return;
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            await ToggleCollapsed();
+        }
+    }
+
+    private async Task OnLauncherClick(MouseEventArgs e)
+    {
+        if (LauncherClick.HasDelegate)
+            await LauncherClick.InvokeAsync(e);
+    }
+
+    private async Task ToggleCollapsed()
+    {
+        Collapsed = !Collapsed;
+        if (CollapsedChanged.HasDelegate)
+            await CollapsedChanged.InvokeAsync(Collapsed);
+    }
 }
