@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -15,6 +16,8 @@ public sealed class SgRowContext
     public string? RowGutter { get; init; }
     public string? ColumnGutter { get; init; }
     public int Columns { get; init; } = 12;
+    public SgDensity Density { get; init; } = SgDensity.Default;
+    public string? ItemWidth { get; init; }
 }
 
 /// <summary>
@@ -43,6 +46,12 @@ public partial class SgRow : ComponentBase
     /// <summary>Gutter size from theme. If set, overrides <see cref="Gutter"/>.</summary>
     [Parameter] public SgSize? Space { get; set; }
 
+    /// <summary>
+    /// Density preset affecting gutter scale. <c>Compact</c> = 0.5×, <c>Default</c> = 1×,
+    /// <c>Comfortable</c> = 1.5×. Applied to <see cref="Gutter"/>/<see cref="RowGutter"/>/<see cref="ColumnGutter"/>.
+    /// </summary>
+    [Parameter] public SgDensity Density { get; set; } = SgDensity.Default;
+
     /// <summary>Cross-axis alignment. Default <see cref="SgAlignItems.Stretch"/>.</summary>
     [Parameter] public SgAlignItems Align { get; set; } = SgAlignItems.Stretch;
 
@@ -61,11 +70,25 @@ public partial class SgRow : ComponentBase
     /// <summary>Main-axis direction. Wins over <see cref="Reverse"/> when set explicitly.</summary>
     [Parameter] public SgFlexDirection? Direction { get; set; }
 
+    /// <summary>Responsive direction for the xs breakpoint.</summary>
+    [Parameter] public SgFlexDirection? DirectionXs { get; set; }
+    /// <summary>Responsive direction for the sm breakpoint (≥576px).</summary>
+    [Parameter] public SgFlexDirection? DirectionSm { get; set; }
+    /// <summary>Responsive direction for the md breakpoint (≥768px).</summary>
+    [Parameter] public SgFlexDirection? DirectionMd { get; set; }
+    /// <summary>Responsive direction for the lg breakpoint (≥992px).</summary>
+    [Parameter] public SgFlexDirection? DirectionLg { get; set; }
+    /// <summary>Responsive direction for the xl breakpoint (≥1200px).</summary>
+    [Parameter] public SgFlexDirection? DirectionXl { get; set; }
+
     /// <summary>Render as inline-flex instead of block flex.</summary>
     [Parameter] public bool Inline { get; set; }
 
     /// <summary>Stretch the row to 100% width of its parent. Default <c>true</c>.</summary>
     [Parameter] public bool FullWidth { get; set; } = true;
+
+    /// <summary>Stretch the row to 100% height of its parent. Default <c>false</c>.</summary>
+    [Parameter] public bool FullHeight { get; set; }
 
     /// <summary>Optional CSS min-height for the row.</summary>
     [Parameter] public string? MinHeight { get; set; }
@@ -85,8 +108,36 @@ public partial class SgRow : ComponentBase
     /// <summary>If <c>true</c>, shows pointer cursor on hover.</summary>
     [Parameter] public bool Clickable { get; set; }
 
-    /// <summary>HTML tag to render. Default <c>div</c>. Allowed: <c>div, section, header, footer, nav, main, ul</c>.</summary>
-    [Parameter] public string Tag { get; set; } = "div";
+    /// <summary>
+    /// Fixed (or <c>minmax(...)</c>) width of each column when used in auto-fit mode.
+    /// Example: <c>"240px"</c> or <c>"minmax(200px, 1fr)"</c>. When set, the row
+    /// packs as many columns as fit and stretches each to <c>ItemWidth</c>;
+    /// child <see cref="SgCol"/>s may use <c>AutoFit="true"</c> for matching behaviour.
+    /// </summary>
+    [Parameter] public string? ItemWidth { get; set; }
+
+    /// <summary>HTML tag to render. Default <see cref="SgRowTag.Div"/>.</summary>
+    [Parameter] public SgRowTag Tag { get; set; } = SgRowTag.Div;
+
+    /// <summary>
+    /// Legacy: HTML tag to render as a string.
+    /// Accepted values: <c>div, section, header, footer, nav, main, ul, article, aside</c>.
+    /// Kept for backward compatibility; new code should use <see cref="Tag"/>.
+    /// </summary>
+    [Obsolete("Use the strongly-typed Tag parameter (SgRowTag) instead.")]
+    [Parameter]
+    public string? TagName
+    {
+        get => null;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            if (Enum.TryParse<SgRowTag>(value, ignoreCase: true, out var parsed))
+            {
+                Tag = parsed;
+            }
+        }
+    }
 
     /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
@@ -103,14 +154,47 @@ public partial class SgRow : ComponentBase
 
     protected override void OnParametersSet()
     {
+        // Honour the obsolete string-based Tag parameter only if the user set it
+        // (and the new enum Tag wasn't explicitly provided).
+        if (AdditionalAttributes is null) { /* no-op */ }
         _context = new SgRowContext
         {
             Gutter = ResolvedGutter,
             RowGutter = RowGutter,
             ColumnGutter = ColumnGutter,
-            Columns = Columns <= 0 ? 12 : Columns
+            Columns = Columns <= 0 ? 12 : Columns,
+            Density = Density,
+            ItemWidth = ItemWidth
         };
     }
+
+    private SgRowTag ResolvedTag
+    {
+        get
+        {
+#pragma warning disable CS0618
+            if (TagName is not null && Enum.TryParse<SgRowTag>(TagName, true, out var legacy) && Tag == SgRowTag.Div)
+            {
+                return legacy;
+            }
+#pragma warning restore CS0618
+            return Tag;
+        }
+    }
+
+    private string DensityKey => Density switch
+    {
+        SgDensity.Compact      => "compact",
+        SgDensity.Comfortable  => "comfortable",
+        _                      => "default"
+    };
+
+    private static double DensityScale(SgDensity d) => d switch
+    {
+        SgDensity.Compact     => 0.5,
+        SgDensity.Comfortable => 1.5,
+        _                     => 1.0
+    };
 
     private string? ResolvedGutter => Space switch
     {
@@ -124,6 +208,18 @@ public partial class SgRow : ComponentBase
         SgSize.FibXxl => "var(--sg-space-fib-7)",
         _ => Gutter
     };
+
+    private string ScaleGap(string? raw, double scale)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        // If raw is a plain number → treat as px.
+        if (double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var n))
+        {
+            return FormattableString.Invariant($"{(n * scale).ToString("0.######", CultureInfo.InvariantCulture)}px");
+        }
+        // For CSS values, wrap in calc() to keep the scaling dynamic.
+        return FormattableString.Invariant($"calc({raw} * {scale.ToString("0.###", CultureInfo.InvariantCulture)})");
+    }
 
     private string AlignCss => Align switch
     {
@@ -184,14 +280,18 @@ public partial class SgRow : ComponentBase
         get
         {
             var sb = new StringBuilder("sg-row");
-            if (string.Equals(Tag, "ul", StringComparison.OrdinalIgnoreCase)) sb.Append(" sg-row-list");
+            if (ResolvedTag == SgRowTag.Ul) sb.Append(" sg-row-list");
             if (Inline) sb.Append(" sg-row-inline");
             if (Hoverable) sb.Append(" sg-row-hoverable");
             if (Clickable) sb.Append(" sg-row-clickable");
-            if (!string.IsNullOrWhiteSpace(CssClass))
+            if (AdditionalAttributes is not null
+                && AdditionalAttributes.TryGetValue("class", out var c)
+                && c is not null)
             {
-                sb.Append(' ').Append(CssClass);
+                sb.Append(' ').Append(c);
             }
+            if (!string.IsNullOrWhiteSpace(CssClass))
+                sb.Append(' ').Append(CssClass);
             return sb.ToString();
         }
     }
@@ -201,12 +301,15 @@ public partial class SgRow : ComponentBase
         get
         {
             var sb = new StringBuilder();
+            var scale = DensityScale(Density);
+
             sb.Append("display:").Append(Inline ? "inline-flex" : "flex").Append(';');
             sb.Append("flex-wrap:").Append(WrapCss).Append(';');
             sb.Append("flex-direction:").Append(DirectionCss).Append(';');
             sb.Append("align-items:").Append(AlignCss).Append(';');
             sb.Append("justify-content:").Append(JustifyCss).Append(';');
             if (FullWidth && !Inline) sb.Append("width:100%;");
+            if (FullHeight && !Inline) sb.Append("height:100%;");
 
             if (!string.IsNullOrWhiteSpace(MinHeight)) sb.Append("min-height:").Append(MinHeight).Append(';');
             if (!string.IsNullOrWhiteSpace(Background)) sb.Append("background:").Append(Background).Append(';');
@@ -214,7 +317,7 @@ public partial class SgRow : ComponentBase
             if (!string.IsNullOrWhiteSpace(BorderRadius)) sb.Append("border-radius:").Append(BorderRadius).Append(';');
 
             // Reset list defaults if rendered as <ul>
-            if (string.Equals(Tag, "ul", StringComparison.OrdinalIgnoreCase))
+            if (ResolvedTag == SgRowTag.Ul)
             {
                 sb.Append("list-style:none;margin:0;padding:0;");
             }
@@ -222,12 +325,12 @@ public partial class SgRow : ComponentBase
             var hasAxisGutter = !string.IsNullOrWhiteSpace(RowGutter) || !string.IsNullOrWhiteSpace(ColumnGutter);
             if (hasAxisGutter)
             {
-                sb.Append("row-gap:").Append(RowGutter ?? ResolvedGutter ?? "0").Append(';');
-                sb.Append("column-gap:").Append(ColumnGutter ?? ResolvedGutter ?? "0").Append(';');
+                sb.Append("row-gap:").Append(ScaleGap(RowGutter ?? ResolvedGutter, scale)).Append(';');
+                sb.Append("column-gap:").Append(ScaleGap(ColumnGutter ?? ResolvedGutter, scale)).Append(';');
             }
             else if (!string.IsNullOrWhiteSpace(ResolvedGutter))
             {
-                sb.Append("gap:").Append(ResolvedGutter).Append(';');
+                sb.Append("gap:").Append(ScaleGap(ResolvedGutter, scale)).Append(';');
             }
 
             if (!string.IsNullOrWhiteSpace(Style)) sb.Append(Style);
