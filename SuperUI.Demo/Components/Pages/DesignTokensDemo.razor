@@ -15,6 +15,17 @@
     </HeaderContent>
     <ChildContent>
         <div class="demo-section">
+            <SgAlert Variant="SgAlertVariant.Info"
+                     Icon="💡"
+                     ShowIcon="true"
+                     Dense="true"
+                     Style="margin-bottom: 16px;">
+                <strong>@ThemeService.GetAvailableThemes().Count()</strong> themes × 3 color modes =
+                <strong>@(ThemeService.GetAvailableThemes().Count() * 3)</strong> combinations.
+                Each theme ships its own OKLCH palette, state tokens, elevation, motion curves, density offsets,
+                measure widths, and per-theme Google Fonts identity.
+            </SgAlert>
+
             <div class="demo-section-header">
                 <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
                     Theme Configuration
@@ -25,60 +36,56 @@
             </div>
 
             <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
-                <SgStack Horizontal Space="SgSize.Xl" Align="SgAlignItems.Center" Wrap="true">
+                <SgStack Vertical Space="SgSize.Lg">
                     <div class="toolbar-section">
-                        <label class="toolbar-label">Active Theme</label>
-                        <SgStack Horizontal Space="SgSize.Sm">
+                        <div class="toolbar-label-row">
+                            <label class="toolbar-label">Active Theme</label>
+                            <SgBadge Count="@ThemeService.GetAvailableThemes().Count()" ShowZero="false" BorderColor="primary" />
+                        </div>
+                        <div class="theme-chip-grid">
                             @foreach (var theme in ThemeService.GetAvailableThemes())
                             {
-                                <SgButton Text="@theme.Name"
-                                          Variant="@(ThemeService.CurrentTheme.Id == theme.Id ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
-                                          OnClick="() => ThemeService.SetThemeAsync(theme.Id)"
-                                          Size="SgSize.Sm" />
+                                <SgChip Value="@theme.Id"
+                                        Text="@theme.Name"
+                                        Clickable="true"
+                                        Selected="@(ThemeService.CurrentTheme.Id == theme.Id)"
+                                        OnClick="@(() => OnThemeChipClick(theme.Id))"
+                                        Variant="@(ThemeService.CurrentTheme.Id == theme.Id ? SgChipVariant.Primary : SgChipVariant.Default)"
+                                        Size="SgSize.Sm" />
                             }
-                        </SgStack>
+                        </div>
                     </div>
 
-                    <SgDivider Vertical="true" Height="32px" />
+                    <SgDivider />
 
-                    <div class="toolbar-section">
-                        <label class="toolbar-label">Color Mode</label>
-                        <SgStack Horizontal Space="SgSize.Sm">
-                            <SgButton Variant="@(ThemeService.CurrentMode == "light" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
-                                      OnClick='() => ThemeService.SetModeAsync("light")'
-                                      Size="SgSize.Sm">
-                                ☀️ Light
-                            </SgButton>
-                            <SgButton Variant="@(ThemeService.CurrentMode == "dark" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
-                                      OnClick='() => ThemeService.SetModeAsync("dark")'
-                                      Size="SgSize.Sm">
-                                🌙 Dark
-                            </SgButton>
-                            <SgButton Variant="@(ThemeService.CurrentMode == "auto" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
-                                      OnClick='() => ThemeService.SetModeAsync("auto")'
-                                      Size="SgSize.Sm">
-                                🌓 Auto
-                            </SgButton>
-                        </SgStack>
-                    </div>
+                    <SgStack Horizontal Space="SgSize.Xl" Align="SgAlignItems.Center" Wrap="true">
+                        <div class="toolbar-section">
+                            <label class="toolbar-label">Color Mode</label>
+                            <SgSegmented TValue="string"
+                                         Value="@ThemeService.CurrentMode"
+                                         ValueChanged="@((string? v) => OnModeChanged(v))"
+                                         Options="_modeOptions"
+                                         Size="sm" />
+                        </div>
 
-                    <SgSpace Style="margin-left: auto;">
-                        <div class="status-pill">
-                            <span class="pill-label">ID:</span>
-                            <span class="pill-value">@ThemeService.CurrentTheme.Id</span>
-                        </div>
-                        <div class="status-pill">
-                            <span class="pill-label">Mode:</span>
-                            <span class="pill-value">@(ThemeService.IsDark ? "Dark" : "Light")</span>
-                        </div>
-                    </SgSpace>
+                        <SgSpace Style="margin-left: auto;">
+                            <SgTag Color="success">
+                                <span class="pill-label">ID:</span>
+                                <span class="pill-value">@ThemeService.CurrentTheme.Id</span>
+                            </SgTag>
+                            <SgTag Color="@(ThemeService.IsDark ? "processing" : "warning")">
+                                <span class="pill-label">Mode:</span>
+                                <span class="pill-value">@(ThemeService.IsDark ? "Dark" : "Light")</span>
+                            </SgTag>
+                        </SgSpace>
+                    </SgStack>
                 </SgStack>
             </SgCard>
         </div>
 
         <div class="demo-section">
             <SgTabs>
-                <SgTabPanel Title="Semantic (L1)" Icon="@IconLayout">
+                <SgTabPanel Title="Semantic (L1)" Icon="@SvgLayout">
                     <div class="tab-content">
                         <div class="demo-section-header">
                             <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Semantic Tokens</SgTypography>
@@ -119,7 +126,7 @@
                     </div>
                 </SgTabPanel>
 
-                <SgTabPanel Title="Primitives (L0)" Icon="@IconPalette">
+                <SgTabPanel Title="Primitives (L0)" Icon="@SvgPalette">
                     <div class="tab-content">
                         <div class="demo-section-header">
                             <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Primitive Tokens</SgTypography>
@@ -140,22 +147,24 @@
                             </SgCard>
 
                             <SgCard Title="Border Radii" Shadow="SgShadow.Sm">
-                                <div class="radius-list">
+                                <SgChipGroup Space="SgSize.Lg" Wrap="true">
                                     @foreach (var r in new[] { "none", "xs", "sm", "md", "lg", "xl", "2xl", "full" })
                                     {
                                         var token = $"--sg-radius-{r}";
-                                        <div class="radius-item">
-                                            <div class="radius-box" style="border-radius: var(@token);"></div>
-                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Medium">@r</SgTypography>
-                                        </div>
+                                        <SgChip Variant="SgChipVariant.Default" Outlined="true">
+                                            <div class="radius-item">
+                                                <div class="radius-box" style="border-radius: var(@token);"></div>
+                                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Medium">@r</SgTypography>
+                                            </div>
+                                        </SgChip>
                                     }
-                                </div>
+                                </SgChipGroup>
                             </SgCard>
                         </SgStack>
                     </div>
                 </SgTabPanel>
 
-                <SgTabPanel Title="Components (L2)" Icon="@IconZap">
+                <SgTabPanel Title="Components (L2)" Icon="@SvgZap">
                     <div class="tab-content">
                         <div class="demo-section-header">
                             <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Component Overrides</SgTypography>
@@ -170,11 +179,11 @@
                                     <div class="demo-box">
                                         <SgStack Vertical Space="SgSize.Md" Style="width: 100%;">
                                             <SgTextBox TValue="string" Label="Input Field" Placeholder="Placeholder..." />
-                                            <SgStack Horizontal Space="SgSize.Sm">
+                                            <SgButtonGroup>
                                                 <SgButton Text="Primary" Variant="SgButtonVariant.Primary" />
                                                 <SgButton Text="Default" Variant="SgButtonVariant.Default" />
                                                 <SgButton Text="Ghost" Variant="SgButtonVariant.Ghost" />
-                                            </SgStack>
+                                            </SgButtonGroup>
                                         </SgStack>
                                     </div>
                                     <div class="token-list">
@@ -203,92 +212,70 @@
                     </div>
                 </SgTabPanel>
 
-                <SgTabPanel Title="Typography" Icon="@IconType">
+                <SgTabPanel Title="Typography" Icon="@SvgType">
                     <div class="tab-content">
                         <div class="demo-section-header">
                             <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Typography Scale</SgTypography>
                             <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                                Each theme loads its own font family. <span style="font-family: var(--sg-font-mono); font-size: 11px; color: var(--sg-color-primary);">@_fontNote</span>
+                                Each theme loads its own font family. <code style="font-family: var(--sg-font-mono); font-size: 11px; color: var(--sg-color-primary);">@_fontNote</code>
                             </SgTypography>
                         </div>
 
-                        <SgStack Vertical Space="SgSize.Xl">
+                        <SgStack Vertical Space="SgSize.Lg">
                             <SgCard Title="Heading Scale" Shadow="SgShadow.Sm">
-                                <SgStack Vertical Space="SgSize.Md">
-                                    <div class="typo-heading" style="--typo-level: h1;">
-                                        <span class="typo-label">h1</span>
-                                        <span class="typo-value" style="font-size: var(--sg-h1-font-size, 2rem); font-family: var(--sg-h1-font-family, var(--sg-font)); font-weight: var(--sg-h1-font-weight, 700); line-height: var(--sg-h1-line-height, 1.1); letter-spacing: var(--sg-h1-letter-spacing, -0.02em);">The quick brown fox</span>
+                                <div class="heading-grid">
+                                    <div class="typo-heading">
+                                        <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">h1</span></SgTag>
+                                        <SgTypography Variant="SgTypographyVariant.Heading1">The quick brown fox</SgTypography>
                                     </div>
-                                    <div class="typo-heading" style="--typo-level: h2;">
-                                        <span class="typo-label">h2</span>
-                                        <span class="typo-value" style="font-size: var(--sg-h2-font-size, 1.75rem); font-family: var(--sg-h2-font-family, var(--sg-font)); font-weight: var(--sg-h2-font-weight, 600); line-height: var(--sg-h2-line-height, 1.15); letter-spacing: var(--sg-h2-letter-spacing, -0.015em);">The quick brown fox</span>
+                                    <div class="typo-heading">
+                                        <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">h2</span></SgTag>
+                                        <SgTypography Variant="SgTypographyVariant.Heading2">The quick brown fox</SgTypography>
                                     </div>
-                                    <div class="typo-heading" style="--typo-level: h3;">
-                                        <span class="typo-label">h3</span>
-                                        <span class="typo-value" style="font-size: var(--sg-h3-font-size, 1.5rem); font-family: var(--sg-h3-font-family, var(--sg-font)); font-weight: var(--sg-h3-font-weight, 600); line-height: var(--sg-h3-line-height, 1.2); letter-spacing: var(--sg-h3-letter-spacing, -0.01em);">The quick brown fox jumps</span>
+                                    <div class="typo-heading">
+                                        <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">h3</span></SgTag>
+                                        <SgTypography Variant="SgTypographyVariant.Heading3">The quick brown fox jumps</SgTypography>
                                     </div>
-                                    <div class="typo-heading" style="--typo-level: h4;">
-                                        <span class="typo-label">h4</span>
-                                        <span class="typo-value" style="font-size: var(--sg-h4-font-size, 1.25rem); font-family: var(--sg-h4-font-family, var(--sg-font)); font-weight: var(--sg-h4-font-weight, 600); line-height: var(--sg-h4-line-height, 1.25);">The quick brown fox jumps over</span>
+                                    <div class="typo-heading">
+                                        <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">h4</span></SgTag>
+                                        <SgTypography Variant="SgTypographyVariant.Heading4">The quick brown fox jumps over</SgTypography>
                                     </div>
-                                    <div class="typo-heading" style="--typo-level: h5;">
-                                        <span class="typo-label">h5</span>
-                                        <span class="typo-value" style="font-size: var(--sg-h5-font-size, 1rem); font-family: var(--sg-h5-font-family, var(--sg-font)); font-weight: var(--sg-h5-font-weight, 600); line-height: var(--sg-h5-line-height, 1.3);">The quick brown fox jumps over the lazy</span>
+                                    <div class="typo-heading">
+                                        <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">h5</span></SgTag>
+                                        <SgTypography Variant="SgTypographyVariant.Heading5">The quick brown fox jumps over the lazy</SgTypography>
                                     </div>
-                                    <div class="typo-heading" style="--typo-level: h6;">
-                                        <span class="typo-label">h6</span>
-                                        <span class="typo-value" style="font-size: var(--sg-h6-font-size, 0.875rem); font-family: var(--sg-h6-font-family, var(--sg-font)); font-weight: var(--sg-h6-font-weight, 500); line-height: var(--sg-h6-line-height, 1.35);">The quick brown fox jumps over the lazy dog</span>
+                                    <div class="typo-heading">
+                                        <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">h6</span></SgTag>
+                                        <SgTypography Variant="SgTypographyVariant.Heading6">The quick brown fox jumps over the lazy dog</SgTypography>
                                     </div>
-                                </SgStack>
-                            </SgCard>
-
-                            <SgCard Title="Body Text Scale" Shadow="SgShadow.Sm">
-                                <div class="token-list">
-                                    @foreach (var s in _textSizes)
-                                    {
-                                        var token = $"--sg-text-{s.Key}";
-                                        <div class="token-row">
-                                            <div class="typo-sample" style="font-size: var(@token); font-family: var(--sg-font);">
-                                                The quick brown fox jumps over the lazy dog
-                                            </div>
-                                            <div class="token-info">
-                                                <span class="token-name">@token</span>
-                                                <span class="token-desc">@s.Label</span>
-                                            </div>
-                                        </div>
-                                    }
                                 </div>
                             </SgCard>
 
                             <div class="demo-two-col">
-                                <SgCard Title="Font Weights" Shadow="SgShadow.Sm">
+                                <SgCard Title="Body Text Scale" Shadow="SgShadow.Sm">
                                     <div class="token-list">
-                                        @foreach (var w in _fontWeights)
+                                        @foreach (var s in _textSizes)
                                         {
-                                            var token = $"--sg-font-weight-{w.Key}";
-                                            <div class="token-row">
-                                                <div class="token-info">
-                                                    <span class="token-name">@token</span>
-                                                    <span class="typo-sample" style="font-weight: var(@token); font-family: var(--sg-font);">
-                                                        The quick brown fox
-                                                    </span>
+                                            <div class="typo-compact-row">
+                                                <SgTypography Size="s.Size" Clamp="1" Style="flex:1;min-width:0;">Aa Bb Cc 123</SgTypography>
+                                                <div class="typo-compact-meta">
+                                                    <SgTypography Variant="SgTypographyVariant.Code" Size="SgTypographySize.Xs">--sg-text-@s.Key</SgTypography>
+                                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-fg-muted)">@s.Label</SgTypography>
                                                 </div>
                                             </div>
                                         }
                                     </div>
                                 </SgCard>
 
-                                <SgCard Title="Line Heights" Shadow="SgShadow.Sm">
+                                <SgCard Title="Font Weights" Shadow="SgShadow.Sm">
                                     <div class="token-list">
-                                        @foreach (var lh in _lineHeights)
+                                        @foreach (var w in _fontWeights)
                                         {
-                                            var token = $"--sg-line-height-{lh.Key}";
-                                            <div class="token-row">
-                                                <div class="token-info">
-                                                    <span class="token-name">@token</span>
-                                                    <div class="typo-sample" style="line-height: var(@token); font-family: var(--sg-font); background: var(--sg-bg-subtle); padding: 4px 8px; border-radius: 4px; max-width: 320px;">
-                                                        The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.
-                                                    </div>
+                                            <div class="typo-compact-row">
+                                                <SgTypography Weight="w.Weight" Style="flex:1;min-width:0;">The quick brown fox</SgTypography>
+                                                <div class="typo-compact-meta">
+                                                    <SgTypography Variant="SgTypographyVariant.Code" Size="SgTypographySize.Xs">--sg-font-weight-@w.Key</SgTypography>
+                                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-fg-muted)">@w.Label</SgTypography>
                                                 </div>
                                             </div>
                                         }
@@ -296,36 +283,53 @@
                                 </SgCard>
                             </div>
 
+                            <SgCard Title="Line Heights" Shadow="SgShadow.Sm">
+                                <div class="line-height-grid">
+                                    @foreach (var lh in _lineHeights)
+                                    {
+                                        <div class="lh-cell">
+                                            <div class="lh-meta">
+                                                <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">--sg-line-height-@lh.Key</span></SgTag>
+                                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-fg-muted)">@lh.Label</SgTypography>
+                                            </div>
+                                            <SgTypography Style="@($"line-height: var(--sg-line-height-{lh.Key}); background: var(--sg-bg-subtle); border: 1px solid var(--sg-border-subtle); border-radius: var(--sg-radius-sm); padding: 8px 12px; max-width: 100%;")">
+                                                The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.
+                                            </SgTypography>
+                                        </div>
+                                    }
+                                </div>
+                            </SgCard>
+
                             <SgCard Title="Font Stacks" Shadow="SgShadow.Sm">
-                                <div class="token-list">
-                                    <div class="token-row">
-                                        <div class="token-info">
-                                            <span class="token-name">--sg-font</span>
-                                            <div class="typo-sample" style="font-family: var(--sg-font);">Body text in current theme font</div>
-                                            <span class="token-desc" style="max-width: 400px; word-break: break-all;">@_bodyFont</span>
+                                <div class="font-stack-list">
+                                    <div class="font-stack-item">
+                                        <div class="font-stack-name">
+                                            <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">--sg-font</span></SgTag>
+                                            <SgTypography Size="SgTypographySize.Sm" Font="SgTypographyFont.Sans">Body text in current theme font</SgTypography>
                                         </div>
+                                        <SgTypography Variant="SgTypographyVariant.Code" Size="SgTypographySize.Xs" Font="SgTypographyFont.Mono" Style="word-break:break-all;line-height:1.4;">@_bodyFont</SgTypography>
                                     </div>
-                                    <div class="token-row">
-                                        <div class="token-info">
-                                            <span class="token-name">--sg-font-mono</span>
-                                            <div class="typo-sample" style="font-family: var(--sg-font-mono);">Console.WriteLine("Hello");</div>
-                                            <span class="token-desc" style="max-width: 400px; word-break: break-all;">@_monoFont</span>
+                                    <div class="font-stack-item">
+                                        <div class="font-stack-name">
+                                            <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">--sg-font-mono</span></SgTag>
+                                            <SgTypography Size="SgTypographySize.Sm" Font="SgTypographyFont.Mono">Console.WriteLine("Hello");</SgTypography>
                                         </div>
+                                        <SgTypography Variant="SgTypographyVariant.Code" Size="SgTypographySize.Xs" Font="SgTypographyFont.Mono" Style="word-break:break-all;line-height:1.4;">@_monoFont</SgTypography>
                                     </div>
-                                    <div class="token-row">
-                                        <div class="token-info">
-                                            <span class="token-name">--sg-font-heading</span>
-                                            <div class="typo-sample" style="font-family: var(--sg-font-heading, var(--sg-font)); font-weight: 700;">The quick brown fox</div>
-                                            <span class="token-desc" style="max-width: 400px; word-break: break-all;">@_headingFont</span>
+                                    <div class="font-stack-item">
+                                        <div class="font-stack-name">
+                                            <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">--sg-font-heading</span></SgTag>
+                                            <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold">Display heading in theme font</SgTypography>
                                         </div>
+                                        <SgTypography Variant="SgTypographyVariant.Code" Size="SgTypographySize.Xs" Font="SgTypographyFont.Mono" Style="word-break:break-all;line-height:1.4;">@_headingFont</SgTypography>
                                     </div>
                                     @if (!string.IsNullOrEmpty(_googleFontsUrl))
                                     {
-                                        <div class="token-row">
-                                            <div class="token-info">
-                                                <span class="token-name">Google Fonts @@import</span>
-                                                <span class="token-desc" style="max-width: 600px; word-break: break-all; font-family: var(--sg-font-mono); font-size: 10px;">@_googleFontsUrl</span>
+                                        <div class="font-stack-item">
+                                            <div class="font-stack-name">
+                                                <SgTag Color="primary"><span style="font-family:var(--sg-font-mono);font-size:10px;">Google Fonts Import</span></SgTag>
                                             </div>
+                                            <SgTypography Variant="SgTypographyVariant.Code" Size="SgTypographySize.Xs" Font="SgTypographyFont.Mono" Style="word-break:break-all;line-height:1.4;">@_googleFontsUrl</SgTypography>
                                         </div>
                                     }
                                 </div>
@@ -342,7 +346,7 @@
     .demo-section {
         margin-bottom: 32px;
     }
-    
+
     .demo-section:last-child {
         margin-bottom: 0;
     }
@@ -363,6 +367,12 @@
         gap: 8px;
     }
 
+    .toolbar-label-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
     .toolbar-label {
         font-size: 11px;
         font-weight: 700;
@@ -371,24 +381,36 @@
         letter-spacing: 0.05em;
     }
 
-    .status-pill {
+    .theme-chip-grid {
         display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 12px;
+        flex-wrap: wrap;
+        gap: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        padding: 8px;
         background: var(--sg-bg-subtle);
-        border: 1px solid var(--sg-border);
-        border-radius: var(--sg-radius-full);
-        font-size: 12px;
+        border: 1px solid var(--sg-border-subtle);
+        border-radius: var(--sg-radius-md);
+        align-content: flex-start;
+    }
+
+    .theme-chip-grid::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .theme-chip-grid::-webkit-scrollbar-thumb {
+        background: var(--sg-border);
+        border-radius: 9999px;
     }
 
     .pill-label {
         color: var(--sg-fg-muted);
         font-weight: 600;
+        margin-right: 4px;
     }
 
     .pill-value {
-        color: var(--sg-color-primary);
+        color: inherit;
         font-weight: 700;
     }
 
@@ -426,7 +448,7 @@
     .token-list {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 4px;
     }
 
     .token-row {
@@ -447,17 +469,6 @@
     .token-info {
         display: flex;
         flex-direction: column;
-    }
-
-    .token-name {
-        font-family: var(--sg-font-mono);
-        font-size: 11px;
-        font-weight: 600;
-    }
-
-    .token-desc {
-        font-size: 11px;
-        color: var(--sg-fg-muted);
     }
 
     .palette-container {
@@ -492,22 +503,17 @@
         cursor: help;
     }
 
-    .radius-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 20px;
-    }
-
     .radius-item {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
+        padding: 4px;
     }
 
     .radius-box {
-        width: 48px;
-        height: 48px;
+        width: 40px;
+        height: 40px;
         background: var(--sg-color-primary-subtle);
         border: 1px solid var(--sg-color-primary);
     }
@@ -521,30 +527,96 @@
         justify-content: center;
     }
 
+    .heading-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 4px 24px;
+    }
+
     .typo-heading {
         display: flex;
-        align-items: baseline;
-        gap: 16px;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--sg-border-subtle);
+        min-width: 0;
+    }
+
+    .heading-grid .typo-heading {
+        overflow: hidden;
+    }
+
+    .heading-grid .typo-heading:last-child,
+    .heading-grid .typo-heading:nth-last-child(2):nth-child(odd) {
+        border-bottom: none;
+    }
+
+    .heading-grid .typo-heading > :last-child {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .typo-compact-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
         padding: 8px 0;
         border-bottom: 1px solid var(--sg-border-subtle);
     }
-    .typo-heading:last-child {
+
+    .typo-compact-row:last-child {
         border-bottom: none;
     }
-    .typo-label {
-        font-family: var(--sg-font-mono);
-        font-size: 11px;
-        font-weight: 700;
-        color: var(--sg-color-primary);
-        min-width: 28px;
-        text-transform: uppercase;
+
+    .typo-compact-meta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        flex-shrink: 0;
+        gap: 2px;
     }
-    .typo-sample {
-        display: block;
-        margin-bottom: 4px;
+
+    .line-height-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
     }
-    .token-row .typo-sample {
-        margin-bottom: 2px;
+
+    .lh-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .lh-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 4px;
+    }
+
+    .font-stack-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .font-stack-item {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px 12px;
+        background: var(--sg-bg-subtle);
+        border: 1px solid var(--sg-border-subtle);
+        border-radius: var(--sg-radius-sm);
+    }
+
+    .font-stack-name {
+        display: flex;
+        align-items: center;
+        gap: 10px;
     }
 </style>
 
@@ -555,28 +627,50 @@
     private string _headingFont = "";
     private string _fontNote = "";
 
-    private static readonly (string Key, string Label)[] _textSizes = [
-        ("xs", "Extra small (11px)"),
-        ("sm", "Small (12px)"),
-        ("base", "Base (13px)"),
-        ("lg", "Large (15px)"),
-        ("xl", "Extra large (18px)"),
-        ("2xl", "2x large (22px)"),
-        ("3xl", "3x large (28px)"),
+    private static readonly (string Key, string Label, SgTypographySize Size)[] _textSizes = [
+        ("xs",   "Extra small (11px)", SgTypographySize.Xs),
+        ("sm",   "Small (12px)",      SgTypographySize.Sm),
+        ("base", "Base (13px)",       SgTypographySize.Base),
+        ("lg",   "Large (15px)",      SgTypographySize.Lg),
+        ("xl",   "Extra large (18px)", SgTypographySize.Xl),
+        ("2xl",  "2x large (22px)",   SgTypographySize.Xxl),
+        ("3xl",  "3x large (28px)",   SgTypographySize.Xxxl),
     ];
 
-    private static readonly (string Key, string Label)[] _fontWeights = [
-        ("normal", "Normal (400)"),
-        ("medium", "Medium (500)"),
-        ("semibold", "Semibold (600)"),
-        ("bold", "Bold (700)"),
+    private static readonly (string Key, string Label, SgTypographyWeight Weight)[] _fontWeights = [
+        ("normal",   "Normal (400)",   SgTypographyWeight.Normal),
+        ("medium",   "Medium (500)",   SgTypographyWeight.Medium),
+        ("semibold", "Semibold (600)", SgTypographyWeight.Semibold),
+        ("bold",     "Bold (700)",     SgTypographyWeight.Bold),
     ];
 
     private static readonly (string Key, string Label)[] _lineHeights = [
-        ("tight", "Tight (1.25)"),
-        ("normal", "Normal (1.5)"),
+        ("tight",   "Tight (1.25)"),
+        ("normal",  "Normal (1.5)"),
         ("relaxed", "Relaxed (1.75)"),
     ];
+
+    private static readonly List<SgSegmentedOption<string>> _modeOptions = new()
+    {
+        new() { Value = "light", Label = "☀ Light" },
+        new() { Value = "dark",  Label = "🌙 Dark" },
+        new() { Value = "auto",  Label = "🌓 Auto" },
+    };
+
+    private static RenderFragment Icon(string svg) => __builder => __builder.AddMarkupContent(0, svg);
+
+    private const string LayoutSvg = "<svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\" ry=\"2\"></rect><line x1=\"3\" y1=\"9\" x2=\"21\" y2=\"9\"></line><line x1=\"9\" y1=\"21\" x2=\"9\" y2=\"9\"></line></" + "svg>";
+
+    private const string PaletteSvg = "<svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"13.5\" cy=\"6.5\" r=\".5\"></circle><circle cx=\"17.5\" cy=\"10.5\" r=\".5\"></circle><circle cx=\"8.5\" cy=\"7.5\" r=\".5\"></circle><circle cx=\"6.5\" cy=\"12.5\" r=\".5\"></circle><path d=\"M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.92 0 1.7-.39 2.3-1.01.57-.59 1.81-1.99 4.7-1.99.92 0 1.7.39 2.3 1.01.57.59 1.81 1.99 4.7 1.99.92 0 1.7.39 2.3 1.01.57.59 1.81 1.99 4.7 1.99.92 0 1.7.39 2.3 1.01.57-.59 1.81-1.99 4.7-1.99.92 0 1.7.39 2.3 1.01.57.59 1.81 1.99 4.7 1.99\"></" + "path></" + "svg>";
+
+    private const string ZapSvg = "<svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"13 2 3 14 12 14 11 22 21 10 12 10 13 2\"></polygon></" + "svg>";
+
+    private const string TypeSvg = "<svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"4 7 4 4 20 4 20 7\"></polyline><line x1=\"9\" y1=\"20\" x2=\"15\" y2=\"20\"></line><line x1=\"12\" y1=\"4\" x2=\"12\" y2=\"20\"></line></" + "svg>";
+
+    private static readonly RenderFragment SvgLayout = Icon(LayoutSvg);
+    private static readonly RenderFragment SvgPalette = Icon(PaletteSvg);
+    private static readonly RenderFragment SvgZap = Icon(ZapSvg);
+    private static readonly RenderFragment SvgType = Icon(TypeSvg);
 
     protected override void OnInitialized()
     {
@@ -608,6 +702,17 @@
     public void Dispose()
     {
         ThemeService.ThemeChanged -= HandleThemeChanged;
+    }
+
+    private async Task OnThemeChipClick(string id)
+    {
+        await ThemeService.SetThemeAsync(id);
+    }
+
+    private async Task OnModeChanged(string? mode)
+    {
+        if (!string.IsNullOrEmpty(mode))
+            await ThemeService.SetModeAsync(mode);
     }
 
     private RenderFragment TokenGroup(string title, string desc, RenderFragment content) => __builder =>
@@ -644,25 +749,5 @@
                 }
             </div>
         </div>
-    };
-
-    private RenderFragment IconLayout = __builder =>
-    {
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-    };
-
-    private RenderFragment IconPalette = __builder =>
-    {
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"></circle><circle cx="17.5" cy="10.5" r=".5"></circle><circle cx="8.5" cy="7.5" r=".5"></circle><circle cx="6.5" cy="12.5" r=".5"></circle><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.92 0 1.7-.39 2.3-1.01.57-.59 1.81-1.99 4.7-1.99.92 0 1.7.39 2.3 1.01.57.59 1.81 1.99 4.7 1.99.92 0 1.7.39 2.3 1.01.57.59 1.81 1.99 4.7 1.99.92 0 1.7.39 2.3 1.01.57.59 1.81 1.99 4.7 1.99"></path></svg>
-    };
-
-    private RenderFragment IconZap = __builder =>
-    {
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-    };
-
-    private RenderFragment IconType = __builder =>
-    {
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>
     };
 }
