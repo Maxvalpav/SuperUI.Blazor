@@ -1,0 +1,85 @@
+@namespace SuperUI.Components
+@using SuperUI.Enums
+
+@* Ribbon-styled colour picker. Renders a square swatch button + dropdown with predefined palette.
+   Will be fully implemented in Step 3 (CSS swatch grid + standard palette). *@
+
+<div class="sgc-ribbon-colorpicker @(Disabled ? "sgc-ribbon-colorpicker-disabled" : "") @CssClass">
+    <button type="button"
+            class="sgc-ribbon-colorpicker-btn"
+            disabled="@Disabled"
+            title="@Tooltip"
+            aria-haspopup="true"
+            aria-expanded="@(_open ? "true" : "false")"
+            @onclick="ToggleDropdown">
+        <span class="sgc-ribbon-colorpicker-current" style="background:@(!string.IsNullOrEmpty(Value) ? Value : "transparent")"></span>
+        <svg class="sgc-ribbon-colorpicker-arrow" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+        </svg>
+    </button>
+
+    @if (_open)
+    {
+        <div class="sgc-ribbon-colorpicker-popup" @onclick:stopPropagation="true">
+            <div class="sgc-ribbon-colorpicker-grid">
+                @foreach (var hex in _palette)
+                {
+                    <button type="button"
+                            class="sgc-ribbon-colorpicker-swatch @(Value == hex ? "sgc-ribbon-colorpicker-swatch-active" : "")"
+                            style="background:@hex"
+                            title="@hex"
+                            @onclick="() => Select(hex)"></button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private string[] _palette = Array.Empty<string>();
+
+    /// <summary>Currently selected colour (hex, e.g. "#ff0000") or <c>null</c>.</summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>Two-way binding for <see cref="Value"/>.</summary>
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>Predefined colour palette preset.</summary>
+    [Parameter] public SgColorPreset Preset { get; set; } = SgColorPreset.Standard;
+
+    /// <summary>Tooltip text.</summary>
+    [Parameter] public string? Tooltip { get; set; }
+
+    /// <summary>When true, the picker is non-interactive.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Single-letter Alt+key shortcut.</summary>
+    [Parameter] public string? KeyTip { get; set; }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _palette = Preset switch
+        {
+            SgColorPreset.Theme     => new[] { "#e53e3e", "#ed8936", "#ecc94b", "#48bb78", "#38b2ac", "#4299e1", "#667eea", "#9f7aea", "#ed64a6", "#f56565", "#000000", "#ffffff" },
+            SgColorPreset.Grayscale => new[] { "#000000", "#1a1a1a", "#333333", "#4d4d4d", "#666666", "#808080", "#999999", "#b3b3b3", "#cccccc", "#e6e6e6", "#f2f2f2", "#ffffff" },
+            _                       => new[] { "#ffffff", "#f0f0f0", "#d9d9d9", "#a6a6a6", "#000000", "#ff0000", "#ffff00", "#00ff00", "#00ffff", "#0000ff" }
+        };
+    }
+
+    private async Task Select(string hex)
+    {
+        Value = hex;
+        _open = false;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(Value);
+    }
+
+    private void ToggleDropdown()
+    {
+        if (!Disabled) _open = !_open;
+    }
+}

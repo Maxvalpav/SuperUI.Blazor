@@ -1,0 +1,100 @@
+@namespace SuperUI.Components
+@using SuperUI.Enums
+@implements IDisposable
+
+@* Standardised ribbon menu item. Renders inside SgRibbonSplit.DropdownContent or SgRibbonFileMenu.
+   Forwards click to cascading SgRibbonSplit/SgRibbonFileMenu (auto-close) and to user OnClick. *@
+
+<button type="button"
+        class="sgc-ribbon-menu-item @(Disabled ? "sgc-ribbon-menu-item-disabled" : "") @CssClass"
+        disabled="@Disabled"
+        @onclick="HandleClick">
+
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <span class="sgc-ribbon-btn-icon">@((MarkupString)Icon)</span>
+    }
+
+    <span class="sgc-ribbon-menu-item-text">@Text</span>
+
+    @if (!string.IsNullOrEmpty(Shortcut))
+    {
+        <span class="sgc-ribbon-menu-item-shortcut">@Shortcut</span>
+    }
+
+    @if (!string.IsNullOrEmpty(Badge))
+    {
+        <span class="sgc-ribbon-menu-item-badge @BadgeVariantClass">@Badge</span>
+    }
+
+    @if (!string.IsNullOrEmpty(KeyTip))
+    {
+        <span class="sgc-ribbon-keytip" aria-hidden="true">@KeyTip</span>
+    }
+</button>
+
+@code {
+    [CascadingParameter] internal SgRibbonSplit? OwnerSplit { get; set; }
+    [CascadingParameter] internal SgRibbonFileMenu? OwnerFileMenu { get; set; }
+
+    /// <summary>Item label text.</summary>
+    [Parameter] public string? Text { get; set; }
+
+    /// <summary>SVG icon markup.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Keyboard shortcut hint (shown on the right).</summary>
+    [Parameter] public string? Shortcut { get; set; }
+
+    /// <summary>Single-letter Alt+key shortcut.</summary>
+    [Parameter] public string? KeyTip { get; set; }
+
+    /// <summary>Optional badge text (e.g. "New", "5").</summary>
+    [Parameter] public string? Badge { get; set; }
+
+    /// <summary>Badge colour variant.</summary>
+    [Parameter] public SgBadgeVariant BadgeVariant { get; set; } = SgBadgeVariant.Default;
+
+    /// <summary>When true, the item is non-interactive.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>User click callback.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Captures extra HTML attributes (id, data-*, aria-*).</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    internal string BadgeVariantClass => BadgeVariant switch
+    {
+        SgBadgeVariant.Info    => "sgc-badge-info",
+        SgBadgeVariant.Success => "sgc-badge-success",
+        SgBadgeVariant.Warn    => "sgc-badge-warn",
+        SgBadgeVariant.Danger  => "sgc-badge-danger",
+        SgBadgeVariant.Muted   => "sgc-badge-muted",
+        _                      => "sgc-badge-default"
+    };
+
+    private async Task HandleClick(MouseEventArgs e)
+    {
+        if (Disabled) return;
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync(e);
+        if (OwnerSplit is not null)
+        {
+            if (OwnerSplit.OnSelect.HasDelegate)
+                await OwnerSplit.OnSelect.InvokeAsync(this);
+            OwnerSplit.CloseDropdown();
+        }
+        if (OwnerFileMenu is not null)
+        {
+            if (OwnerFileMenu.OnSelect.HasDelegate)
+                await OwnerFileMenu.OnSelect.InvokeAsync(this);
+            OwnerFileMenu.Close();
+        }
+    }
+
+    public void Dispose() { }
+}

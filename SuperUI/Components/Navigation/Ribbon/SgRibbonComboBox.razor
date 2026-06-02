@@ -1,0 +1,68 @@
+@namespace SuperUI.Components
+
+@* Ribbon-styled combobox for in-group use. Thin, compact, with dropdown arrow.
+   Minimal standalone impl (not wrapping SgSelect) to avoid cascading complexity. *@
+
+<div class="sgc-ribbon-combobox @(Disabled ? "sgc-ribbon-combobox-disabled" : "") @CssClass">
+    <select class="sgc-ribbon-combobox-input"
+            disabled="@Disabled"
+            value="@(Value?.ToString() ?? "")"
+            @onchange="OnChange">
+        @if (!string.IsNullOrEmpty(Placeholder))
+        {
+            <option value="" disabled selected="@(Value is null)">@Placeholder</option>
+        }
+        @if (Items is not null)
+        {
+            @foreach (var item in Items)
+            {
+                var v = ValueSelector?.Invoke(item) ?? item?.ToString() ?? "";
+                var l = LabelSelector?.Invoke(item) ?? v;
+                <option value="@v" selected="@(Equals(Value, v))">@l</option>
+            }
+        }
+    </select>
+    <svg class="sgc-ribbon-combobox-arrow" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+    </svg>
+</div>
+
+@code {
+    /// <summary>Selected value (string, int, enum, etc.).</summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>Two-way binding for <see cref="Value"/>.</summary>
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>List of items to render as options.</summary>
+    [Parameter] public IEnumerable<object?>? Items { get; set; }
+
+    /// <summary>Maps an item to its display label.</summary>
+    [Parameter] public Func<object?, string>? LabelSelector { get; set; }
+
+    /// <summary>Maps an item to its underlying value (defaults to <c>ToString()</c>).</summary>
+    [Parameter] public Func<object?, string>? ValueSelector { get; set; }
+
+    /// <summary>Placeholder shown when nothing is selected.</summary>
+    [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>When true, the combobox is non-interactive.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Single-letter Alt+key shortcut.</summary>
+    [Parameter] public string? KeyTip { get; set; }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Fixed pixel width (e.g. "120px").</summary>
+    [Parameter] public string? Width { get; set; }
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        Value = string.IsNullOrEmpty(v) ? null : v;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(Value);
+    }
+}

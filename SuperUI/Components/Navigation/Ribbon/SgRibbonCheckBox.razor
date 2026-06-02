@@ -1,0 +1,53 @@
+@namespace SuperUI.Components
+
+@* Ribbon-styled checkbox for in-group use. Compact, with optional icon and label. *@
+
+<label class="sgc-ribbon-checkbox @(Disabled ? "sgc-ribbon-checkbox-disabled" : "") @CssClass">
+    <input type="checkbox"
+           class="sgc-ribbon-checkbox-input"
+           checked="@Value"
+           disabled="@Disabled"
+           @onchange="OnChange" />
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <span class="sgc-ribbon-btn-icon">@((MarkupString)Icon)</span>
+    }
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <span class="sgc-ribbon-checkbox-text">@Label</span>
+    }
+    @if (!string.IsNullOrEmpty(KeyTip))
+    {
+        <span class="sgc-ribbon-keytip" aria-hidden="true">@KeyTip</span>
+    }
+</label>
+
+@code {
+    /// <summary>Checked state.</summary>
+    [Parameter] public bool Value { get; set; }
+
+    /// <summary>Two-way binding for <see cref="Value"/>.</summary>
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+
+    /// <summary>Label text shown next to the checkbox.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Optional SVG icon (shown before the label).</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>When true, the checkbox is non-interactive.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Single-letter Alt+key shortcut.</summary>
+    [Parameter] public string? KeyTip { get; set; }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        Value = e.Value is bool b ? b : (e.Value?.ToString() == "true");
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(Value);
+    }
+}
