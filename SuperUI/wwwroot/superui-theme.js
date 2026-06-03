@@ -199,6 +199,39 @@
         autoModeActive = want;
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // Circadian rhythm — warm filter after sunset
+    // ═══════════════════════════════════════════════════════════════════
+    const CIRCADIAN_KEY = 'superui-circadian';
+
+    function initCircadianMode() {
+        var stored;
+        try { stored = localStorage.getItem(CIRCADIAN_KEY); }
+        catch { stored = null; }
+
+        var enabled = stored === 'true';
+        var html = document.documentElement;
+
+        function applyCircadian() {
+            if (!enabled) {
+                html.style.removeProperty('--sg-circadian-filter');
+                return;
+            }
+            var hour = new Date().getHours();
+            var isNight = hour < 6 || hour >= 18;
+            if (isNight) {
+                html.style.setProperty('--sg-circadian-filter',
+                    'sepia(0.25) saturate(0.85) hue-rotate(-5deg)');
+                html.style.transition = 'filter 2s ease';
+            } else {
+                html.style.removeProperty('--sg-circadian-filter');
+            }
+        }
+
+        applyCircadian();
+        setInterval(applyCircadian, 600000); // re-check every 10 min
+    }
+
     // Expose to the Blazor IIFE namespace.
     window.SuperUI = window.SuperUI || {};
     window.SuperUI.applyThemeCss = applyThemeCss;
@@ -207,6 +240,7 @@
     window.SuperUI.preloadThemeLink = preloadThemeLink;
     window.SuperUI.getSavedState = getSavedState;
     window.SuperUI.initAutoMode = initAutoMode;
+    window.SuperUI.initCircadianMode = initCircadianMode;
 
     // Named exports for ESM consumers (the file is loaded as a module by
     // Blazor's IJSRuntime `import`). C# will use the global namespace for
@@ -219,5 +253,6 @@
         exports.preloadThemeLink = preloadThemeLink;
         exports.getSavedState = getSavedState;
         exports.initAutoMode = initAutoMode;
+        exports.initCircadianMode = initCircadianMode;
     }
 })();

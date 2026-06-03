@@ -7,6 +7,7 @@
 @using SuperUI.Services.Llm
 @using SuperUI.Themes
 @using SuperUI.Services.Analytics
+@using System.Globalization
 @inject SgHeatmapService HeatmapService
 
 @*
@@ -69,18 +70,16 @@
                             @SettingRow(Localizer["Settings_Theme"], null,
                                 @<div role="radiogroup" aria-label="@Localizer["Settings_Theme"]">
                                     @{
-                                        var grouped = _themes.GroupBy(t => t.Category).OrderBy(g => g.Key switch
-                                        {
-                                            "Flagship" => 0, "Core" => 1, "Nature" => 2, "Precision" => 3,
-                                            "Art" => 4, "Minimal" => 5, "Elegant" => 6, "Special" => 7, "Persona" => 8,
-                                            _ => 9
-                                        });
+                                        var grouped = _themes
+                                            .GroupBy(t => GetHueGroup(t))
+                                            .OrderBy(g => GroupOrder(g.Key))
+                                            .Select(g => new { Group = g.Key, Themes = g.OrderBy(t => t.Name) });
                                     }
-                                    @foreach (var group in grouped)
+                                    @foreach (var g in grouped)
                                     {
-                                        <div class="sgc-theme-group-label">@group.Key</div>
+                                        <div class="sgc-theme-group-label">@g.Group</div>
                                         <div class="sgc-theme-grid">
-                                            @foreach (var theme in group)
+                                            @foreach (var theme in g.Themes)
                                             {
                                                 var isActive = ThemeService.CurrentTheme.Id == theme.Id;
                                                 <button type="button"
@@ -90,6 +89,7 @@
                                                         @onclick="() => OnPickThemeAsync(theme)">
                                                     <span class="sgc-theme-preview" style="background: @theme.Primitives.Primary500;"></span>
                                                     <span class="sgc-theme-name">@theme.Name</span>
+                                                    <span class="sgc-theme-font">@GetFontName(theme.Primitives.FontSans)</span>
                                                     @if (isActive)
                                                     {
                                                         <span class="sgc-theme-check" aria-hidden="true">✓</span>
@@ -275,6 +275,47 @@
     [Inject] private ThemeRegistry ThemeRegistry { get; set; } = default!;
 
     private List<IThemeDefinition> _themes = new();
+
+    static string GetFontName(string fontFamily)
+    {
+        var name = fontFamily.Split(',')[0].Trim().Trim('\'');
+        return name;
+    }
+
+    static string GetHueGroup(IThemeDefinition theme)
+    {
+        var raw = theme.Primitives.Primary500;
+        var parts = raw.Split(' ');
+        var hueStr = parts.Length >= 3 ? parts[2].TrimEnd(')', '/') : "0";
+        var hue = double.TryParse(hueStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var h) ? h : 0;
+
+        return hue switch
+        {
+            >= 340 or < 20  => "Rose / Red",
+            >= 20  and < 40 => "Red / Orange",
+            >= 40  and < 60 => "Orange / Gold",
+            >= 60  and < 90 => "Yellow / Amber",
+            >= 90  and < 150 => "Green",
+            >= 150 and < 200 => "Teal / Cyan",
+            >= 200 and < 280 => "Blue",
+            >= 280 and < 340 => "Purple / Violet",
+            _ => "Neutral"
+        };
+    }
+
+    static int GroupOrder(string group) => group switch
+    {
+        "Blue"            => 0,
+        "Green"           => 1,
+        "Purple / Violet" => 2,
+        "Teal / Cyan"     => 3,
+        "Yellow / Amber"  => 4,
+        "Orange / Gold"   => 5,
+        "Red / Orange"    => 6,
+        "Rose / Red"      => 7,
+        "Neutral"         => 8,
+        _ => 9
+    };
     private List<SgSegmentedOption<string>> _modeOptions = new();
     private List<SgSegmentedOption<string>> _densityOptions = new();
     private List<SgSegmentedOption<string>> _fontSizeOptions = new();
@@ -835,4 +876,16 @@
 ::deep .sgc-tabs-vertical .sgc-tab-icon { margin-right: 12px; }
 ::deep .sgc-tabs-vertical .sgc-tab-text { display: block; font-size: 13.5px; font-weight: 500; }
 ::deep .sgc-tabs-vertical .sgc-tabs-body { padding: 24px 28px; overflow-y: auto; }
+.sgc-theme-font {
+    display: block;
+    font-size: 0.6rem;
+    color: var(--sg-fg-muted);
+    opacity: 1;
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    line-height: 1.2;
+}
 </style>

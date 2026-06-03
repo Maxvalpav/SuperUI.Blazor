@@ -46,20 +46,68 @@
 
     <div class="sgc-appearance-divider"></div>
 
-    @{
-        var grouped = ThemeService.GetAvailableThemes().GroupBy(t => t.Category).OrderBy(g => g.Key switch
+    @functions {
+        static string GetFontName(string fontFamily)
         {
-            "Modern" => 0,
-            "Flagship" => 1, "Core" => 2, "Nature" => 3, "Precision" => 4,
-            "Art" => 5, "Minimal" => 6, "Elegant" => 7, "Special" => 8, "Persona" => 9,
-            _ => 10
-        });
+            var name = fontFamily.Split(',')[0].Trim().Trim('\'');
+            return name;
+        }
+
+        static string GetHueGroup(IThemeDefinition theme)
+        {
+            // Parse hue from oklch(... H) in Primary500
+            var raw = theme.Primitives.Primary500;
+            // oklch(L C H) or oklch(L C H / A)
+            var hueStr = "";
+            var parts = raw.Split(' ');
+            if (parts.Length >= 3)
+            {
+                hueStr = parts[2].TrimEnd(')', '/');
+            }
+            var hue = double.TryParse(hueStr, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var h) ? h : 0;
+
+            // Map hue to a named group — wrap around at 0/360
+            var group = hue switch
+            {
+                >= 340 or < 20  => "Rose / Red",
+                >= 20  and < 40 => "Red / Orange",
+                >= 40  and < 60 => "Orange / Gold",
+                >= 60  and < 90 => "Yellow / Amber",
+                >= 90  and < 150 => "Green",
+                >= 150 and < 200 => "Teal / Cyan",
+                >= 200 and < 280 => "Blue",
+                >= 280 and < 340 => "Purple / Violet",
+                _ => "Neutral"
+            };
+            return group;
+        }
+
+        static int GroupOrder(string group) => group switch
+        {
+            "Blue"           => 0,
+            "Green"          => 1,
+            "Purple / Violet"=> 2,
+            "Teal / Cyan"    => 3,
+            "Yellow / Amber" => 4,
+            "Orange / Gold"  => 5,
+            "Red / Orange"   => 6,
+            "Rose / Red"     => 7,
+            "Neutral"        => 8,
+            _ => 9
+        };
     }
-    @foreach (var group in grouped)
+    @{
+        var grouped = ThemeService.GetAvailableThemes()
+            .GroupBy(t => GetHueGroup(t))
+            .OrderBy(g => GroupOrder(g.Key))
+            .Select(g => new { Group = g.Key, Themes = g.OrderBy(t => t.Name) });
+    }
+    @foreach (var g in grouped)
     {
-        <div class="sgc-appearance-group-label">@group.Key</div>
+        <div class="sgc-appearance-group-label">@g.Group</div>
         <div class="sgc-appearance-grid">
-            @foreach (var theme in group)
+            @foreach (var theme in g.Themes)
             {
                 <button type="button" 
                         class="sgc-appearance-grid-item @(ThemeService.CurrentTheme.Id == theme.Id ? "is-active" : "")"
@@ -69,6 +117,7 @@
                         <div class="sgc-appearance-grid-preview-primary"></div>
                         <div class="sgc-appearance-grid-preview-surface">
                             <span class="sgc-appearance-grid-name">@theme.Name</span>
+                            <span class="sgc-appearance-grid-font">@GetFontName(theme.Primitives.FontSans)</span>
                         </div>
                         @if (ThemeService.CurrentTheme.Id == theme.Id)
                         {

@@ -3,6 +3,7 @@
 @using SuperUI.Services
 @using SuperUI.Themes
 @using SuperUI.Enums
+@using System.Globalization
 @implements IDisposable
 @inject SgThemeService ThemeService
 
@@ -63,18 +64,31 @@
                             </SgTag>
                         </SgSpace>
                     </div>
-                    <div class="theme-chip-grid">
-                        @foreach (var theme in ThemeService.GetAvailableThemes())
+                    @{
+                        var grouped = ThemeService.GetAvailableThemes()
+                            .GroupBy(t => GetHueGroup(t))
+                            .OrderBy(g => GroupOrder(g.Key))
+                            .Select(g => new { Group = g.Key, Themes = g.OrderBy(t => t.Name) });
+                    }
+                    <SgAccordion Compact="true" Size="SgSize.Sm">
+                        @foreach (var g in grouped)
                         {
-                            <SgChip Value="@theme.Id"
-                                    Text="@theme.Name"
-                                    Clickable="true"
-                                    Selected="@(ThemeService.CurrentTheme.Id == theme.Id)"
-                                    OnClick="@(() => OnThemeChipClick(theme.Id))"
-                                    Variant="@(ThemeService.CurrentTheme.Id == theme.Id ? SgChipVariant.Primary : SgChipVariant.Default)"
-                                    Size="SgSize.Sm" />
+                            <SgAccordionItem Title="@g.Group">
+                                <div class="theme-chip-grid">
+                                    @foreach (var theme in g.Themes)
+                                    {
+                                        <SgChip Value="@theme.Id"
+                                                Text="@theme.Name"
+                                                Clickable="true"
+                                                Selected="@(ThemeService.CurrentTheme.Id == theme.Id)"
+                                                OnClick="@(() => OnThemeChipClick(theme.Id))"
+                                                Variant="@(ThemeService.CurrentTheme.Id == theme.Id ? SgChipVariant.Primary : SgChipVariant.Default)"
+                                                Size="SgSize.Sm" />
+                                    }
+                                </div>
+                            </SgAccordionItem>
                         }
-                    </div>
+                    </SgAccordion>
                 </SgStack>
             </SgCard>
         </div>
@@ -758,6 +772,41 @@
             StateHasChanged();
         });
     }
+
+    static string GetHueGroup(IThemeDefinition theme)
+    {
+        var raw = theme.Primitives.Primary500;
+        var parts = raw.Split(' ');
+        var hueStr = parts.Length >= 3 ? parts[2].TrimEnd(')', '/') : "0";
+        var hue = double.TryParse(hueStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var h) ? h : 0;
+
+        return hue switch
+        {
+            >= 340 or < 20  => "Rose / Red",
+            >= 20  and < 40 => "Red / Orange",
+            >= 40  and < 60 => "Orange / Gold",
+            >= 60  and < 90 => "Yellow / Amber",
+            >= 90  and < 150 => "Green",
+            >= 150 and < 200 => "Teal / Cyan",
+            >= 200 and < 280 => "Blue",
+            >= 280 and < 340 => "Purple / Violet",
+            _ => "Neutral"
+        };
+    }
+
+    static int GroupOrder(string group) => group switch
+    {
+        "Blue"            => 0,
+        "Green"           => 1,
+        "Purple / Violet" => 2,
+        "Teal / Cyan"     => 3,
+        "Yellow / Amber"  => 4,
+        "Orange / Gold"   => 5,
+        "Red / Orange"    => 6,
+        "Rose / Red"      => 7,
+        "Neutral"         => 8,
+        _ => 9
+    };
 
     public void Dispose()
     {
