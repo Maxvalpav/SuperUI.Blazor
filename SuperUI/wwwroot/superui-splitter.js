@@ -1,11 +1,22 @@
-// ──────────────────────────────────────────────
-// SuperUI Splitter — Multi-pane drag resize
-// Supports simple 2-pane and N-pane modes
-// ──────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────
+// SuperUI Splitter — unified drag-resize engine
+//
+// A single code path handles every layout: two-pane (First/Second) is just a
+// one-bar / two-pane case of the N-pane model. This guarantees identical drag,
+// keyboard, double-click-reset and ARIA behaviour everywhere.
+//
+// Design notes:
+//   * Pointer events → works for mouse, touch and pen with one handler set.
+//   * No per-move .NET round-trips: the DOM is mutated directly during drag and
+//     a single SetSizes(...) is dispatched on release (keyboard dispatches per key).
+//   * aria-valuenow is updated live so assistive tech and automated agents can
+//     observe the current pane size during interaction.
+//   * Dependency-free; safe to import in WASM and Server circuits.
+// ──────────────────────────────────────────────────────────────────────────
 
 function clamp(value, min, max) {
-    if (value < min) return min;
-    if (value > max) return max;
+    if (min != null && value < min) return min;
+    if (max != null && value > max) return max;
     return value;
 }
 
@@ -14,248 +25,186 @@ function snap(value, grid) {
     return Math.round(value / grid) * grid;
 }
 
-// ─── Simple 2-pane mode ───
+function dispatch(dotnet, method, ...args) {
+    try { dotnet?.invokeMethodAsync(method, ...args)?.catch(() => {}); } catch { /* circuit gone */ }
+}
 
-export function attach(bar, first, vertical, min, max, dotnet, disabled) {
-    if (!bar || !first || disabled) return;
+/**
+ * Attach the resize engine to a set of bars and panes.
+ * The disposer is stored on the root element so detach(root) can tear it down
+ * without the caller having to retain a JS object reference across interop.
+ * @param {HTMLElement} root     splitter container element (holds the handle)
+ * @param {HTMLElement[]} bars   one bar per resizable boundary (count = panes.length - 1)
+ * @param {HTMLElement[]} panes  every pane element; the last pane flexes and has no bar
+ * @param {object} dotnet        DotNetObjectReference for [JSInvokable] callbacks
+ * @param {object} opts          { vertical, step, snapToGrid, keyboardResize, disabled, mins[], maxs[], sizes[] }
+ */
+export function attach(root, bars, panes, dotnet, opts) {
+    opts = opts || {};
+    bars = Array.isArray(bars) ? bars.filter(Boolean) : (bars ? [bars] : []);
+    panes = Array.isArray(panes) ? panes.filter(Boolean) : (panes ? [panes] : []);
+    if (!root) return;
+    detach(root); // idempotent re-attach when pane count changes
+    if (bars.length === 0 || panes.length < 2) return;
 
-    let isDragging = false;
-    let startX, startY, startSize, currentSize;
+    const vertical = !!opts.vertical;
+    const step = opts.step > 0 ? opts.step : 10;
+    const grid = opts.snapToGrid;
+    const keyboard = opts.keyboardResize !== false;
+    // constrained=false lets a pane be dragged past its Min/Max so it can shrink to
+    // nothing (overlapping its content, which then scrolls) or grow up to the
+    // container edge. Min/Max are still reported via ARIA as the *recommended* range.
+    const constrained = opts.constrained !== false;
+    const mins = opts.mins || [];
+    const maxs = opts.maxs || [];
+    const sizes = (opts.sizes ? [...opts.sizes] : []);
 
-    function onPointerDown(e) {
-        if (e.button !== 0) return;
-        isDragging = true;
-        bar.classList.add('active');
-        try { dotnet?.invokeMethodAsync('SetDragging', true)?.catch(() => {}); } catch {}
+    function containerExtent() {
+        const rect = root.getBoundingClientRect();
+        return vertical ? rect.height : rect.width;
+    }
 
-        startX = e.clientX;
-        startY = e.clientY;
-        const rect = first.getBoundingClientRect();
-        startSize = vertical ? rect.height : rect.width;
-        currentSize = startSize;
+    const minOf = i => constrained ? (mins[i] != null ? mins[i] : 0) : 0;
+    const maxOf = i => constrained
+        ? (maxs[i] != null ? maxs[i] : Number.MAX_SAFE_INTEGER)
+        : Math.max(0, containerExtent());
 
+    // Apply the authoritative sizes coming from .NET so SSR markup and JS agree.
+    function applySize(i, value) {
+        const v = Math.max(0, value);
+        sizes[i] = v;
+        if (vertical) panes[i].style.height = v + 'px';
+        else panes[i].style.width = v + 'px';
+        const bar = bars[i];
+        if (bar) bar.setAttribute('aria-valuenow', Math.round(v).toString());
+    }
+    for (let i = 0; i < bars.length; i++) {
+        if (sizes[i] != null) applySize(i, sizes[i]);
+    }
+
+    const state = { dragging: false, index: -1, start: 0, origin: 0 };
+    let disabled = !!opts.disabled;
+
+    function measure(i) {
+        const rect = panes[i].getBoundingClientRect();
+        return vertical ? rect.height : rect.width;
+    }
+
+    function onPointerDown(e, index) {
+        if (disabled || e.button !== 0) return;
+        e.preventDefault();
+        state.dragging = true;
+        state.index = index;
+        state.origin = vertical ? e.clientY : e.clientX;
+        state.start = measure(index);
+
+        bars[index].classList.add('active');
+        try { bars[index].setPointerCapture(e.pointerId); } catch { /* ignore */ }
         document.addEventListener('pointermove', onPointerMove);
         document.addEventListener('pointerup', onPointerUp);
         document.body.style.cursor = vertical ? 'row-resize' : 'col-resize';
         document.body.style.userSelect = 'none';
-        e.preventDefault();
-        bar.setPointerCapture(e.pointerId);
+
+        dispatch(dotnet, 'ResizeStart');
+        dispatch(dotnet, 'SetDragging', true);
     }
 
     function onPointerMove(e) {
-        if (!isDragging) return;
-        const delta = vertical ? (e.clientY - startY) : (e.clientX - startX);
-        currentSize = clamp(startSize + delta, min, max);
-
-        if (vertical) first.style.height = currentSize + 'px';
-        else first.style.width = currentSize + 'px';
+        if (!state.dragging || state.index < 0) return;
+        const i = state.index;
+        const delta = (vertical ? e.clientY : e.clientX) - state.origin;
+        const next = clamp(snap(state.start + delta, grid), minOf(i), maxOf(i));
+        applySize(i, next);
     }
 
-    function onPointerUp(e) {
-        if (!isDragging) return;
-        isDragging = false;
-        bar.classList.remove('active');
+    function endDrag(e) {
+        if (!state.dragging) return;
+        const i = state.index;
+        state.dragging = false;
+        state.index = -1;
 
+        if (bars[i]) {
+            bars[i].classList.remove('active');
+            if (e) { try { bars[i].releasePointerCapture(e.pointerId); } catch { /* ignore */ } }
+        }
         document.removeEventListener('pointermove', onPointerMove);
         document.removeEventListener('pointerup', onPointerUp);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        bar.releasePointerCapture(e.pointerId);
 
-        try { dotnet?.invokeMethodAsync('SetSize', currentSize)?.catch(() => {}); } catch {}
-        try { dotnet?.invokeMethodAsync('SetDragging', false)?.catch(() => {}); } catch {}
+        dispatch(dotnet, 'SetSizes', sizes);
+        dispatch(dotnet, 'SetDragging', false);
     }
 
-    function onKeyDown(e) {
+    function onPointerUp(e) { endDrag(e); }
+
+    function onKeyDown(e, index) {
+        if (disabled || !keyboard) return;
         let delta = 0;
-        if (vertical) {
-            if (e.key === 'ArrowUp') delta = -10;
-            else if (e.key === 'ArrowDown') delta = 10;
-        } else {
-            if (e.key === 'ArrowLeft') delta = -10;
-            else if (e.key === 'ArrowRight') delta = 10;
-        }
-        if (delta === 0) return;
+        let absolute = null;
+        const dec = vertical ? 'ArrowUp' : 'ArrowLeft';
+        const inc = vertical ? 'ArrowDown' : 'ArrowRight';
+        if (e.key === dec) delta = -step;
+        else if (e.key === inc) delta = step;
+        else if (e.key === 'Home') absolute = minOf(index);
+        else if (e.key === 'End') absolute = maxOf(index);
+        else return;
+
         e.preventDefault();
-
-        const rect = first.getBoundingClientRect();
-        const curSize = vertical ? rect.height : rect.width;
-        const newSize = clamp(curSize + delta, min, max);
-
-        if (vertical) first.style.height = newSize + 'px';
-        else first.style.width = newSize + 'px';
-
-        try { dotnet?.invokeMethodAsync('SetSize', newSize)?.catch(() => {}); } catch {}
+        const current = sizes[index] != null ? sizes[index] : measure(index);
+        const raw = absolute != null ? absolute : current + delta;
+        applySize(index, clamp(snap(raw, grid), minOf(index), maxOf(index)));
+        dispatch(dotnet, 'SetSizes', sizes);
     }
 
-    function onDoubleClick(e) {
-        if (e.target === bar || e.target.closest('.sgc-split-handle')) {
-            try { dotnet?.invokeMethodAsync('OnReset')?.catch(() => {}); } catch {}
-        }
+    function onDoubleClick() {
+        if (disabled) return;
+        dispatch(dotnet, 'Reset');
     }
 
-    bar.addEventListener('pointerdown', onPointerDown);
-    bar.addEventListener('dblclick', onDoubleClick);
-    bar.addEventListener('keydown', onKeyDown);
-
-    bar._sgSplitter = {
-        dispose: () => {
-            bar.removeEventListener('pointerdown', onPointerDown);
+    const cleanups = [];
+    bars.forEach((bar, i) => {
+        const down = e => onPointerDown(e, i);
+        const key = e => onKeyDown(e, i);
+        bar.addEventListener('pointerdown', down);
+        bar.addEventListener('keydown', key);
+        bar.addEventListener('dblclick', onDoubleClick);
+        cleanups.push(() => {
+            bar.removeEventListener('pointerdown', down);
+            bar.removeEventListener('keydown', key);
             bar.removeEventListener('dblclick', onDoubleClick);
-            bar.removeEventListener('keydown', onKeyDown);
+        });
+    });
+
+    root._sgSplitter = {
+        setSizes(next) {
+            if (!Array.isArray(next)) return;
+            for (let i = 0; i < bars.length && i < next.length; i++) {
+                if (next[i] != null) applySize(i, next[i]);
+            }
+        },
+        setDisabled(value) { disabled = !!value; },
+        dispose() {
+            endDrag(null);
+            cleanups.forEach(fn => fn());
+            cleanups.length = 0;
         }
     };
 }
 
-export function detach(bar) {
-    if (bar && bar._sgSplitter) {
-        bar._sgSplitter.dispose();
-        delete bar._sgSplitter;
-    }
+/** Push authoritative sizes from .NET into the live DOM (e.g. after collapse/reset). */
+export function setSizes(root, sizes) {
+    root?._sgSplitter?.setSizes(sizes);
 }
 
-// ─── Multi-pane mode ───
-
-export function attachBars(barElements, paneElements, vertical, minSizes, maxSizes, initialSizes, dotnet, disabled, options) {
-    if (!barElements || !paneElements || disabled) return;
-
-    const opts = options || {};
-    const bars = Array.isArray(barElements) ? barElements : [barElements];
-    const panes = Array.isArray(paneElements) ? paneElements : [paneElements];
-    const count = Math.min(bars.length, panes.length);
-    if (count === 0) return;
-
-    const sizes = initialSizes ? (Array.isArray(initialSizes) ? [...initialSizes] : [initialSizes]) : panes.map(() => 200);
-    const minVals = Array.isArray(minSizes) ? minSizes : panes.map(() => 80);
-    const maxVals = Array.isArray(maxSizes) ? maxSizes : panes.map(() => 1200);
-    const step = opts.step || 10;
-
-    const state = { isDragging: false, startX: 0, startY: 0, startSize: 0, currentSize: 0, activeIndex: -1 };
-
-    function getSize(index) {
-        if (index >= 0 && index < sizes.length) return sizes[index];
-        return 0;
-    }
-
-    function setPaneSize(index, value) {
-        if (index < 0 || index >= panes.length) return;
-        const v = Math.max(0, value);
-        sizes[index] = v;
-        if (vertical) panes[index].style.height = v + 'px';
-        else panes[index].style.width = v + 'px';
-    }
-
-    function initSizes() {
-        for (let i = 0; i < panes.length; i++) {
-            if (sizes[i] > 0) {
-                setPaneSize(i, sizes[i]);
-            }
-        }
-    }
-    initSizes();
-
-    function onPointerDown(e, index) {
-        if (e.button !== 0) return;
-        e.preventDefault();
-
-        state.isDragging = true;
-        state.activeIndex = index;
-        state.startX = e.clientX;
-        state.startY = e.clientY;
-
-        const rect = panes[index].getBoundingClientRect();
-        state.startSize = vertical ? rect.height : rect.width;
-        state.currentSize = state.startSize;
-
-        bars[index].classList.add('active');
-        try { dotnet?.invokeMethodAsync('SetDragging', true)?.catch(() => {}); } catch {}
-
-        document.addEventListener('pointermove', onPointerMove);
-        document.addEventListener('pointerup', onPointerUp);
-        document.body.style.cursor = vertical ? 'row-resize' : 'col-resize';
-        document.body.style.userSelect = 'none';
-        bars[index].setPointerCapture(e.pointerId);
-    }
-
-    function onPointerMove(e) {
-        if (!state.isDragging || state.activeIndex < 0) return;
-        const delta = vertical ? (e.clientY - state.startY) : (e.clientX - state.startX);
-        const raw = state.startSize + delta;
-        const snapped = snap(raw, opts.snapToGrid);
-        state.currentSize = clamp(snapped, minVals[state.activeIndex] || 0, maxVals[state.activeIndex] || 9999);
-
-        setPaneSize(state.activeIndex, state.currentSize);
-    }
-
-    function onPointerUp(e) {
-        if (!state.isDragging) return;
-        state.isDragging = false;
-
-        if (state.activeIndex >= 0) {
-            bars[state.activeIndex].classList.remove('active');
-            bars[state.activeIndex].releasePointerCapture(e.pointerId);
-        }
-
-        document.removeEventListener('pointermove', onPointerMove);
-        document.removeEventListener('pointerup', onPointerUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-
-        try { dotnet?.invokeMethodAsync('SetSizes', sizes)?.catch(() => {}); } catch {}
-        try { dotnet?.invokeMethodAsync('SetDragging', false)?.catch(() => {}); } catch {}
-
-        state.activeIndex = -1;
-    }
-
-    function onKeyDown(e, index) {
-        let delta = 0;
-        if (vertical) {
-            if (e.key === 'ArrowUp') delta = -step;
-            else if (e.key === 'ArrowDown') delta = step;
-        } else {
-            if (e.key === 'ArrowLeft') delta = -step;
-            else if (e.key === 'ArrowRight') delta = step;
-        }
-        if (delta === 0) return;
-        e.preventDefault();
-
-        const curSize = sizes[index] || 0;
-        const raw = curSize + delta;
-        const snapped = snap(raw, opts.snapToGrid);
-        const newSize = clamp(snapped, minVals[index] || 0, maxVals[index] || 9999);
-
-        setPaneSize(index, newSize);
-        try { dotnet?.invokeMethodAsync('SetSizes', sizes)?.catch(() => {}); } catch {}
-    }
-
-    // Attach events to each bar
-    for (let i = 0; i < count; i++) {
-        const bar = bars[i];
-        if (!bar) continue;
-
-        const index = i;
-
-        const pointerHandler = (e) => onPointerDown(e, index);
-        const keyHandler = (e) => onKeyDown(e, index);
-
-        bar.addEventListener('pointerdown', pointerHandler);
-        bar.addEventListener('keydown', keyHandler);
-
-        bar._sgSplitter = {
-            dispose: () => {
-                bar.removeEventListener('pointerdown', pointerHandler);
-                bar.removeEventListener('keydown', keyHandler);
-            }
-        };
-    }
+/** Toggle the disabled flag without re-attaching. */
+export function setDisabled(root, value) {
+    root?._sgSplitter?.setDisabled(value);
 }
 
-export function detachBars(barElements) {
-    const bars = Array.isArray(barElements) ? barElements : [barElements];
-    for (const bar of bars) {
-        if (bar && bar._sgSplitter) {
-            bar._sgSplitter.dispose();
-            delete bar._sgSplitter;
-        }
+export function detach(root) {
+    if (root && root._sgSplitter) {
+        root._sgSplitter.dispose();
+        delete root._sgSplitter;
     }
 }

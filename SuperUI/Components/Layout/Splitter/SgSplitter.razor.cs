@@ -4,405 +4,329 @@ using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.JSInterop;
 using SuperUI.Base.ComponentBases;
 using SuperUI.Enums;
+using SuperUI.Services;
 
 namespace SuperUI.Components;
 
 /// <summary>
-/// Splitter component that divides space between two or more panes with a draggable resize bar.
-/// Supports horizontal and vertical orientation, collapsible panes, keyboard resizing, and snap-to-grid.
+/// Resizable splitter that divides space between two or more panes with draggable bars.
 /// </summary>
+/// <remarks>
+/// <para>Two usage shapes:</para>
+/// <list type="bullet">
+///   <item><b>Two-pane</b> — supply <see cref="First"/> and <see cref="Second"/>. The first pane is
+///   sized by <see cref="Size"/>; the second fills the remaining space.</item>
+///   <item><b>Multi-pane</b> — supply any number of <see cref="SgSplitterPane"/> children. Every pane
+///   except the last is sized; the last always flexes to fill remaining space.</item>
+/// </list>
+/// <para>Resizing works with mouse, touch and pen (drag a bar), and with the keyboard
+/// (focus a bar, then arrow keys / Home / End). Double-clicking any bar restores the
+/// initial layout. When <see cref="PersistKey"/> is set, sizes are saved to browser
+/// storage and restored on the next render.</para>
+/// <para>Fully SSR-safe: markup renders statically and interactivity attaches only once
+/// the component becomes interactive (Server or WebAssembly).</para>
+/// <example>
+/// <code>
+/// &lt;SgSplitter Size="240" Min="120" Collapsible="true"&gt;
+///     &lt;First&gt;Sidebar&lt;/First&gt;
+///     &lt;Second&gt;Content&lt;/Second&gt;
+/// &lt;/SgSplitter&gt;
+///
+/// &lt;SgSplitter Orientation="SgOrientation.Horizontal" PersistKey="editor"&gt;
+///     &lt;SgSplitterPane Size="200" Min="120"&gt;Files&lt;/SgSplitterPane&gt;
+///     &lt;SgSplitterPane Size="400"&gt;Editor&lt;/SgSplitterPane&gt;
+///     &lt;SgSplitterPane&gt;Preview&lt;/SgSplitterPane&gt;
+/// &lt;/SgSplitter&gt;
+/// </code>
+/// </example>
+/// </remarks>
 public partial class SgSplitter
 {
     protected override string ModulePath => "./_content/SuperUI/superui-splitter.js";
     protected override string IdPrefix => "sg-splitter";
 
+    [Inject] private SgStorageService Storage { get; set; } = default!;
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>Content of the first (sized) pane in two-pane mode.</summary>
+    [Parameter] public RenderFragment? First { get; set; }
+
+    /// <summary>Content of the second (flexible) pane in two-pane mode.</summary>
+    [Parameter] public RenderFragment? Second { get; set; }
+
+    /// <summary>Container for <see cref="SgSplitterPane"/> children in multi-pane mode.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Layout direction. <see cref="SgOrientation.Horizontal"/> places panes side by side.</summary>
+    [Parameter] public SgOrientation Orientation { get; set; } = SgOrientation.Horizontal;
+
+    /// <summary>Shorthand that forces vertical orientation. Overrides <see cref="Orientation"/> when <c>true</c>.</summary>
+    [Parameter] public bool Vertical { get; set; }
+
+    /// <summary>Initial size of the first pane in pixels (two-pane mode). Supports two-way binding.</summary>
+    [Parameter] public double Size { get; set; } = 240;
+
+    /// <summary>Raised when the first pane size changes (enables <c>@bind-Size</c>).</summary>
+    [Parameter] public EventCallback<double> SizeChanged { get; set; }
+
+    /// <summary>Minimum size of the first pane in pixels (two-pane mode).</summary>
+    [Parameter] public double Min { get; set; } = 80;
+
+    /// <summary>Maximum size of the first pane in pixels (two-pane mode).</summary>
+    [Parameter] public double Max { get; set; } = 1200;
+
+    /// <summary>Shows the centred grip on each resize bar.</summary>
+    [Parameter] public bool ShowHandle { get; set; } = true;
+
+    /// <summary>Disables all resizing while keeping the layout rendered.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Shows a collapse / expand toggle on each bar that hides the preceding pane and restores it on click.</summary>
+    [Parameter] public bool Collapsible { get; set; }
+
+    /// <summary>Enables arrow-key / Home / End resizing when a bar is focused.</summary>
+    [Parameter] public bool KeyboardResize { get; set; } = true;
+
+    /// <summary>Pixels moved per arrow-key press, and the snap step for <see cref="SnapToGrid"/>.</summary>
+    [Parameter] public double Step { get; set; } = 10;
+
+    /// <summary>When set, sizes snap to the nearest multiple of this many pixels while dragging.</summary>
+    [Parameter] public double? SnapToGrid { get; set; }
+
+    /// <summary>
+    /// When <c>true</c> (default) drag and keyboard resizing are clamped to <see cref="Min"/>/<see cref="Max"/>.
+    /// Set to <c>false</c> to allow dragging past those limits — a pane can then be shrunk to nothing
+    /// (overlapping its content, which scrolls) or grown up to the container edge. The limits are still
+    /// reported to assistive tech as the recommended range.
+    /// </summary>
+    [Parameter] public bool Constrained { get; set; } = true;
+
+    /// <summary>Tooltip and accessible label shown for each resize bar.</summary>
+    [Parameter] public string? HandleTooltip { get; set; }
+
+    /// <summary>
+    /// When set, pane sizes are saved under <c>sg-splitter:{PersistKey}</c> and restored on load.
+    /// Storage location is controlled by <see cref="PersistKind"/>.
+    /// </summary>
+    [Parameter] public string? PersistKey { get; set; }
+
+    /// <summary>Where persisted sizes are stored. Defaults to the session (cleared when the tab closes).</summary>
+    [Parameter] public SgStorageKind PersistKind { get; set; } = SgStorageKind.Session;
+
+    /// <summary>Raised when a resize interaction begins (pointer down on a bar).</summary>
+    [Parameter] public EventCallback OnResizeStart { get; set; }
+
+    /// <summary>Raised when a resize interaction ends, with the final size of every sized pane.</summary>
+    [Parameter] public EventCallback<double[]> OnResizeEnd { get; set; }
+
+    // ── Internal state ──────────────────────────────────────────────────────────
+
     private readonly List<SgSplitterPane> _panes = new();
     private readonly List<ElementReference> _paneRefs = new();
     private readonly List<ElementReference> _barRefs = new();
-    private readonly Dictionary<SgSplitterPane, double> _paneSizes = new();
+
+    // Current size of each *sized* pane (every pane except the last). Index-aligned to bars.
+    private readonly List<double> _sizes = new();
+    // Size remembered before a collapse, so expand restores it. Keyed by bar index.
+    private readonly Dictionary<int, double> _preCollapse = new();
+
     private bool _isDragging;
-    private double _currentSize;
-    private double _initialSize;
     private bool _needsAttach = true;
     private bool _interactiveReady;
+    private bool _persistenceLoaded;
 
-    /// <summary>Content for the first (primary) pane.</summary>
-    [Parameter] public RenderFragment? First { get; set; }
-    /// <summary>Content for the second (secondary) pane.</summary>
-    [Parameter] public RenderFragment? Second { get; set; }
-    /// <summary>Orientation of the splitter (Horizontal or Vertical).</summary>
-    [Parameter] public SgOrientation Orientation { get; set; } = SgOrientation.Horizontal;
-    /// <summary>If true, sets the splitter to vertical orientation (overrides Orientation).</summary>
-    [Parameter] public bool Vertical { get; set; }
-    /// <summary>Initial size of the first pane in pixels.</summary>
-    [Parameter] public double Size { get; set; } = 240;
-    /// <summary>Callback invoked when the splitter size changes.</summary>
-    [Parameter] public EventCallback<double> SizeChanged { get; set; }
-    /// <summary>Minimum size of the first pane in pixels.</summary>
-    [Parameter] public double Min { get; set; } = 80;
-    /// <summary>Maximum size of the first pane in pixels.</summary>
-    [Parameter] public double Max { get; set; } = 1200;
-    /// <summary>Whether to show the visible drag handle on the resize bar.</summary>
-    [Parameter] public bool ShowHandle { get; set; } = true;
-    /// <summary>Disables the splitter, preventing resizing.</summary>
-    [Parameter] public bool Disabled { get; set; }
-    /// <summary>Allows collapsing and expanding the primary pane via buttons on the resize bar.</summary>
-    [Parameter] public bool Collapsible { get; set; }
-    /// <summary>Content for multi-pane mode. Overrides First/Second when used with SgSplitterPane children.</summary>
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    /// <summary>Enables keyboard-based resizing with arrow keys.</summary>
-    [Parameter] public bool KeyboardResize { get; set; } = true;
-    /// <summary>Step size in pixels for keyboard and programmatic resizing.</summary>
-    [Parameter] public double Step { get; set; } = 10;
-    /// <summary>If set, snaps the pane size to the nearest multiple of this value.</summary>
-    [Parameter] public double? SnapToGrid { get; set; }
-    /// <summary>Callback invoked when resize starts.</summary>
-    [Parameter] public EventCallback OnResizeStart { get; set; }
-    /// <summary>Callback invoked when resize ends, providing the final pane sizes.</summary>
-    [Parameter] public EventCallback<double[]> OnResizeEnd { get; set; }
-    /// <summary>Tooltip text shown when hovering the drag handle.</summary>
-    [Parameter] public string? HandleTooltip { get; set; }
+    // The last value the consumer passed via the Size parameter. Used to tell an
+    // *intentional* new Size (which should move the pane) apart from the same old
+    // Size arriving again on an unrelated parent re-render (which must NOT clobber
+    // a size the user just dragged). Sentinel NaN = "not seen yet".
+    private double _lastInboundSize = double.NaN;
 
-    private bool IsVertical => Orientation == SgOrientation.Vertical || Vertical;
-    private bool IsMultiPane => _panes.Count > 0 || ChildContent != null;
-
-    private string FirstStyle => IsVertical
-        ? $"height:{_currentSize.ToString(CultureInfo.InvariantCulture)}px;"
-        : $"width:{_currentSize.ToString(CultureInfo.InvariantCulture)}px;";
+    // Snapshot of options that change the JS engine's behaviour. When any of these
+    // differ on a re-render we re-attach the engine in place — so consumers can flip
+    // them live without recreating the component (which would lose the dragged size).
+    private (bool Vertical, bool Disabled, bool Keyboard, bool Constrained, double Step, double? Snap) _attachOpts;
 
     private RenderFragment _renderContent = null!;
 
-    private string GetContainerClass()
-    {
-        var cls = "sgc-split";
-        cls += IsVertical ? " sgc-v" : " sgc-h";
-        if (_isDragging) cls += " is-dragging";
-        return cls;
-    }
+    private bool IsVertical => Vertical || Orientation == SgOrientation.Vertical;
+
+    // Mode is decided by the *presence of ChildContent*, which is known at first
+    // render and never changes — NOT by _panes.Count, which starts at 0 and only
+    // fills in after children register. Keying the rendered structure to a value
+    // that flips between renders would swap ElementReferenceCapture frames and
+    // crash the diff engine.
+    private bool IsMultiPane => ChildContent is not null;
+    private int SizedCount => IsMultiPane ? Math.Max(0, _panes.Count - 1) : 1;
+
+    private string ContainerClass => Css("sgc-split")
+        .AddClass(IsVertical ? "sgc-v" : "sgc-h")
+        .AddClass("is-dragging", _isDragging)
+        .AddClass("is-disabled", Disabled)
+        .Build();
+
+    private string? StorageKey => string.IsNullOrWhiteSpace(PersistKey) ? null : $"sg-splitter:{PersistKey}";
+
+    // ── Pane registration (multi-pane mode) ─────────────────────────────────────
 
     internal void RegisterPane(SgSplitterPane pane)
     {
-        if (!_panes.Contains(pane))
-        {
-            _panes.Add(pane);
-            _paneSizes[pane] = pane.Size ?? 200;
-            _needsAttach = true;
-            BuildRenderContent();
-            StateHasChanged();
-        }
+        if (_panes.Contains(pane)) return;
+        _panes.Add(pane);
+        _needsAttach = true;
+        SyncSizesToPanes();
+        BuildRenderContent();
+        StateHasChanged();
     }
 
     internal void UnregisterPane(SgSplitterPane pane)
     {
-        if (_panes.Remove(pane))
-        {
-            _paneSizes.Remove(pane);
-            _needsAttach = true;
-            BuildRenderContent();
-            StateHasChanged();
-        }
+        if (!_panes.Remove(pane)) return;
+        _needsAttach = true;
+        SyncSizesToPanes();
+        BuildRenderContent();
+        StateHasChanged();
     }
 
-    private double GetPaneSize(int index)
+    private void SyncSizesToPanes()
     {
-        if (index < 0 || index >= _panes.Count) return 200;
-        if (_paneSizes.TryGetValue(_panes[index], out var s)) return s;
-        return _panes[index].Size ?? 200;
+        _sizes.Clear();
+        for (var i = 0; i < SizedCount; i++)
+            _sizes.Add(IsMultiPane ? (_panes[i].Size ?? 200) : Size);
     }
 
-    private double _lastSize;
+    private double MinAt(int i) => IsMultiPane ? _panes[i].Min : Min;
+    private double MaxAt(int i) => IsMultiPane ? _panes[i].Max : Max;
+
+    // ── Lifecycle ───────────────────────────────────────────────────────────────
 
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        _currentSize = Size;
-        _initialSize = Size;
-        _lastSize = Size;
+        _lastInboundSize = Size;
+        SyncSizesToPanes();
         BuildRenderContent();
     }
 
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
-        if (!_isDragging && Math.Abs(Size - _lastSize) > 0.5)
+        // Two-pane mode: only adopt Size when the *parameter itself* changed since we
+        // last saw it. A parent re-render that re-passes the same literal Size must NOT
+        // overwrite a size the user dragged — otherwise the bar snaps back. Skip while
+        // dragging so an in-flight gesture is never interrupted.
+        if (!IsMultiPane && !_isDragging && Math.Abs(Size - _lastInboundSize) > 0.5)
         {
-            _currentSize = Size;
-            _lastSize = Size;
+            _lastInboundSize = Size;
+            if (_sizes.Count > 0) _sizes[0] = Size; else _sizes.Add(Size);
         }
+
+        // If a behaviour-affecting option changed, schedule a re-attach so the live
+        // JS engine picks it up — without recreating the component or resetting sizes.
+        var opts = (IsVertical, Disabled, KeyboardResize, Constrained, Step, SnapToGrid);
+        if (_interactiveReady && !opts.Equals(_attachOpts))
+            _needsAttach = true;
+        _attachOpts = opts;
+
         BuildRenderContent();
     }
-
-    private void BuildRenderContent()
-    {
-        _renderContent = IsMultiPane ? BuildMultiPaneContent() : BuildSimpleContent();
-    }
-
-    private RenderFragment BuildSimpleContent()
-    {
-        return builder =>
-        {
-            _paneRefs.Clear();
-            _barRefs.Clear();
-            var seq = 0;
-
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "sgc-split-pane");
-            builder.AddAttribute(seq++, "style", FirstStyle);
-            builder.AddElementReferenceCapture(seq++, r => _paneRefs.Add(r));
-            builder.AddContent(seq++, First);
-            builder.CloseElement();
-
-            RenderBar(builder, ref seq, 0, simple: true);
-
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "sgc-split-pane sgc-split-flex");
-            builder.AddContent(seq++, Second);
-            builder.CloseElement();
-        };
-    }
-
-    private RenderFragment BuildMultiPaneContent()
-    {
-        return builder =>
-        {
-            if (_panes.Count == 0)
-            {
-                if (ChildContent != null)
-                    builder.AddContent(0, ChildContent);
-                return;
-            }
-
-            _paneRefs.Clear();
-            _barRefs.Clear();
-            var seq = 0;
-            var count = _panes.Count;
-
-            builder.AddContent(seq++, ChildContent);
-
-            for (var i = 0; i < count; i++)
-            {
-                var pane = _panes[i];
-                var isLast = i == count - 1;
-
-                builder.OpenElement(seq++, "div");
-                var cls = "sgc-split-pane";
-                if (isLast) cls += " sgc-split-flex";
-                builder.AddAttribute(seq++, "class", cls);
-                if (!isLast)
-                {
-                    var size = GetPaneSize(i);
-                    var style = IsVertical
-                        ? $"height:{size.ToString(CultureInfo.InvariantCulture)}px;"
-                        : $"width:{size.ToString(CultureInfo.InvariantCulture)}px;";
-                    builder.AddAttribute(seq++, "style", style);
-                }
-                var paneIdx = i;
-                builder.AddElementReferenceCapture(seq++, r => _paneRefs.Add(r));
-                builder.AddContent(seq++, pane.ChildContent);
-                builder.CloseElement();
-
-                if (!isLast)
-                {
-                    RenderBar(builder, ref seq, i, simple: false);
-                }
-            }
-        };
-    }
-
-    private void RenderBar(RenderTreeBuilder builder, ref int seq, int paneIndex, bool simple)
-    {
-        var barIdx = paneIndex;
-        builder.OpenElement(seq++, "div");
-        builder.AddAttribute(seq++, "class", "sgc-split-bar");
-        builder.AddAttribute(seq++, "tabindex", "0");
-        builder.AddAttribute(seq++, "role", "separator");
-        builder.AddElementReferenceCapture(seq++, r => _barRefs.Add(r));
-
-        if (Collapsible)
-        {
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "sgc-split-collapse-btn sgc-btn-prev");
-            builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
-            {
-                if (simple) _ = CollapseFirstPane();
-                else _ = CollapsePane(paneIndex);
-            }));
-            builder.AddAttribute(seq++, "onclick:stopPropagation", true);
-            builder.AddAttribute(seq++, "title", CollapseTooltip);
-            builder.AddMarkupContent(seq++,
-                """<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 15l-6-6-6 6"/></svg>""");
-            builder.CloseElement();
-        }
-
-        if (ShowHandle)
-        {
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "sgc-split-handle");
-            if (HandleTooltip != null)
-                builder.AddAttribute(seq++, "title", HandleTooltip);
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "sgc-split-handle-bar");
-            builder.CloseElement();
-            builder.CloseElement();
-        }
-
-        if (Collapsible && simple)
-        {
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "sgc-split-collapse-btn sgc-btn-next");
-            builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => _ = CollapseSecondPane()));
-            builder.AddAttribute(seq++, "onclick:stopPropagation", true);
-            builder.AddAttribute(seq++, "title", Localizer["Common_Reset"]);
-            builder.AddMarkupContent(seq++,
-                """<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg>""");
-            builder.CloseElement();
-        }
-
-        builder.CloseElement();
-    }
-
-    private string CollapseTooltip => Localizer["Common_Collapse"];
 
     protected override async ValueTask OnInteractiveAsync()
     {
         _interactiveReady = true;
-
-        if (IsMultiPane && _paneRefs.Count > 0 && _barRefs.Count > 0)
-        {
-            _needsAttach = false;
-            await AttachMultiPaneAsync();
-        }
-        else if (!IsMultiPane && _paneRefs.Count > 0 && _barRefs.Count > 0)
-        {
-            _needsAttach = false;
-            await AttachSimpleAsync();
-        }
+        await LoadPersistedAsync();
+        await AttachAsync();
     }
 
     protected override async Task OnAfterRenderSafeAsync(bool firstRender)
     {
-        if (!_interactiveReady || !IsInteractive) return;
-        if (!_needsAttach) return;
-        if (_paneRefs.Count == 0 || _barRefs.Count == 0) return;
+        if (!_interactiveReady || !IsInteractive || !_needsAttach) return;
+        // Panes that registered after the first interactive pass: retry persistence
+        // (no-op once loaded) before (re)attaching the JS engine to the new layout.
+        await LoadPersistedAsync();
+        await AttachAsync();
+    }
 
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("detach", RootRef);
+    }
+
+    // ── JS attach / sync ─────────────────────────────────────────────────────────
+
+    private async Task AttachAsync()
+    {
+        if (_paneRefs.Count < 2 || _barRefs.Count == 0) return;
         _needsAttach = false;
-        await DetachAsync();
 
-        if (IsMultiPane)
-            await AttachMultiPaneAsync();
-        else
-            await AttachSimpleAsync();
-    }
-
-    private async Task AttachSimpleAsync()
-    {
-        if (_barRefs.Count == 0 || _paneRefs.Count == 0) return;
-        await SafeInvokeVoidAsync("attach",
-            _barRefs[0], _paneRefs[0], IsVertical, Min, Max, SelfRef, Disabled);
-    }
-
-    private async Task AttachMultiPaneAsync()
-    {
-        if (_barRefs.Count == 0 || _paneRefs.Count == 0) return;
-
-        var minSizes = new double[_panes.Count];
-        var maxSizes = new double[_panes.Count];
-        var initialSizes = new double[_panes.Count];
-
-        for (var i = 0; i < _panes.Count; i++)
+        var mins = new double[SizedCount];
+        var maxs = new double[SizedCount];
+        var sizes = new double[SizedCount];
+        for (var i = 0; i < SizedCount; i++)
         {
-            minSizes[i] = _panes[i].Min;
-            maxSizes[i] = _panes[i].Max;
-            initialSizes[i] = GetPaneSize(i);
+            mins[i] = MinAt(i);
+            maxs[i] = MaxAt(i);
+            sizes[i] = i < _sizes.Count ? _sizes[i] : 200;
         }
 
         var options = new
         {
+            vertical = IsVertical,
             step = Step,
             snapToGrid = SnapToGrid,
-            keyboardResize = KeyboardResize
+            keyboardResize = KeyboardResize,
+            disabled = Disabled,
+            constrained = Constrained,
+            mins,
+            maxs,
+            sizes,
         };
 
-        await SafeInvokeVoidAsync("attachBars",
-            _barRefs.ToArray(),
-            _paneRefs.ToArray(),
-            IsVertical,
-            minSizes, maxSizes, initialSizes,
-            SelfRef,
-            Disabled,
-            options);
+        await SafeInvokeVoidAsync("attach", RootRef, _barRefs.ToArray(), _paneRefs.ToArray(), SelfRef, options);
     }
 
-    private async Task DetachAsync()
+    private async Task PushSizesToJsAsync()
     {
-        if (_barRefs.Count == 0) return;
-
-        if (IsMultiPane)
-            await SafeInvokeVoidAsync("detachBars", _barRefs.ToArray());
-        else
-            await SafeInvokeVoidAsync("detach", _barRefs[0]);
+        await SafeInvokeVoidAsync("setSizes", RootRef, _sizes.ToArray());
     }
 
-    private async Task CollapseFirstPane()
-    {
-        var target = _currentSize > Min ? Min : 0;
-        await SetSize(target);
-    }
+    // ── JS callbacks ──────────────────────────────────────────────────────────────
 
-    private async Task CollapseSecondPane()
-    {
-        await OnReset();
-    }
-
-    private async Task CollapsePane(int index)
-    {
-        if (index < 0 || index >= _panes.Count) return;
-        var cur = GetPaneSize(index);
-        var target = cur > _panes[index].Min ? _panes[index].Min : 0;
-
-        var sizes = new double[_panes.Count];
-        for (var i = 0; i < _panes.Count; i++)
-            sizes[i] = GetPaneSize(i);
-        sizes[index] = target;
-
-        await SetSizes(sizes);
-    }
-
-    [JSInvokable]
-    public async Task SetSize(double size)
-    {
-        if (Math.Abs(size - _currentSize) < 0.5) return;
-        _currentSize = size;
-        if (SizeChanged.HasDelegate) await SizeChanged.InvokeAsync(size);
-        await InvokeAsync(StateHasChanged);
-    }
-
+    /// <summary>Invoked by JS once per drag end or per keyboard step with the live pane sizes.</summary>
     [JSInvokable]
     public async Task SetSizes(double[] sizes)
     {
-        if (sizes == null || sizes.Length == 0) return;
+        if (sizes is null || sizes.Length == 0) return;
         var changed = false;
 
-        for (var i = 0; i < sizes.Length && i < _panes.Count; i++)
+        for (var i = 0; i < sizes.Length && i < SizedCount; i++)
         {
-            var pane = _panes[i];
-            var newSize = Math.Max(0, sizes[i]);
-            if (Math.Abs(newSize - GetPaneSize(i)) > 0.5)
-            {
-                _paneSizes[pane] = newSize;
-                pane.SetSize(newSize);
-                changed = true;
-            }
+            var v = Math.Max(0, sizes[i]);
+            if (i < _sizes.Count && Math.Abs(_sizes[i] - v) <= 0.5) continue;
+            if (i < _sizes.Count) _sizes[i] = v; else _sizes.Add(v);
+            if (IsMultiPane) _panes[i].SetSize(v);
+            changed = true;
         }
 
-        if (changed)
-        {
-            if (OnResizeEnd.HasDelegate)
-                await OnResizeEnd.InvokeAsync(sizes);
-            await InvokeAsync(StateHasChanged);
-        }
+        if (!changed) return;
+
+        if (!IsMultiPane && SizeChanged.HasDelegate)
+            await SizeChanged.InvokeAsync(_sizes[0]);
+        if (OnResizeEnd.HasDelegate)
+            await OnResizeEnd.InvokeAsync(_sizes.ToArray());
+
+        await PersistAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>Invoked by JS when a drag interaction starts.</summary>
+    [JSInvokable]
+    public async Task ResizeStart()
+    {
+        if (OnResizeStart.HasDelegate) await OnResizeStart.InvokeAsync();
+    }
+
+    /// <summary>Toggles the dragging CSS state (disables pane transitions during drag).</summary>
     [JSInvokable]
     public void SetDragging(bool dragging)
     {
@@ -410,26 +334,205 @@ public partial class SgSplitter
         StateHasChanged();
     }
 
+    /// <summary>Invoked by JS on double-click — restores the declared initial sizes.</summary>
     [JSInvokable]
-    public async Task OnReset()
+    public async Task Reset()
     {
-        if (IsMultiPane)
+        _preCollapse.Clear();
+        SyncSizesToPanes();
+        await PushSizesToJsAsync();
+        if (!IsMultiPane && SizeChanged.HasDelegate)
+            await SizeChanged.InvokeAsync(_sizes.Count > 0 ? _sizes[0] : Size);
+        if (OnResizeEnd.HasDelegate)
+            await OnResizeEnd.InvokeAsync(_sizes.ToArray());
+        await PersistAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Collapse / expand ───────────────────────────────────────────────────────
+
+    private async Task ToggleCollapse(int barIndex)
+    {
+        if (barIndex < 0 || barIndex >= SizedCount) return;
+        var current = barIndex < _sizes.Count ? _sizes[barIndex] : MinAt(barIndex);
+
+        double target;
+        if (current <= 1)
         {
-            var sizes = new double[_panes.Count];
-            for (var i = 0; i < _panes.Count; i++)
-                sizes[i] = _panes[i].Size ?? 200;
-            await SetSizes(sizes);
+            // Expand: restore the remembered size (or the declared default).
+            target = _preCollapse.TryGetValue(barIndex, out var prev) && prev > 1
+                ? prev
+                : (IsMultiPane ? (_panes[barIndex].Size ?? 200) : Size);
+            _preCollapse.Remove(barIndex);
         }
         else
         {
-            _currentSize = _initialSize;
-            if (SizeChanged.HasDelegate) await SizeChanged.InvokeAsync(_currentSize);
-            await InvokeAsync(StateHasChanged);
+            _preCollapse[barIndex] = current;
+            target = 0;
+        }
+
+        if (barIndex < _sizes.Count) _sizes[barIndex] = target; else _sizes.Add(target);
+        if (IsMultiPane) _panes[barIndex].SetSize(target);
+
+        await PushSizesToJsAsync();
+        if (!IsMultiPane && SizeChanged.HasDelegate) await SizeChanged.InvokeAsync(target);
+        if (OnResizeEnd.HasDelegate) await OnResizeEnd.InvokeAsync(_sizes.ToArray());
+        await PersistAsync();
+        StateHasChanged();
+    }
+
+    private bool IsCollapsed(int barIndex) =>
+        barIndex < _sizes.Count && _sizes[barIndex] <= 1;
+
+    // ── Persistence ───────────────────────────────────────────────────────────────
+
+    private async Task LoadPersistedAsync()
+    {
+        if (_persistenceLoaded || StorageKey is null) return;
+        // In multi-pane mode the panes may not have registered on the very first
+        // interactive pass — wait for them so SizedCount is meaningful.
+        if (IsMultiPane && _panes.Count == 0) return;
+        _persistenceLoaded = true;
+
+        var saved = await Storage.GetAsync<double[]>(StorageKey, PersistKind);
+        if (saved is null || saved.Length != SizedCount) return;
+
+        for (var i = 0; i < SizedCount; i++)
+            _sizes[i] = Math.Clamp(saved[i], 0, MaxAt(i));
+
+        if (IsMultiPane)
+            for (var i = 0; i < SizedCount; i++) _panes[i].SetSize(_sizes[i]);
+        else if (SizeChanged.HasDelegate)
+            await SizeChanged.InvokeAsync(_sizes[0]);
+
+        BuildRenderContent();
+        StateHasChanged();
+    }
+
+    private async Task PersistAsync()
+    {
+        if (StorageKey is null) return;
+        await Storage.SetAsync(StorageKey, _sizes.ToArray(), PersistKind);
+    }
+
+    // ── Render tree ───────────────────────────────────────────────────────────────
+
+    private void BuildRenderContent() => _renderContent = Build;
+
+    private void Build(RenderTreeBuilder builder)
+    {
+        _paneRefs.Clear();
+        _barRefs.Clear();
+
+        // ChildContent hosts the SgSplitterPane components (they register themselves
+        // and render no markup of their own). It is ALWAYS emitted first at a fixed
+        // sequence so the frame layout never changes between renders.
+        builder.AddContent(0, ChildContent);
+
+        // Every pane/bar is rendered through a keyed RenderFragment so Blazor tracks
+        // element identity by key (not by position). This keeps ElementReferenceCapture
+        // frames stable even as panes register over several renders or collapse toggles
+        // flip conditional attributes — the diff engine never sees a frame change type.
+        if (IsMultiPane)
+        {
+            for (var i = 0; i < _panes.Count; i++)
+            {
+                var pane = _panes[i];
+                var isLast = i == _panes.Count - 1;
+                RenderKeyedPane(builder, pane.Key, pane.ChildContent, i, isLast, pane.Class, pane.Style);
+                if (!isLast) RenderKeyedBar(builder, pane.Key, i);
+            }
+        }
+        else
+        {
+            RenderKeyedPane(builder, "first", First, 0, isLast: false, null, null);
+            RenderKeyedBar(builder, "first", 0);
+            RenderKeyedPane(builder, "second", Second, 1, isLast: true, null, null);
         }
     }
 
-    protected override async ValueTask OnDisposingAsync()
+    private void RenderKeyedPane(RenderTreeBuilder builder, object key, RenderFragment? content,
+        int index, bool isLast, string? extraClass, string? extraStyle)
     {
-        await DetachAsync();
+        builder.OpenElement(1, "div");
+        builder.SetKey(key);
+
+        var cls = "sgc-split-pane";
+        if (isLast) cls += " sgc-split-flex";
+        if (!isLast && IsCollapsed(index)) cls += " is-collapsed";
+        if (!string.IsNullOrEmpty(extraClass)) cls += " " + extraClass;
+        builder.AddAttribute(2, "class", cls);
+        builder.AddAttribute(3, "id", $"{ResolvedId}-p{index}");
+
+        var style = extraStyle;
+        if (!isLast)
+        {
+            var size = index < _sizes.Count ? _sizes[index] : 200;
+            var px = size.ToString(CultureInfo.InvariantCulture) + "px";
+            style = (IsVertical ? $"height:{px};" : $"width:{px};") + style;
+        }
+        builder.AddAttribute(4, "style", style);
+
+        builder.AddElementReferenceCapture(5, r => _paneRefs.Add(r));
+        builder.AddContent(6, content);
+        builder.CloseElement();
+    }
+
+    private void RenderKeyedBar(RenderTreeBuilder builder, object paneKey, int barIndex)
+    {
+        var size = barIndex < _sizes.Count ? _sizes[barIndex] : 0;
+
+        builder.OpenElement(10, "div");
+        builder.SetKey(("bar", paneKey));
+        builder.AddAttribute(11, "class", "sgc-split-bar");
+        builder.AddAttribute(12, "tabindex", Disabled ? "-1" : "0");
+        builder.AddAttribute(13, "role", "separator");
+        builder.AddAttribute(14, "aria-orientation", IsVertical ? "horizontal" : "vertical");
+        builder.AddAttribute(15, "aria-controls", $"{ResolvedId}-p{barIndex}");
+        builder.AddAttribute(16, "aria-valuemin", MinAt(barIndex).ToString(CultureInfo.InvariantCulture));
+        builder.AddAttribute(17, "aria-valuemax", MaxAt(barIndex).ToString(CultureInfo.InvariantCulture));
+        builder.AddAttribute(18, "aria-valuenow", Math.Round(size).ToString(CultureInfo.InvariantCulture));
+        builder.AddAttribute(19, "aria-label", HandleTooltip);
+        builder.AddAttribute(20, "title", HandleTooltip);
+        builder.AddElementReferenceCapture(21, r => _barRefs.Add(r));
+
+        if (Collapsible)
+        {
+            var collapsed = IsCollapsed(barIndex);
+            var icon = (IsVertical, collapsed) switch
+            {
+                (false, false) => SgHeroicons.Outline.ChevronLeft,
+                (false, true) => SgHeroicons.Outline.ChevronRight,
+                (true, false) => SgHeroicons.Outline.ChevronUp,
+                (true, true) => SgHeroicons.Outline.ChevronDown,
+            };
+            var label = collapsed ? Localizer["Common_Expand"] : Localizer["Common_Collapse"];
+            var idx = barIndex;
+
+            builder.OpenElement(22, "button");
+            builder.AddAttribute(23, "type", "button");
+            builder.AddAttribute(24, "class", "sgc-split-collapse-btn");
+            builder.AddAttribute(25, "title", label);
+            builder.AddAttribute(26, "aria-label", label);
+            builder.AddAttribute(27, "onclick", EventCallback.Factory.Create(this, () => _ = ToggleCollapse(idx)));
+            builder.AddAttribute(28, "onclick:stopPropagation", true);
+            builder.OpenComponent<SgIcon>(29);
+            builder.AddComponentParameter(30, nameof(SgIcon.Icon), icon);
+            builder.AddComponentParameter(31, nameof(SgIcon.Size), "12px");
+            builder.CloseComponent();
+            builder.CloseElement();
+        }
+
+        if (ShowHandle)
+        {
+            builder.OpenElement(32, "div");
+            builder.AddAttribute(33, "class", "sgc-split-handle");
+            builder.OpenElement(34, "div");
+            builder.AddAttribute(35, "class", "sgc-split-handle-bar");
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
     }
 }
