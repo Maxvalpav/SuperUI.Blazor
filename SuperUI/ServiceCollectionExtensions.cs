@@ -93,6 +93,7 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<SgIntersectionService>();
         services.TryAddScoped<SgResizeService>();
         services.TryAddScoped<SgErrorService>();
+        services.TryAddScoped<SgVersionService>();
 
         Components.DocumentExtractor.Services.DocumentExtractorServiceCollectionExtensions.AddSgDocumentExtractor(services);
 

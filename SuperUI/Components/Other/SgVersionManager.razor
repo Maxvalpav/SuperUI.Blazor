@@ -1,0 +1,67 @@
+@namespace SuperUI.Components
+@inject SgVersionService VersionService
+@implements IDisposable
+
+<div class="sgc-version-mgr">
+    <div class="sgc-version-current">
+        <span class="sgc-version-label">@(Localizer["Settings_System"] ?? "Version")</span>
+        <span class="sgc-version-value">v@(VersionService.CurrentVersion)</span>
+    </div>
+
+    <div class="sgc-version-actions">
+        <button class="sgc-btn sgc-btn-sm sgc-btn-outlined" @onclick="BumpPatch" title="Patch bump">
+            Patch <small>@VersionService.NextPatch()</small>
+        </button>
+        <button class="sgc-btn sgc-btn-sm sgc-btn-outlined" @onclick="BumpMinor" title="Minor bump">
+            Minor <small>@VersionService.NextMinor()</small>
+        </button>
+        <button class="sgc-btn sgc-btn-sm sgc-btn-outlined" @onclick="BumpMajor" title="Major bump">
+            Major <small>@VersionService.NextMajor()</small>
+        </button>
+        <button class="sgc-btn sgc-btn-sm sgc-btn-outlined" @onclick="BumpPre" title="Pre-release bump">
+            Pre <small>@VersionService.NextPreRelease()</small>
+        </button>
+    </div>
+
+    @if (_showGitCmds)
+    {
+        <div class="sgc-version-git">
+            <div class="sgc-version-git-header">
+                <span>GitFlow commands</span>
+                <button class="sgc-icon-btn" @onclick="CopyCmds" title="Copy to clipboard">📋</button>
+            </div>
+            <pre class="sgc-version-git-pre">@_gitCmds</pre>
+        </div>
+    }
+</div>
+
+@code {
+    [Inject] private ISuperUILocalizer? Localizer { get; set; }
+    [Inject] private SgClipboardService? Clipboard { get; set; }
+
+    private string _gitCmds = "";
+    private bool _showGitCmds;
+
+    protected override void OnInitialized()
+    {
+        if (Localizer is not null)
+            Localizer.OnLocaleChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        if (Localizer is not null)
+            Localizer.OnLocaleChanged -= StateHasChanged;
+    }
+
+    private void BumpPatch() { _gitCmds = VersionService.GitFlowCommands(VersionService.NextPatch()); _showGitCmds = true; }
+    private void BumpMinor() { _gitCmds = VersionService.GitFlowCommands(VersionService.NextMinor()); _showGitCmds = true; }
+    private void BumpMajor() { _gitCmds = VersionService.GitFlowCommands(VersionService.NextMajor()); _showGitCmds = true; }
+    private void BumpPre() { _gitCmds = VersionService.GitFlowCommands(VersionService.NextPreRelease()); _showGitCmds = true; }
+
+    private async Task CopyCmds()
+    {
+        if (Clipboard is not null)
+            await Clipboard.CopyTextAsync(_gitCmds);
+    }
+}
