@@ -19,11 +19,13 @@ function serve(req, res) {
     if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
     if (!fs.existsSync(file)) { res.writeHead(404); res.end('Not found'); return; }
     const ext = path.extname(file);
-    res.writeHead(200, {
+    const headers = {
         'Content-Type': MIME[ext] || 'application/octet-stream',
-        'Content-Encoding': ext === '.br' ? 'br' : ext === '.gz' ? 'gzip' : undefined,
         'Cache-Control': 'no-cache',
-    });
+    };
+    if (ext === '.br') headers['Content-Encoding'] = 'br';
+    if (ext === '.gz') headers['Content-Encoding'] = 'gzip';
+    res.writeHead(200, headers);
     fs.createReadStream(file).pipe(res);
 }
 
