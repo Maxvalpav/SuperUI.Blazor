@@ -338,23 +338,27 @@
         
         // Mark tasks that end at project end and have no dependents
         var endTasks = Tasks.Where(t => t.End == projectEnd).ToList();
+        var visited = new HashSet<string>();
         foreach (var t in endTasks)
         {
-            MarkCriticalRecursive(t);
+            MarkCriticalRecursive(t, visited);
         }
 
         StateHasChanged();
     }
 
-    private void MarkCriticalRecursive(SgGanttTask task)
+    private void MarkCriticalRecursive(SgGanttTask task, HashSet<string> visited)
     {
+        // Guard against dependency cycles (A→B→A) which would otherwise recurse infinitely → StackOverflow.
+        if (!visited.Add(task.Id)) return;
+
         task.IsCritical = true;
-        
+
         // Find tasks that this task depends on, which end when this task starts
         var predecessors = Tasks.Where(t => task.Dependencies.Contains(t.Id) && t.End >= task.Start.AddDays(-1)).ToList();
         foreach (var p in predecessors)
         {
-            MarkCriticalRecursive(p);
+            MarkCriticalRecursive(p, visited);
         }
     }
 
@@ -512,8 +516,12 @@
         await TasksChanged.InvokeAsync(Tasks);
     }
 
-    private void MoveTaskWithDependencies(SgGanttTask task, DateTime newStart, DateTime newEnd)
+    private void MoveTaskWithDependencies(SgGanttTask task, DateTime newStart, DateTime newEnd, HashSet<string>? visited = null)
     {
+        // Guard against dependency cycles (A→B→A) which would otherwise recurse infinitely → StackOverflow.
+        visited ??= new HashSet<string>();
+        if (!visited.Add(task.Id)) return;
+
         var delta = newStart - task.Start;
         task.Start = newStart;
         task.End = newEnd;
@@ -523,7 +531,7 @@
         var dependents = Tasks.Where(t => t.Dependencies.Contains(task.Id)).ToList();
         foreach (var dep in dependents)
         {
-            MoveTaskWithDependencies(dep, dep.Start.Add(delta), dep.End.Add(delta));
+            MoveTaskWithDependencies(dep, dep.Start.Add(delta), dep.End.Add(delta), visited);
         }
     }
 

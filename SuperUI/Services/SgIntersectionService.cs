@@ -13,11 +13,15 @@ public sealed class SgIntersectionService : IAsyncDisposable
     private readonly IJSRuntime _js;
     private int _disposed;
     private readonly Dictionary<string, Action<bool, double>> _callbacks = new();
+    private DotNetObjectReference<SgIntersectionService>? _selfRef;
 
     public SgIntersectionService(IJSRuntime js)
     {
         _js = js;
     }
+
+    private DotNetObjectReference<SgIntersectionService> SelfRef =>
+        _selfRef ??= DotNetObjectReference.Create(this);
 
     /// <summary>
     /// Начинает наблюдение за элементом <paramref name="elementId"/>.
@@ -30,12 +34,11 @@ public sealed class SgIntersectionService : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(callback);
 
         _callbacks[elementId] = callback;
-        var self = DotNetObjectReference.Create(this);
         try
         {
             await _js.InvokeVoidAsync("SuperUI.observeIntersection", elementId,
                 options?.RootSelector, options?.RootMargin ?? "0px", options?.Threshold ?? 0.0,
-                options?.Once ?? false, self).ConfigureAwait(false);
+                options?.Once ?? false, SelfRef).ConfigureAwait(false);
         }
         catch (JSDisconnectedException) { _callbacks.Remove(elementId); }
         catch (TaskCanceledException)   { _callbacks.Remove(elementId); }
@@ -83,6 +86,11 @@ public sealed class SgIntersectionService : IAsyncDisposable
         catch (TaskCanceledException)   { }
         catch (JSException)             { }
         catch (ObjectDisposedException) { }
+        finally
+        {
+            _selfRef?.Dispose();
+            _selfRef = null;
+        }
     }
 }
 

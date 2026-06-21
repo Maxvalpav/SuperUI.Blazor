@@ -1,5 +1,6 @@
 @namespace SuperUI.Components
 @using SuperUI.Enums
+@using Microsoft.JSInterop
 @typeparam TValue
 @inherits SgInputBase<TValue>
 
@@ -32,6 +33,7 @@
                                    disabled="@optDisabled"
                                    tabindex="@(checkedNow || (Value is null && idx == _firstEnabledIndex) ? 0 : -1)"
                                    data-sg-rg-index="@idx"
+                                   @ref="_optionRefs[idx]"
                                    @onchange="() => SelectAsync(o.Value)" />
                             <span class="sgc-radio-card-dot"></span>
                             <span class="sgc-radio-card-label">@o.Label</span>
@@ -50,6 +52,7 @@
                            disabled="@optDisabled"
                            tabindex="@(checkedNow || (Value is null && idx == _firstEnabledIndex) ? 0 : -1)"
                            data-sg-rg-index="@idx"
+                           @ref="_optionRefs[idx]"
                            @onchange="() => SelectAsync(o.Value)" />
                     <span class="sgc-radio-label">
                         <span>@o.Label</span>
@@ -82,7 +85,9 @@
     private readonly string _hintId = "sgrg-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sgrg-err-" + Guid.NewGuid().ToString("N")[..8];
     private List<RadioOption<TValue>> _optionsList = new();
-    private ElementReference _inputRef;
+    // One element ref per option so FocusAsync / roving-tabindex keyboard nav can move real DOM focus.
+    // (Previously a single unbound `_inputRef` — FocusAsync was a no-op.)
+    private ElementReference[] _optionRefs = Array.Empty<ElementReference>();
 
     private int _firstEnabledIndex
     {
@@ -212,8 +217,21 @@
     /// <summary>Semantic color for radio accent. Maps to a known theme CSS variable.</summary>
     [Parameter] public SgColor? RadioColor { get; set; }
 
-    /// <summary>Programmatically focuses the first radio input.</summary>
-    public ValueTask FocusAsync() => _inputRef.FocusAsync();
+    /// <summary>Programmatically focuses the checked radio, or the first enabled one if none is selected.</summary>
+    public async ValueTask FocusAsync()
+    {
+        if (_optionRefs.Length == 0) return;
+        var target = -1;
+        for (var i = 0; i < _optionsList.Count; i++)
+        {
+            if (EqualityComparer<TValue>.Default.Equals(Value, _optionsList[i].Value)) { target = i; break; }
+        }
+        if (target < 0) target = _firstEnabledIndex;
+        if (target < 0 || target >= _optionRefs.Length) return;
+        try { await _optionRefs[target].FocusAsync(); }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
+    }
 
     protected override void OnParametersSet()
     {
@@ -231,6 +249,9 @@
         {
             _optionsList = Options.ToList();
         }
+
+        if (_optionRefs.Length != _optionsList.Count)
+            _optionRefs = new ElementReference[_optionsList.Count];
     }
 
     private async Task SelectAsync(TValue? value)
@@ -283,7 +304,18 @@
         }
 
         if (next >= 0 && next != current)
+        {
             await SelectAsync(_optionsList[next].Value);
+
+            // Roving tabindex: the newly-selected radio now has tabindex=0 and the old one -1.
+            // Move DOM focus to it so subsequent Arrow keys keep working (WAI-ARIA radiogroup pattern).
+            if (next < _optionRefs.Length)
+            {
+                try { await _optionRefs[next].FocusAsync(); }
+                catch (JSException) { }
+                catch (InvalidOperationException) { }
+            }
+        }
     }
 
     private static int NextEnabled(IList<RadioOption<TValue>> list, int from, int step)

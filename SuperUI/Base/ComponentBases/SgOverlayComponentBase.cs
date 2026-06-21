@@ -165,12 +165,34 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
         // so OnAfterRenderSafeAsync doesn't re-run it.
         if (Visible && !_previousVisible)
         {
-            _previousVisible = true;
-            _zIndexValue = ZIndex.Allocate(this, ZIndexBase);
-            StateHasChanged();
-            try { await OnOpeningAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpeningAsync failed."); }
-            try { await OnOpenedAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpenedAsync failed."); }
+            await RunOpenSequenceAsync();
         }
+    }
+
+    /// <summary>
+    /// Shared open sequence: z-index allocation, focus capture, focus trap install, and
+    /// the OnOpening/OnOpened hooks. Invoked from BOTH <see cref="OnInteractiveAsync"/>
+    /// (default-open overlays) and <see cref="OnAfterRenderSafeAsync"/> (Visible→true at runtime)
+    /// so a default-open overlay still gets focus capture and a focus trap.
+    /// </summary>
+    private async Task RunOpenSequenceAsync()
+    {
+        _previousVisible = true;
+        _zIndexValue = ZIndex.Allocate(this, ZIndexBase);
+
+        // Capture the current focus so CloseAsync can restore it.
+        await Focus.CaptureAsync();
+
+        if (UseFocusTrap && RootRef.Id is not null)
+        {
+            _focusTrap = await Focus.TrapAsync(RootRef);
+        }
+
+        _isOpening = true;
+        StateHasChanged();
+        try { await OnOpeningAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpeningAsync failed."); }
+        _isOpening = false;
+        try { await OnOpenedAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpenedAsync failed."); }
     }
 
     // ── Override OnAfterRenderSafeAsync ───────────────────────────────────────
@@ -183,22 +205,7 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
         // Detect Visible → true (opening)
         if (Visible && !_previousVisible)
         {
-            _previousVisible = true;
-            _zIndexValue = ZIndex.Allocate(this, ZIndexBase);
-
-            // Capture the current focus so CloseAsync can restore it.
-            await Focus.CaptureAsync();
-
-            if (UseFocusTrap && RootRef.Id is not null)
-            {
-                _focusTrap = await Focus.TrapAsync(RootRef);
-            }
-
-            _isOpening = true;
-            StateHasChanged();
-            try { await OnOpeningAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpeningAsync failed."); }
-            _isOpening = false;
-            try { await OnOpenedAsync(); } catch (Exception ex) { Logger.LogError(ex, "OnOpenedAsync failed."); }
+            await RunOpenSequenceAsync();
         }
         // Detect Visible → false (closing via parameter, not CloseAsync)
         else if (!Visible && _previousVisible)

@@ -13,11 +13,15 @@ public sealed class SgResizeService : IAsyncDisposable
     private readonly IJSRuntime _js;
     private int _disposed;
     private readonly Dictionary<string, Action<SgElementSize>> _callbacks = new();
+    private DotNetObjectReference<SgResizeService>? _selfRef;
 
     public SgResizeService(IJSRuntime js)
     {
         _js = js;
     }
+
+    private DotNetObjectReference<SgResizeService> SelfRef =>
+        _selfRef ??= DotNetObjectReference.Create(this);
 
     /// <summary>Начинает наблюдение за элементом <paramref name="elementId"/>.</summary>
     public async ValueTask ObserveAsync(string elementId, Action<SgElementSize> callback)
@@ -27,10 +31,9 @@ public sealed class SgResizeService : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(callback);
 
         _callbacks[elementId] = callback;
-        var self = DotNetObjectReference.Create(this);
         try
         {
-            await _js.InvokeVoidAsync("SuperUI.observeResize", elementId, self).ConfigureAwait(false);
+            await _js.InvokeVoidAsync("SuperUI.observeResize", elementId, SelfRef).ConfigureAwait(false);
         }
         catch (JSDisconnectedException) { _callbacks.Remove(elementId); }
         catch (TaskCanceledException)   { _callbacks.Remove(elementId); }
@@ -76,6 +79,11 @@ public sealed class SgResizeService : IAsyncDisposable
         catch (TaskCanceledException)   { }
         catch (JSException)             { }
         catch (ObjectDisposedException) { }
+        finally
+        {
+            _selfRef?.Dispose();
+            _selfRef = null;
+        }
     }
 }
 

@@ -19,6 +19,11 @@ public partial class SgTooltip : SgOverlayComponentBase
     private readonly SgDebouncer _showDebouncer = new();
     private readonly SgDebouncer _hideDebouncer = new();
 
+    // A tooltip is non-modal and shows on hover/focus — it must never trap keyboard focus,
+    // otherwise it breaks tab order on every show.
+    /// <inheritdoc/>
+    protected override bool UseFocusTrap => false;
+
     private static readonly Dictionary<SgPlacement, (string Css, string Js)> PlacementMap = new()
     {
         [SgPlacement.Top] = ("sgc-tt-top", "top"),

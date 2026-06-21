@@ -1,7 +1,9 @@
 @namespace SuperUI.Components
 @using Microsoft.JSInterop
+@using Microsoft.Extensions.Logging
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
+@inject ILogger<SgPivotTable<TItem>> Logger
 @typeparam TItem
 @implements IAsyncDisposable
 
@@ -810,9 +812,11 @@
 
         _isCalculating = true;
         StateHasChanged();
-        await Task.Delay(1); 
+        await Task.Delay(1);
 
-        await Task.Run(() => 
+        try
+        {
+        await Task.Run(() =>
         {
             var allValueFields = State.ValueFields;
             var allRowFields = State.RowFields;
@@ -908,9 +912,18 @@
             _columnPaths = allColHierarchies.Where(p => p != allLabel).OrderBy(x => x).ToList();
             _data = finalData;
         });
-
-        _isCalculating = false;
-        StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            // A non-numeric value field would otherwise throw inside the background Task.Run,
+            // leaving _isCalculating=true (permanent spinner) and an unobserved exception.
+            Logger.LogError(ex, "SgPivotTable: CalculateTableAsync failed.");
+        }
+        finally
+        {
+            _isCalculating = false;
+            StateHasChanged();
+        }
     }
 
     private IEnumerable<string> GetPathHierarchy(string path, string allLabel)
@@ -953,12 +966,29 @@
             var val = field.Selector(item);
             if (val == null) continue;
 
-            double d = Convert.ToDouble(val);
+            if (!TryToDouble(val, out var d)) continue;
             result.Sum += d;
             if (d < result.Min) result.Min = d;
             if (d > result.Max) result.Max = d;
         }
         return result;
+    }
+
+    /// <summary>Best-effort numeric conversion; non-numeric value fields are skipped instead of throwing.</summary>
+    private static bool TryToDouble(object val, out double d)
+    {
+        switch (val)
+        {
+            case double dd: d = dd; return true;
+            case IConvertible:
+                try { d = Convert.ToDouble(val, System.Globalization.CultureInfo.InvariantCulture); return true; }
+                catch (FormatException) { }
+                catch (InvalidCastException) { }
+                catch (OverflowException) { }
+                break;
+        }
+        d = 0;
+        return false;
     }
 
     private object? RollupAggregates(List<PivotAggregateResult> results, SgPivotField<TItem> field)
@@ -1077,7 +1107,7 @@
             var val = field.Selector(item);
             if (val == null) continue;
 
-            double d = Convert.ToDouble(val);
+            if (!TryToDouble(val, out var d)) continue;
             sum += d;
             if (d < min) min = d;
             if (d > max) max = d;

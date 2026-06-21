@@ -123,7 +123,9 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         foreach (var p in imported)
         {
             if (string.IsNullOrWhiteSpace(p.Id)) p.Id = Guid.NewGuid().ToString("N");
-            p.Config = MigrateConfig(p.Config);
+            // Sanitize like the save path: strip the API key unless the profile opted into persistence.
+            // Without this an imported profile could smuggle a plaintext key into localStorage.
+            p.Config = SanitizeForStorage(p.Config);
             p.UpdatedAt = DateTime.UtcNow;
         }
         await _js.InvokeVoidAsync("localStorage.setItem", ProfilesStorageKey, System.Text.Json.JsonSerializer.Serialize(imported));
@@ -516,8 +518,10 @@ public class SgLlmService : ILlmService, IAsyncDisposable
                 case SgLlmProvider.Google:
                     if (string.IsNullOrEmpty(config.ApiKey))
                         return new(false, 0, "API key is empty");
-                    url = $"{(config.BaseUrl?.TrimEnd('/') ?? "https://generativelanguage.googleapis.com/v1beta")}/models?key={config.ApiKey}";
+                    url = $"{(config.BaseUrl?.TrimEnd('/') ?? "https://generativelanguage.googleapis.com/v1beta")}/models";
                     req = new HttpRequestMessage(HttpMethod.Get, url);
+                    // Pass the key via header, not ?key= — query strings leak into proxy/server logs and history.
+                    req.Headers.Add("x-goog-api-key", config.ApiKey);
                     break;
                 case SgLlmProvider.Ollama:
                     url = $"{(config.BaseUrl?.TrimEnd('/') ?? "http://localhost:11434")}/api/tags";
@@ -852,15 +856,20 @@ public class SgLlmService : ILlmService, IAsyncDisposable
 
     public async Task<List<SgLlmModelInfo>> GetGoogleModelsAsync(string? apiKey = null)
     {
-        // Gemini API: GET https://generativelanguage.googleapis.com/v1beta/models?key=API_KEY
+        // Gemini API: GET https://generativelanguage.googleapis.com/v1beta/models with x-goog-api-key header.
         if (string.IsNullOrEmpty(apiKey))
         {
             return BuiltinGoogleModels();
         }
         try
         {
-            var resp = await _http.GetFromJsonAsync<GeminiModelsResponse>(
-                $"https://generativelanguage.googleapis.com/v1beta/models?key={apiKey}");
+            // Key via header, not ?key= — avoids leaking it into proxy/server logs and browser history.
+            using var modelsReq = new HttpRequestMessage(HttpMethod.Get,
+                "https://generativelanguage.googleapis.com/v1beta/models");
+            modelsReq.Headers.Add("x-goog-api-key", apiKey);
+            using var modelsResp = await _http.SendAsync(modelsReq);
+            if (!modelsResp.IsSuccessStatusCode) return BuiltinGoogleModels();
+            var resp = await modelsResp.Content.ReadFromJsonAsync<GeminiModelsResponse>();
             if (resp?.Models == null) return BuiltinGoogleModels();
 
             return resp.Models
@@ -1500,7 +1509,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         {
             var baseUrl = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://generativelanguage.googleapis.com/v1beta");
             var model = req.Model ?? CurrentConfig.ModelId ?? "gemini-2.5-flash";
-            var url = $"{baseUrl}/models/{model}:generateContent?key={CurrentConfig.ApiKey}";
+            var url = $"{baseUrl}/models/{model}:generateContent";
 
             var b64 = Convert.ToBase64String(req.Video);
             var body = new
@@ -1523,7 +1532,13 @@ public class SgLlmService : ILlmService, IAsyncDisposable
             };
             try
             {
-                var resp = await _http.PostAsJsonAsync(url, body);
+                // Key via header, not ?key= — avoids leaking it into proxy/server logs and history.
+                using var videoReq = new HttpRequestMessage(HttpMethod.Post, url)
+                {
+                    Content = System.Net.Http.Json.JsonContent.Create(body)
+                };
+                videoReq.Headers.Add("x-goog-api-key", CurrentConfig.ApiKey);
+                var resp = await _http.SendAsync(videoReq);
                 var raw = await resp.Content.ReadAsStringAsync();
                 if (!resp.IsSuccessStatusCode) return $"HTTP {(int)resp.StatusCode}: {Truncate(raw, 300)}";
                 using var doc = System.Text.Json.JsonDocument.Parse(raw);

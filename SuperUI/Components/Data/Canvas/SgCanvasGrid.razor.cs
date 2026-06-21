@@ -796,6 +796,11 @@ namespace SuperUI.Components
                 }
                 else
                 {
+                    // Copy before sorting: `filtered` may alias `_filteredCache` (filter-cache hit),
+                    // and Sort() mutates in place — sorting it would corrupt the filtered cache so a
+                    // later unsorted read returns sorted order.
+                    filtered = new List<TItem>(filtered);
+
                     var sortAcc = GetAccessor(snap.SortProperty);
                     if (sortAcc is not null)
                     {

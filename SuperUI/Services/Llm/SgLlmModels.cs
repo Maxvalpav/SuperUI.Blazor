@@ -316,7 +316,9 @@ public class SgLlmConfig
     public Dictionary<string, SgLlmRouteConfig>? Routes { get; set; }
 
     // --- UX / safety / transport ---
-    public bool PersistApiKey { get; set; } = true;
+    // Secure default: do NOT persist the raw API key to localStorage (plaintext, readable by any
+    // script on the origin). Opt in explicitly when the threat model allows it.
+    public bool PersistApiKey { get; set; } = false;
     public bool UseBackendProxy { get; set; }
     public string? ProxyUrl { get; set; }
     public int? TimeoutSeconds { get; set; } = 120;

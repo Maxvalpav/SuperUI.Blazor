@@ -221,6 +221,15 @@
         }
 
         if (target is not null)
+        {
             await ActivateAsync(target);
+
+            // Roving tabindex: ActivateAsync re-renders so `target` now has tabindex=0 and the
+            // previously-focused tab has tabindex=-1. Without moving DOM focus here, focus would be
+            // stranded on the now-unfocusable old tab, breaking Arrow/Home/End keyboard navigation.
+            try { await target.TabElementRef.FocusAsync(); }
+            catch (JSException) { /* element gone (unmounted mid-nav) */ }
+            catch (InvalidOperationException) { /* ref not yet assigned */ }
+        }
     }
 }

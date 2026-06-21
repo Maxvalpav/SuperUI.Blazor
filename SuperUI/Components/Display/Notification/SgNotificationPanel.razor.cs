@@ -9,7 +9,7 @@ namespace SuperUI.Components;
 /// avatars, action buttons, bulk operations, search, collapsible groups, importance
 /// threshold, channel indicators, snooze, and swipe-to-dismiss.
 /// </summary>
-public partial class SgNotificationPanel
+public partial class SgNotificationPanel : IDisposable
 {
     private string _filter = "all";
     private string _searchText = "";
@@ -443,27 +443,30 @@ public partial class SgNotificationPanel
 
     // ── Swipe (touch) ─────────────────────────────────────────────────────
 
-    private Dictionary<string, double> _swipeOffsets = new();
+    // Per-item swipe origin (start X). The current delta is derived against this on every
+    // move — we must NOT overwrite the origin with the delta, or each move measures relative
+    // to the previous delta and the dismiss threshold never triggers correctly.
+    private readonly Dictionary<string, double> _swipeStartX = new();
+    private readonly Dictionary<string, double> _swipeDx = new();
 
     private void OnTouchStart(NotificationItem item, TouchEventArgs e)
     {
-        if (!AllowSwipeDismiss) return;
-        _swipeOffsets[item.Id] = e.Touches[0].ClientX;
+        if (!AllowSwipeDismiss || e.Touches.Length == 0) return;
+        _swipeStartX[item.Id] = e.Touches[0].ClientX;
+        _swipeDx[item.Id] = 0;
     }
 
     private void OnTouchMove(NotificationItem item, TouchEventArgs e, ElementReference el)
     {
-        if (!AllowSwipeDismiss || !_swipeOffsets.ContainsKey(item.Id)) return;
-        var dx = e.Touches[0].ClientX - _swipeOffsets[item.Id];
-        if (dx < 0)
-            _swipeOffsets[item.Id] = dx;
+        if (!AllowSwipeDismiss || e.Touches.Length == 0 || !_swipeStartX.TryGetValue(item.Id, out var startX)) return;
+        _swipeDx[item.Id] = e.Touches[0].ClientX - startX;
     }
 
     private async Task OnTouchEndAsync(NotificationItem item, TouchEventArgs e)
     {
-        if (!AllowSwipeDismiss || !_swipeOffsets.TryGetValue(item.Id, out var dx)) return;
-        _swipeOffsets.Remove(item.Id);
-        if (dx < -80)
+        if (!AllowSwipeDismiss) return;
+        _swipeStartX.Remove(item.Id);
+        if (_swipeDx.Remove(item.Id, out var dx) && dx < -80)
             await HandleDismissAsync(item);
     }
 
@@ -492,5 +495,16 @@ public partial class SgNotificationPanel
             return items;
         var threshold = (int)ImportanceThreshold;
         return items.Where(x => (int)x.Priority > threshold);
+    }
+
+    // ── Disposal ───────────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        // The search debounce CTS is replaced on every keystroke; the last one must be
+        // cancelled + disposed on teardown or it leaks a timer registration.
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
     }
 }

@@ -78,7 +78,7 @@ public sealed class SgAnimationCoordinator : IAsyncDisposable
         if (await PrefersReducedMotionAsync()) return new CancellableDelay(0, CancellationToken.None);
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(GetLifetimeToken());
-        return new CancellableDelay(durationMs, cts.Token);
+        return new CancellableDelay(durationMs, cts);
     }
 
     /// <summary>Synchronous <see cref="BeginAsync(int)"/> — use when you already know reduced-motion state.</summary>
@@ -88,7 +88,7 @@ public sealed class SgAnimationCoordinator : IAsyncDisposable
         if (Volatile.Read(ref _disposed) == 1) return new CancellableDelay(0, CancellationToken.None);
         if (durationMs == 0 || reducedMotion) return new CancellableDelay(0, CancellationToken.None);
         var cts = CancellationTokenSource.CreateLinkedTokenSource(GetLifetimeToken());
-        return new CancellableDelay(durationMs, cts.Token);
+        return new CancellableDelay(durationMs, cts);
     }
 
     private CancellationToken GetLifetimeToken()
@@ -117,11 +117,22 @@ public readonly struct CancellableDelay
 {
     private readonly int _ms;
     private readonly CancellationToken _token;
+    // When non-null, this delay owns a linked CTS that must be disposed once the delay
+    // settles — otherwise each animation leaks a registration on the lifetime token.
+    private readonly CancellationTokenSource? _ownedCts;
 
     internal CancellableDelay(int ms, CancellationToken token)
     {
         _ms = ms;
         _token = token;
+        _ownedCts = null;
+    }
+
+    internal CancellableDelay(int ms, CancellationTokenSource ownedCts)
+    {
+        _ms = ms;
+        _ownedCts = ownedCts;
+        _token = ownedCts.Token;
     }
 
     /// <summary>Total duration in milliseconds (0 = no delay).</summary>
@@ -133,16 +144,25 @@ public readonly struct CancellableDelay
     /// <summary>
     /// Returns a task that completes after the delay (or immediately if DurationMs=0).
     /// </summary>
-    public Task WaitAsync()
+    public async Task WaitAsync()
     {
-        if (_ms <= 0) return Task.CompletedTask;
-        return Task.Delay(_ms, _token);
+        if (_ms <= 0) { _ownedCts?.Dispose(); return; }
+        try
+        {
+            await Task.Delay(_ms, _token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { /* coordinator disposed mid-delay */ }
+        finally { _ownedCts?.Dispose(); }
     }
 
     /// <summary>Returns a task that completes after the delay (or throws if cancelled).</summary>
-    public Task OrThrowAsync()
+    public async Task OrThrowAsync()
     {
-        if (_ms <= 0) return Task.CompletedTask;
-        return Task.Delay(_ms, _token);
+        if (_ms <= 0) { _ownedCts?.Dispose(); return; }
+        try
+        {
+            await Task.Delay(_ms, _token).ConfigureAwait(false);
+        }
+        finally { _ownedCts?.Dispose(); }
     }
 }
