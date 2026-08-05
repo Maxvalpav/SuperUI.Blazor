@@ -64,6 +64,7 @@ public abstract class SgJsComponentBase : SgComponentBase
 {
     private bool _initialized;
     private bool _jsInitFailed;
+    private bool _jsInitInProgress;
 
     /// <summary>JS runtime instance.</summary>
     [Inject] protected IJSRuntime JS { get; set; } = default!;
@@ -119,10 +120,11 @@ public abstract class SgJsComponentBase : SgComponentBase
     {
         if (IsDisposed) return;
 
-        if (IsInteractive && !_initialized && !_jsInitFailed)
+        if (IsInteractive && !_initialized && !_jsInitFailed && !_jsInitInProgress)
         {
-            _initialized = true; // set BEFORE await — prevents re-entrancy from re-render races
-            await InitializeJsAsync();
+            _jsInitInProgress = true; // prevents re-entrancy from re-render races
+            try { await InitializeJsAsync(); }
+            finally { _jsInitInProgress = false; }
         }
 
         await OnAfterRenderSafeAsync(firstRender);
@@ -260,7 +262,9 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
 
         if (IsDisposed) return;
+        var staleRef = SelfRef;
         SelfRef = DotNetObjectReference.Create(this);
+        staleRef?.Dispose();
 
         try
         {
@@ -275,6 +279,9 @@ public abstract class SgJsComponentBase : SgComponentBase
             Logger.LogError(ex, "SgJs: OnInteractiveAsync failed for {ComponentType} (module='{ModulePath}').",
                 GetType().Name, ModulePath);
             await OnJsInitializationFailedAsync(ex);
+            return;
         }
+
+        _initialized = true;
     }
 }

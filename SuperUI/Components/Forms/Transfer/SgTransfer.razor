@@ -359,7 +359,11 @@
     // ── Computed Properties ─────────────────────────────────────────────────
 
     private List<SgTransferItem> _sourceItems => DataSource.Where(x => !TargetKeys.Contains(x.Key)).ToList();
-    private List<SgTransferItem> _targetItems => DataSource.Where(x => TargetKeys.Contains(x.Key)).ToList();
+    private List<SgTransferItem> _targetItems => TargetKeys
+        .Select(key => DataSource.FirstOrDefault(x => x.Key == key))
+        .Where(x => x is not null)
+        .Cast<SgTransferItem>()
+        .ToList();
     private List<SgTransferItem> _sourceFiltered => SortList(FilterItems(_sourceItems, _sourceSearch));
     private List<SgTransferItem> _targetFiltered => SortList(FilterItems(_targetItems, _targetSearch));
 
@@ -922,9 +926,20 @@
 
     private async Task SwapKeysAsync(string keyA, string keyB)
     {
-        // For reorder within target list, we don't change TargetKeys (order preserved elsewhere)
-        // This is a placeholder for future reorder support
-        await Task.CompletedTask;
+        // Reorders the target list by swapping the positions of two keys in TargetKeys.
+        // The source list order follows DataSource and is not reorderable.
+        var ia = TargetKeys.IndexOf(keyA);
+        var ib = TargetKeys.IndexOf(keyB);
+        if (ia < 0 || ib < 0 || ia == ib) return;
+
+        var targetKeys = new List<string>(TargetKeys);
+        (targetKeys[ia], targetKeys[ib]) = (targetKeys[ib], targetKeys[ia]);
+        TargetKeys = targetKeys;
+
+        if (TargetKeysChanged.HasDelegate)
+            await TargetKeysChanged.InvokeAsync(TargetKeys);
+        PushHistory();
+        StateHasChanged();
     }
 
     // ── Dispose ─────────────────────────────────────────────────────────────

@@ -5,6 +5,9 @@
     Container that groups contextual tabs (which appear together based on user context).
     Renders inside SgRibbon alongside normal SgRibbonTab children.
     When Visible=false, all child tabs are hidden from the tab bar.
+
+    SgRibbonTab instances nested here register themselves with ContextualContext,
+    so ActivateFirstTab can flip the parent ribbon to the first usable tab.
 *@
 
 @if (Visible)
@@ -30,6 +33,8 @@
     /// <summary>Additional CSS class.</summary>
     [Parameter] public string? CssClass { get; set; }
 
+    [CascadingParameter] private SgRibbon? Owner { get; set; }
+
     internal SgRibbonContextualContext ContextualContext { get; } = new();
 
     internal string ColorClass => Color switch
@@ -45,11 +50,23 @@
         _                         => "sgc-ribbon-contextual-primary"
     };
 
-    /// <summary>Programmatically activates the first visible, non-disabled child tab (no-op if none).</summary>
-    public void ActivateFirstTab() { /* no-op placeholder; user calls SgRibbon.ActivateTabByTitle or sets ActiveTabIndex directly */ }
+    /// <summary>Programmatically activates the first visible, non-disabled child tab in this group.</summary>
+    public void ActivateFirstTab()
+    {
+        var first = ContextualContext.Tabs.FirstOrDefault(t => t.Visible && !t.Disabled);
+        if (first is null) return;
+        _ = ActivateAsync(first);
+    }
 
-    /// <summary>Marker for tabs nested inside an <see cref="SgRibbonContextualTabs"/>.</summary>
+    private async Task ActivateAsync(SgRibbonTab tab)
+    {
+        if (Owner is null) return;
+        await Owner.ActivateTabInternalAsync(tab);
+    }
+
+    /// <summary>Marker + registry for tabs nested inside an <see cref="SgRibbonContextualTabs"/>.</summary>
     internal sealed class SgRibbonContextualContext
     {
+        internal List<SgRibbonTab> Tabs { get; } = new();
     }
 }

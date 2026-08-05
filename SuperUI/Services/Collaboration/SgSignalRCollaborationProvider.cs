@@ -6,8 +6,13 @@ using SuperUI.Abstractions.Collaboration;
 namespace SuperUI.Services.Collaboration;
 
 /// <summary>
-/// Reference implementation for SignalR-based collaboration.
-/// Requires Microsoft.AspNetCore.SignalR.Client NuGet package.
+/// Reference implementation (STUB) for SignalR-based collaboration.
+///
+/// This type is a scaffold only: it does NOT open a real SignalR connection.
+/// To wire it up you must add the <c>Microsoft.AspNetCore.SignalR.Client</c>
+/// NuGet package and replace the method bodies with real <c>HubConnection</c>
+/// calls (see the inline comments). Cursor/activity updates are echoed back
+/// locally so the UI can be demonstrated without a live hub.
 /// </summary>
 public class SgSignalRCollaborationProvider : ISgCollaborationProvider
 {

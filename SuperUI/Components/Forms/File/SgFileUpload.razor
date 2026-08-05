@@ -2,6 +2,8 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using System.Linq.Expressions
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime _jsRuntime
+@using Microsoft.JSInterop
 @implements IDisposable
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
@@ -11,7 +13,7 @@
     }
     @if (ChildContent is not null)
     {
-        <label class="sgc-upload sgc-upload-custom @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(_isDragOver ? "sgc-drag-over" : "")"
+        <label @ref="_dropZoneRef" class="sgc-upload sgc-upload-custom @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(_isDragOver ? "sgc-drag-over" : "")"
                aria-labelledby="@_labelId"
                aria-invalid="@(IsInvalid ? "true" : null)"
                aria-describedby="@DescribedBy"
@@ -27,7 +29,7 @@
     }
     else
     {
-        <label class="sgc-upload @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(_isDragOver ? "sgc-drag-over" : "")"
+        <label @ref="_dropZoneRef" class="sgc-upload @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(_isDragOver ? "sgc-drag-over" : "")"
                aria-labelledby="@_labelId"
                aria-invalid="@(IsInvalid ? "true" : null)"
                aria-describedby="@DescribedBy"
@@ -140,6 +142,8 @@
     private readonly Dictionary<string, string> _previews = new();
     private SgEditContextBinder<IReadOnlyList<IBrowserFile>?>? _binder;
     private bool _isDragOver;
+    private ElementReference _dropZoneRef;
+    private IJSObjectReference? _dropModule;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
 
@@ -227,6 +231,16 @@
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dropModule = await _jsRuntime.InvokeAsync<IJSObjectReference>("import",
+                "./_content/SuperUI/superui-file-upload.js");
+            await _dropModule.InvokeVoidAsync("initDropZone", _dropZoneRef);
+        }
+    }
+
     private void OnDragOver(DragEventArgs e) { }
     private void OnDragEnter(DragEventArgs e) { if (!Disabled) _isDragOver = true; }
     private void OnDragLeave(DragEventArgs e) { _isDragOver = false; }
@@ -234,6 +248,8 @@
     private async Task OnDrop(DragEventArgs e)
     {
         _isDragOver = false;
+        // The native InputFile input is fed by the JS module (superui-file-upload.js)
+        // which re-dispatches 'change', routing dropped files through OnFileInputChange.
         await Task.CompletedTask;
     }
 
@@ -294,5 +310,14 @@
         return $"{v:0.##} {u[i]}";
     }
 
-    public void Dispose() => _binder?.Dispose();
+    public void Dispose()
+    {
+        _binder?.Dispose();
+        var module = _dropModule;
+        _dropModule = null;
+        if (module is not null)
+        {
+            _ = module.DisposeAsync();
+        }
+    }
 }

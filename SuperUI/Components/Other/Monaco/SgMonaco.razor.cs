@@ -296,6 +296,15 @@ public partial class SgMonaco : SgJsComponentBase
         catch (ObjectDisposedException) { return Value ?? ""; }
     }
 
+    /// <summary>Sets the editor content programmatically.</summary>
+    public async Task SetValueAsync(string value)
+    {
+        if (!_ready || !IsInteractive) { Value = value; return; }
+        _lastExternalValue = value;
+        _suppressNextChange = true;
+        await SafeInvokeVoidAsync("setValue", ResolvedId, value ?? "");
+    }
+
     /// <summary>Sets the editor read-only state.</summary>
     public async Task SetReadOnlyAsync(bool readOnly) =>
         await SafeInvokeVoidAsync("setReadOnly", ResolvedId, readOnly);
