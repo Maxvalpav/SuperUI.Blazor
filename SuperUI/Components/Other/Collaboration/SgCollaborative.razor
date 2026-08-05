@@ -2,8 +2,7 @@
 @using Microsoft.JSInterop
 @using SuperUI.Abstractions.Collaboration
 @using SuperUI.Base.ComponentBases
-@inherits SgJsComponentBase
-@implements IAsyncDisposable
+@inherits SgComponentBase
 
 <div @ref="RootRef" class="sgc-collaborative-container" @onmousemove="HandleMouseMove">
     @ChildContent
@@ -36,8 +35,6 @@
     [Parameter] public ISgCollaborationProvider? Provider { get; set; }
     /// <summary>Current user information for presence and cursors.</summary>
     [Parameter] public SgCollaborativeUser? LocalUser { get; set; }
-
-    protected override string ModulePath => "./_content/SuperUI/superui-collaboration.js";
 
     protected override async Task OnInitializedAsync()
     {
@@ -88,13 +85,13 @@
         await Provider.SendCursorUpdateAsync(pos);
     }
 
-    protected override async ValueTask OnDisposingAsync()
+    public override ValueTask DisposeAsync()
     {
         if (Provider != null)
         {
             Provider.OnCursorMoved -= HandleRemoteCursorMove;
             Provider.OnPresenceChanged -= HandlePresenceChanged;
         }
-        await base.OnDisposingAsync();
+        return base.DisposeAsync();
     }
 }
