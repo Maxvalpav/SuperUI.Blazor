@@ -53,7 +53,7 @@ builder.Services.AddSuperUI();
 
 Targets `net10.0` — works with Blazor WebAssembly, Server, Web App, Hybrid.
 
-> **Upgrading from 1.x?** See [`docs/MIGRATION-2.0.md`](docs/MIGRATION-2.0.md) for the full checklist.
+> **Upgrading from 1.x?** See [What's new in 2.0](#whats-new-in-2.0) below.
 
 ---
 
@@ -102,7 +102,7 @@ Targets `net10.0` — works with Blazor WebAssembly, Server, Web App, Hybrid.
 <SgThemeSwitcher />
 ```
 
-43 built-in themes included: Natura UI, Solaris, Royal, Graphite, Forest, Neon, Glass, Chrono, Calyx, Apex, Zen, Neo, Oasis, Flux, Prism, Cosmos, Fractalis, Wave, Aurea, Sylvan, Medici, Aether, Clarity, Element, Radius, Muse, Forge, Gordian, Inclus, Reader, Signature, Cantus, **Aether, Biofilia, Calyx, Cantus, Chrono, Circadian, Clarity, Clarity Clinical, Element, Ergo, Fractalis, Gordian, Inclus, Lumina, Muse, Oasis, Prism, Reader, Signature, Sylvan, Veiled, Wave, Window**. Switch via `SgThemeService.SetThemeAsync("theme-id")`. Themes are JSON-defined (see [`docs/MIGRATION-2.0.md`](docs/MIGRATION-2.0.md#2-themes-are-now-json)) and the runtime swaps a single `<link>` element — no per-click CSS push, browser cache does the work.
+43 built-in themes included: Natura UI, Solaris, Royal, Graphite, Forest, Neon, Glass, Chrono, Calyx, Apex, Zen, Neo, Oasis, Flux, Prism, Cosmos, Fractalis, Wave, Aurea, Sylvan, Medici, Aether, Clarity, Element, Radius, Muse, Forge, Gordian, Inclus, Reader, Signature, Cantus, **Aether, Biofilia, Calyx, Cantus, Chrono, Circadian, Clarity, Clarity Clinical, Element, Ergo, Fractalis, Gordian, Inclus, Lumina, Muse, Oasis, Prism, Reader, Signature, Sylvan, Veiled, Wave, Window**. Switch via `SgThemeService.SetThemeAsync("theme-id")`. Themes are JSON-defined and the runtime swaps a single `<link>` element — no per-click CSS push, browser cache does the work.
 
 ---
 
@@ -186,9 +186,7 @@ dotnet run --project tools/ThemeCssExporter/ThemeCssExporter.csproj -- "SuperUI/
   public — used by the build-time exporter and by anyone who needs
   to ship a pre-built CSS for a custom theme.
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full list and
-[`docs/MIGRATION-2.0.md`](docs/MIGRATION-2.0.md) for the upgrade
-checklist.
+See [What's new in 2.0](#whats-new-in-2.0) above for the full list.
 
 ---
 
