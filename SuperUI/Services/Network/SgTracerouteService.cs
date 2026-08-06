@@ -5,7 +5,10 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SuperUI.Services.Network;
 
@@ -25,23 +28,27 @@ public class SgTracerouteHop
 public class SgTracerouteService
 {
     private readonly HttpClient _httpClient;
+    private readonly ILogger<SgTracerouteService> _logger;
 
-    public SgTracerouteService(HttpClient httpClient)
+    public SgTracerouteService(HttpClient httpClient) : this(httpClient, null) { }
+
+    public SgTracerouteService(HttpClient httpClient, ILogger<SgTracerouteService>? logger)
     {
         _httpClient = httpClient;
+        _logger = logger ?? NullLogger<SgTracerouteService>.Instance;
     }
 
     /// <summary>
     /// Выполняет расширенную симуляцию трассировки до целевого хоста.
     /// Включает DNS-разрешение и динамическое построение маршрута.
     /// </summary>
-    public async Task<List<SgTracerouteHop>> TraceAsync(string target)
+    public async Task<List<SgTracerouteHop>> TraceAsync(string target, CancellationToken ct = default)
     {
         var hops = new List<SgTracerouteHop>();
         var random = new Random();
         
         // 1. Get source location (user's real IP location)
-        var sourceGeo = await GetGeoIpAsync(""); // Empty string gets current user location in FreeIPAPI
+        var sourceGeo = await GetGeoIpAsync("", ct); // Empty string gets current user location in FreeIPAPI
         if (string.IsNullOrEmpty(sourceGeo.Ip))
         {
             sourceGeo.Ip = "192.168.1.1";
@@ -52,8 +59,8 @@ public class SgTracerouteService
         }
 
         // 2. Resolve target IP and GeoIP
-        string targetIp = await ResolveTargetAsync(target);
-        var targetGeo = await GetGeoIpAsync(targetIp);
+        string targetIp = await ResolveTargetAsync(target, ct);
+        var targetGeo = await GetGeoIpAsync(targetIp, ct);
         
         // 3. Generate "natural" path
         var path = new List<SgTracerouteHop> { 
@@ -105,13 +112,13 @@ public class SgTracerouteService
             hops.Add(hop);
             
             // Faster, more natural "step" feel
-            await Task.Delay(random.Next(30, 80));
+            await Task.Delay(random.Next(30, 80), ct);
         }
 
         return hops;
     }
 
-    private async Task<string> ResolveTargetAsync(string target)
+    private async Task<string> ResolveTargetAsync(string target, CancellationToken ct = default)
     {
         if (IPAddress.TryParse(target, out _)) return target;
 
@@ -128,23 +135,26 @@ public class SgTracerouteService
 
             foreach (var url in proxies)
             {
+                ct.ThrowIfCancellationRequested();
                 try
                 {
-                    var response = await _httpClient.GetFromJsonAsync<FreeIpApiResponse>(url);
+                    var response = await _httpClient.GetFromJsonAsync<FreeIpApiResponse>(url, ct);
                     if (response != null && !string.IsNullOrEmpty(response.ipAddress))
                     {
                         return response.ipAddress;
                     }
                 }
-                catch { }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { _logger.LogWarning(ex, "ResolveTargetAsync proxy failed: {Url}", url); }
             }
         }
-        catch { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { _logger.LogWarning(ex, "ResolveTargetAsync failed for {Target}", target); }
 
         return "8.8.8.8"; // Fallback
     }
 
-    private async Task<SgTracerouteHop> GetGeoIpAsync(string ip)
+    private async Task<SgTracerouteHop> GetGeoIpAsync(string ip, CancellationToken ct = default)
     {
         // 1. Пропускаем локальные и частные IP-адреса
         if (IsPrivateIp(ip))
@@ -172,10 +182,11 @@ public class SgTracerouteService
 
             foreach (var url in proxies)
             {
+                ct.ThrowIfCancellationRequested();
                 try
                 {
                     // Используем GetStringAsync + Deserialize для лучшего контроля ошибок
-                    var json = await _httpClient.GetStringAsync(url);
+                    var json = await _httpClient.GetStringAsync(url, ct);
                     var response = JsonSerializer.Deserialize<FreeIpApiResponse>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     
                     if (response != null && !string.IsNullOrEmpty(response.ipAddress))
@@ -191,12 +202,14 @@ public class SgTracerouteService
                         };
                     }
                 }
-                catch { }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { _logger.LogWarning(ex, "GetGeoIpAsync proxy failed: {Url}", url); }
             }
         }
-        catch { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { _logger.LogWarning(ex, "GetGeoIpAsync failed for {Ip}", ip); }
 
-        return new SgTracerouteHop { Ip = ip };
+        return new SgTracerouteHop { Ip = ip, City = "Unknown", Country = "Unknown" };
     }
 
     private bool IsPrivateIp(string ip)

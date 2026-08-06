@@ -31,23 +31,26 @@
 
     protected override async ValueTask OnInteractiveAsync()
     {
-        _timer = new System.Threading.Timer(async _ => await UpdateMetricsAsync(), null, 0, 1000);
+        _timer = new System.Threading.Timer(async _ =>
+        {
+            if (IsDisposed) return;
+            await UpdateMetricsAsync();
+        }, null, 0, 1000);
     }
 
     private async Task UpdateMetricsAsync()
     {
+        if (IsDisposed) return;
         var metrics = await SafeInvokeAsync<PerfMetrics>("getPerformanceMetrics");
-        if (metrics != null)
+        if (IsDisposed || metrics == null) return;
+        _fps = metrics.Fps;
+        if (metrics.Memory != null)
         {
-            _fps = metrics.Fps;
-            if (metrics.Memory != null)
-            {
-                _memoryUsed = (metrics.Memory.UsedJSHeapSize / 1024 / 1024).ToString("F1");
-                _memoryLimit = (metrics.Memory.JsHeapSizeLimit / 1024 / 1024).ToString("F0");
-                _memoryPercent = (double)metrics.Memory.UsedJSHeapSize / metrics.Memory.JsHeapSizeLimit * 100;
-            }
-            await InvokeAsync(StateHasChanged);
+            _memoryUsed = (metrics.Memory.UsedJSHeapSize / 1024 / 1024).ToString("F1");
+            _memoryLimit = (metrics.Memory.JsHeapSizeLimit / 1024 / 1024).ToString("F0");
+            _memoryPercent = (double)metrics.Memory.UsedJSHeapSize / metrics.Memory.JsHeapSizeLimit * 100;
         }
+        await InvokeAsync(StateHasChanged);
     }
 
     public override async ValueTask DisposeAsync()

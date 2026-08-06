@@ -12,6 +12,8 @@
     /// <summary>Gets or sets whether to activate admin (heatmap overlay) mode on initialization.</summary>
     [Parameter] public bool InitialAdminMode { get; set; }
 
+    private bool _disposed;
+
     protected override async Task OnInitializedAsync()
     {
         if (AutoStart)
@@ -37,16 +39,23 @@
 
     private async void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
     {
+        if (_disposed) return;
         if (HeatmapService.IsAdminMode)
         {
             // Refresh heatmap for new page
             await Task.Delay(500); // Wait for page to render
-            await HeatmapService.ToggleAdminModeAsync(true);
+            if (_disposed) return;
+            await InvokeAsync(async () =>
+            {
+                if (_disposed) return;
+                await HeatmapService.ToggleAdminModeAsync(true);
+            });
         }
     }
 
     public void Dispose()
     {
+        _disposed = true;
         NavManager.LocationChanged -= HandleLocationChanged;
     }
 }

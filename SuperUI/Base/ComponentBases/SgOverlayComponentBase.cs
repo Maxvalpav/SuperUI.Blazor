@@ -127,7 +127,13 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
             var delay = await Animations.BeginAsync(ClosingAnimationMs);
             await delay.WaitAsync();
         }
-        catch (OperationCanceledException) { return; }
+        catch (OperationCanceledException)
+        {
+            // Coordinator cancelled mid-animation (e.g. circuit disposed). Reset
+            // closing state so a later CloseAsync() isn't permanently blocked.
+            _isClosing = false;
+            return;
+        }
 
         _isClosing = false;
         Visible = false;
@@ -208,7 +214,7 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
             await RunOpenSequenceAsync();
         }
         // Detect Visible → false (closing via parameter, not CloseAsync)
-        else if (!Visible && _previousVisible)
+        else if (!Visible && _previousVisible && !_isClosing)
         {
             _previousVisible = false;
             ReleaseZIndex();

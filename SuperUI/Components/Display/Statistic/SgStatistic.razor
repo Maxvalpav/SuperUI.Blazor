@@ -204,6 +204,7 @@
     private DateTime _animStart;
     private System.Threading.Timer? _animTimer;
     private double? _lastNumeric;
+    private volatile bool _disposed;
 
     protected override void OnParametersSet()
     {
@@ -231,12 +232,14 @@
         if (from is null || to is null) return;
         _animTimer = new System.Threading.Timer(_ =>
         {
+            if (_disposed) return;
             var elapsed = (DateTime.UtcNow - _animStart).TotalMilliseconds;
             var t = Math.Clamp(elapsed / Math.Max(1, AnimateDurationMs), 0, 1);
             var eased = 1 - Math.Pow(1 - t, 3);
             var value = from.Value + (to.Value - from.Value) * eased;
             InvokeAsync(() =>
             {
+                if (_disposed) return;
                 if (_animFrom != from || _animTo != to) return;
                 _animatedValue = value;
                 StateHasChanged();
@@ -283,5 +286,9 @@
 
     private string BuildStyle() => string.IsNullOrEmpty(Style) ? "" : Style;
 
-    public void Dispose() => _animTimer?.Dispose();
+    public void Dispose()
+    {
+        _disposed = true;
+        _animTimer?.Dispose();
+    }
 }

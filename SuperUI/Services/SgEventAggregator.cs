@@ -11,7 +11,7 @@ namespace SuperUI.Services;
 /// <remarks>
 /// <para>Поддерживает <see cref="Publish{TEvent}(TEvent)"/> и
 /// <see cref="Subscribe{TEvent}(Func{TEvent, ValueTask})"/> с IDisposable-токеном.</para>
-/// <para>Регистрируется как Singleton (глобальное состояние на circuit / session).</para>
+/// <para>Регистрируется как scoped (глобальное состояние на circuit / session).</para>
 /// </remarks>
 public sealed class SgEventAggregator
 {

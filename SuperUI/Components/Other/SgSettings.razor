@@ -9,6 +9,7 @@
 @using SuperUI.Services.Analytics
 @using System.Globalization
 @inject SgHeatmapService HeatmapService
+@implements IDisposable
 
 @*
     Settings UI is organised around three principles:
@@ -462,11 +463,11 @@
         try
         {
             await work;
-            await FlashSavedAsync();
+            await InvokeAsync(FlashSavedAsync);
         }
         catch (Exception ex)
         {
-            ToastService.Error($"{label}: {ex.Message}");
+            _ = InvokeAsync(() => ToastService.Error($"{label}: {ex.Message}"));
         }
     }
 
@@ -614,6 +615,13 @@
             </div>
         </div>
     };
+
+    public void Dispose()
+    {
+        _savedPillCts?.Cancel();
+        _savedPillCts?.Dispose();
+        _savedPillCts = null;
+    }
 }
 
 <style>

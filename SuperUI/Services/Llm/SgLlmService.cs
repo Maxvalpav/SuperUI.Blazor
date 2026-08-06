@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -24,7 +25,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
     private DotNetObjectReference<SgLlmService>? _selfRef;
     private string? _instanceId;
     private bool _isDisposed;
-    private readonly Dictionary<string, (DateTimeOffset At, List<SgLlmModelInfo> Models)> _modelCache = new();
+    private readonly ConcurrentDictionary<string, (DateTimeOffset At, List<SgLlmModelInfo> Models)> _modelCache = new();
     private static readonly TimeSpan ModelCacheTtl = TimeSpan.FromMinutes(15);
     private const string GlobalConfigStorageKey = "sui-global-llm-config";
     private const string ProfilesStorageKey = "sui-llm-profiles";
@@ -319,7 +320,8 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         if (_module is null)
         {
             _instanceId = $"sg-llm-{Guid.NewGuid():N}";
-            _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-llm.js");
+            var jsVersion = typeof(SgLlmService).Assembly.GetName().Version?.ToString() ?? "1";
+            _module = await _js.InvokeAsync<IJSObjectReference>("import", $"./_content/SuperUI/sg-llm.js?v={jsVersion}");
             _selfRef = DotNetObjectReference.Create(this);
 
             await _module.InvokeVoidAsync("init", _selfRef, _instanceId, new { });
@@ -1094,7 +1096,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SgLlmService] Embeddings Error: {ex.Message}");
+            _logger.LogError(ex, "Embeddings error");
             return Array.Empty<float>();
         }
     }
@@ -1218,7 +1220,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SgLlmService] Embeddings batch error: {ex.Message}");
+            _logger.LogError(ex, "Embeddings batch error");
             return new();
         }
     }

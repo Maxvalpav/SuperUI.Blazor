@@ -376,7 +376,7 @@ namespace SuperUI.Components
             if (changed)
             {
                 RecalculateOffsets();
-                StateHasChanged();
+                _ = InvokeAsync(StateHasChanged);
             }
         }
 

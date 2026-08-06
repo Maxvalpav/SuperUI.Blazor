@@ -62,6 +62,7 @@
     private Timer? _timer;
     private bool _isHovering;
     private readonly object _timerLock = new();
+    private volatile bool _disposed;
 
     /// <summary>Collection of items to display as slides.</summary>
     [Parameter, EditorRequired] public IEnumerable<TItem> Items { get; set; } = [];
@@ -119,6 +120,7 @@
     /// <summary>Releases resources used by the carousel.</summary>
     public void Dispose()
     {
+        _disposed = true;
         StopTimer();
     }
 
@@ -166,8 +168,10 @@
             if (_timer is not null) return;
             _timer = new Timer(async _ =>
             {
+                if (_disposed) return;
                 await InvokeAsync(async () =>
                 {
+                    if (_disposed) return;
                     if (!_isHovering || !PauseOnHover)
                         await GoToNext();
                 });

@@ -1,5 +1,7 @@
 using System.Text;
 using System.Xml.Serialization;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SuperUI.Services.Data;
 
@@ -8,13 +10,21 @@ namespace SuperUI.Services.Data;
 /// </summary>
 public class SgCbrService
 {
+    private static int _encodingProviderRegistered;
     private readonly HttpClient _http;
+    private readonly ILogger<SgCbrService> _logger;
 
-    public SgCbrService(HttpClient http)
+    public SgCbrService(HttpClient http) : this(http, null) { }
+
+    public SgCbrService(HttpClient http, ILogger<SgCbrService>? logger)
     {
         _http = http;
-        // CBR uses windows-1251 encoding for XML
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        _logger = logger ?? NullLogger<SgCbrService>.Instance;
+        // CBR uses windows-1251 encoding for XML. Register once per process.
+        if (Interlocked.Exchange(ref _encodingProviderRegistered, 1) == 0)
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        }
     }
 
     /// <summary>
@@ -67,7 +77,7 @@ public class SgCbrService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SgCbrService] Fatal error fetching {url}: {ex.Message}");
+            _logger.LogError(ex, "Fatal error fetching {Url}", url);
             return null;
         }
     }
@@ -80,7 +90,7 @@ public class SgCbrService
             var result = await FetchStringAsync(targetUrl);
             if (IsValidXml(result)) return result;
         }
-        catch { }
+        catch (Exception ex) { _logger.LogDebug(ex, "Direct fetch failed for {Url}", targetUrl); }
 
         // 2. Все прокси запускаем параллельно — берём первый успешный
         var proxies = new[]
@@ -92,6 +102,7 @@ public class SgCbrService
         };
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var ct = cts.Token;
 
         var tasks = proxies.Select(async proxy =>
         {
@@ -100,17 +111,29 @@ public class SgCbrService
                 var r = await FetchStringAsync(proxy);
                 return IsValidXml(r) ? r : null;
             }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Proxy fetch failed: {Proxy}", proxy);
+                return null;
+            }
         }).ToList();
 
-        // Ждём первый успешный результат
-        while (tasks.Count > 0)
+        // Ждём первый успешный результат, остальные отменяем
+        try
         {
-            var completed = await Task.WhenAny(tasks);
-            tasks.Remove(completed);
-            var result = await completed;
-            if (result != null) return result;
+            while (tasks.Count > 0)
+            {
+                var completed = await Task.WhenAny(tasks);
+                tasks.Remove(completed);
+                var result = await completed;
+                if (result != null)
+                {
+                    cts.Cancel();
+                    return result;
+                }
+            }
         }
+        catch (OperationCanceledException) { /* timeout */ }
 
         // 3. Fallback: AllOrigins JSON wrapper
         try
@@ -121,7 +144,7 @@ public class SgCbrService
             var content = doc.RootElement.GetProperty("contents").GetString();
             if (IsValidXml(content)) return content;
         }
-        catch { }
+        catch (Exception ex) { _logger.LogDebug(ex, "AllOrigins JSON fallback failed"); }
 
         return null;
     }

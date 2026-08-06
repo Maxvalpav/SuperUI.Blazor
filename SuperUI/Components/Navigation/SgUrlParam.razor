@@ -33,6 +33,7 @@
     }
 
     private bool _isUpdatingUrl;
+    private bool _disposed;
 
     private async Task WriteToUrlAsync(string newValue)
     {
@@ -68,19 +69,23 @@
 
     private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        if (_isUpdatingUrl) return;
+        if (_disposed || _isUpdatingUrl) return;
         var newValue = ReadFromUrl();
         if (newValue != Value)
         {
             Value = newValue;
-            await ValueChanged.InvokeAsync(newValue);
-            await OnExternalChange.InvokeAsync(newValue);
-            StateHasChanged();
+            await InvokeAsync(async () =>
+            {
+                await ValueChanged.InvokeAsync(newValue);
+                await OnExternalChange.InvokeAsync(newValue);
+                StateHasChanged();
+            });
         }
     }
 
     public void Dispose()
     {
+        _disposed = true;
         Navigation.LocationChanged -= OnLocationChanged;
     }
 }

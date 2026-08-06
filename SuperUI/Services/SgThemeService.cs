@@ -119,7 +119,7 @@ public sealed class SgThemeService : IAsyncDisposable
             var saved = await _js.InvokeAsync<ThemeStateDto>("SuperUI.getSavedState");
 
             // Determine system preference
-            _systemPrefersDark = await _js.InvokeAsync<bool>("eval", "window.matchMedia('(prefers-color-scheme: dark)').matches");
+            _systemPrefersDark = await _js.InvokeAsync<bool>("SuperUI.prefersColorSchemeDark");
 
             if (saved is not null)
             {

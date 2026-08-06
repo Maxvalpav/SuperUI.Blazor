@@ -110,8 +110,13 @@ const _providerDefaults = {
 };
 
 function _isOpenAiKind(p) {
-  return ['openai','openaicompatible','openrouter','opencode','mistral','groq','deepseek',
-          'xai','cohere','perplexity','togetherai','fireworks','cerebras','huggingface','lmstudio','gigagpt','azureopenai'].includes(p);
+  // Keys must be `SgLlmProvider.<Member>.ToString().toLowerCase()` — the C# side
+  // sends the enum name verbatim. A typo here silently drops the provider into
+  // the "Unknown provider" branch below, which resets baseUrl to api.openai.com.
+  return ['openai','openaicompatible','openaicompatiblecustom','openrouter','opencode','mistral','groq','deepseek',
+          'xai','cohere','perplexity','togetherai','fireworks','cerebras','huggingface','lmstudio','gigagpt','azureopenai',
+          'llamacpp','yandexgpt','cloudflareworkersai','githubmodels','sambanova','pollinations','glhfchat','targon',
+          'replicate','novita','aimlapi','lepton','deepinfra','vllm','jan','gpt4all','koboldcpp'].includes(p);
 }
 
 async function _resolveGigaAccessToken(opts) {
@@ -145,6 +150,7 @@ export async function loadLlm(instanceId, provider, modelId, opts) {
   if (!inst) throw new Error(`Instance ${instanceId} not found`);
   opts = opts || {};
   const providerLower = (provider || '').toLowerCase();
+  console.log('[sg-llm] loadLlm called:', { instanceId, provider, providerLower, modelId });
 
   if (providerLower === 'webllm') {
     const src = opts?.webLlmScript || 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.83/lib/index.js';
@@ -205,6 +211,18 @@ export async function loadLlm(instanceId, provider, modelId, opts) {
       kind: 'ollama',
       baseUrl: opts?.baseUrl || 'http://localhost:11434',
       model: modelId || 'qwen3.6',
+      opts,
+    };
+    try { inst.dotnetRef.invokeMethodAsync('OnLlmProgressCallback', { stage: 'ready', loaded: 1, total: 1, percent: 100, file: null, isComplete: true }); } catch (_) {}
+  } else {
+    console.warn('[sg-llm] Unknown provider "' + provider + '", defaulting to OpenAI-compatible');
+    inst.llmEngine = {
+      kind: 'openai',
+      sub: providerLower,
+      baseUrl: opts?.baseUrl || 'https://api.openai.com/v1',
+      apiKey: opts?.useBackendProxy ? '' : (opts?.apiKey || inst.options.apiKey || ''),
+      model: modelId || 'gpt-4o-mini',
+      extraHeaders: { ...(opts?.extraHeaders || {}) },
       opts,
     };
     try { inst.dotnetRef.invokeMethodAsync('OnLlmProgressCallback', { stage: 'ready', loaded: 1, total: 1, percent: 100, file: null, isComplete: true }); } catch (_) {}

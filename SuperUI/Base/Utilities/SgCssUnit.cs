@@ -52,7 +52,7 @@ public static class SgCssUnit
         if (string.IsNullOrWhiteSpace(value)) return fallback;
         var span = value.AsSpan().Trim();
         var i = 0;
-        while (i < span.Length && (char.IsDigit(span[i]) || span[i] is '.' or ',' or '-' or '+' or 'e' or 'E'))
+        while (i < span.Length && (char.IsDigit(span[i]) || span[i] is '.' or '-' or '+' or 'e' or 'E'))
             i++;
         if (i == 0) return fallback;
         var numSpan = span[..i];

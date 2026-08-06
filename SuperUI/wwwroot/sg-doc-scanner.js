@@ -1,52 +1,112 @@
+// sg-doc-scanner.js — SuperUI document scanner bridge (OpenCV.js + getUserMedia)
+
+// techstark first: it's a UMD bundle that keeps its emscripten `Module` local, so
+// it can't collide with a global `Module` owned by another runtime. The
+// docs.opencv.org build is a plain emscripten bundle that reads the *global*
+// `Module`, which makes it the riskier of the two — hence the fallback slot.
+// Versions are pinned; an unpinned jsdelivr path silently follows the `latest`
+// tag across major versions (currently 5.x).
+const OPENCV_SOURCES = [
+    'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.12.0-release.1/dist/opencv.js',
+    'https://docs.opencv.org/4.5.5/opencv.js',
+];
+
+// opencv.js ships ~9 MB of wasm; on a cold cache over a slow link the runtime
+// can take tens of seconds to instantiate. Bail out after this so the caller
+// gets a rejection instead of a promise that never settles.
+const CV_READY_TIMEOUT_MS = 60000;
+const VIDEO_METADATA_TIMEOUT_MS = 10000;
+
 let cvPromise = null;
+
+function _isCvReady() {
+    const cv = window.cv;
+    return !!(cv && typeof cv.Mat === 'function' && typeof cv.imread === 'function');
+}
+
+function _injectScript(src) {
+    return new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = src;
+        el.async = true;
+        el.onload = () => resolve();
+        el.onerror = () => {
+            el.remove();
+            reject(new Error(`Failed to load script: ${src}`));
+        };
+        document.head.appendChild(el);
+    });
+}
+
+// `script.onload` only means the JS wrapper was parsed — the wasm runtime is
+// still starting. Builds signal readiness inconsistently (some expose `cv` as a
+// Promise, older ones use `cv.onRuntimeInitialized`), and we must NOT hook
+// `window.Module`: under Blazor WebAssembly that global belongs to the dotnet
+// runtime. So poll for the actual API instead — build-agnostic and bounded.
+function _waitForCvReady(timeoutMs) {
+    return new Promise((resolve, reject) => {
+        if (_isCvReady()) { resolve(window.cv); return; }
+
+        // Some builds expose `cv` as something you await rather than the module
+        // itself. Emscripten's is a bare *thenable*, not a Promise:
+        //   Module.then = func => { ...func(Module); return Module }
+        // Two traps here. It has no `catch`, so `cv.then(..).catch(..)` throws.
+        // And it resolves with itself while keeping `then`, so handing it to
+        // Promise.resolve/await recurses forever through the thenable-adoption
+        // path and never settles. Hence: call `then` directly with plain
+        // callbacks and never adopt it. Readiness is really established by the
+        // poll below; this only helps builds whose `then` yields a *different*
+        // object than the one already on `window.cv`.
+        let unwrapping = false;
+        const tryUnwrap = () => {
+            const cv = window.cv;
+            if (unwrapping || !cv || typeof cv.then !== 'function') return;
+            unwrapping = true;
+            try {
+                // Second arg keeps a real Promise's rejection from going unhandled;
+                // emscripten's thenable simply ignores it.
+                cv.then(
+                    mod => { if (mod && typeof mod.imread === 'function') window.cv = mod; },
+                    () => { });
+            } catch (_) { /* unusable `then` — polling still covers us */ }
+        };
+
+        tryUnwrap();
+        const startedAt = performance.now();
+        const timer = setInterval(() => {
+            tryUnwrap();
+            if (_isCvReady()) {
+                clearInterval(timer);
+                resolve(window.cv);
+            } else if (performance.now() - startedAt > timeoutMs) {
+                clearInterval(timer);
+                reject(new Error('OpenCV.js runtime did not initialize in time'));
+            }
+        }, 100);
+    });
+}
 
 export function loadOpenCV() {
     if (cvPromise) return cvPromise;
-    
-    cvPromise = new Promise((resolve, reject) => {
-        if (window.cv && window.cv.onRuntimeInitialized === undefined) {
-            resolve(window.cv);
-            return;
-        }
-        
-        const script = document.createElement('script');
-        // Используем официальный CDN или стабильный jsdelivr
-        script.src = 'https://docs.opencv.org/4.5.5/opencv.js'; 
-        script.async = true;
-        
-        // Предотвращаем конфликты с другими модулями
-        if (!window.Module) {
-            window.Module = {
-                onRuntimeInitialized: () => {
-                    resolve(window.cv);
-                }
-            };
-        }
 
-        script.onload = () => {
-            // Если onRuntimeInitialized не сработал вовремя, проверяем наличие cv
-            setTimeout(() => {
-                if (window.cv && window.cv.Mat) {
-                    resolve(window.cv);
-                }
-            }, 500);
-        };
-        
-        script.onerror = () => {
-            console.warn('[SgDocScanner] Failed to load from official CDN, trying fallback...');
-            const fallback = document.createElement('script');
-            fallback.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.6.0.1/dist/opencv.js';
-            fallback.async = true;
-            fallback.onload = () => resolve(window.cv);
-            fallback.onerror = () => {
-                cvPromise = null;
-                reject(new Error('Failed to load OpenCV.js from all sources'));
-            };
-            document.head.appendChild(fallback);
-        };
-        document.head.appendChild(script);
-    });
-    
+    cvPromise = (async () => {
+        if (_isCvReady()) return window.cv;
+        let lastError;
+        for (const src of OPENCV_SOURCES) {
+            try {
+                await _injectScript(src);
+                return await _waitForCvReady(CV_READY_TIMEOUT_MS);
+            } catch (err) {
+                lastError = err;
+                console.warn(`[SgDocScanner] OpenCV source failed (${src}):`, err);
+            }
+        }
+        throw lastError || new Error('Failed to load OpenCV.js from all sources');
+    })();
+
+    // Drop the cached rejection so a later click can retry instead of failing
+    // instantly forever.
+    cvPromise.catch(() => { cvPromise = null; });
     return cvPromise;
 }
 
@@ -58,30 +118,44 @@ let _scannerState = {
     animationFrame: null
 };
 
+// Resolves once the video element knows its dimensions. Metadata may already be
+// available by the time we attach the listener, hence the readyState check.
+function _waitForVideoMetadata(video) {
+    if (video.readyState >= 1) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            video.removeEventListener('loadedmetadata', onLoaded);
+            reject(new Error('Video metadata timeout'));
+        }, VIDEO_METADATA_TIMEOUT_MS);
+        const onLoaded = () => { clearTimeout(timer); resolve(); };
+        video.addEventListener('loadedmetadata', onLoaded, { once: true });
+    });
+}
+
+/// Returns { ok: true } or { ok: false, error } — the caller renders the reason
+/// rather than silently falling back to the start button.
 export async function startScanner(video, canvas) {
     try {
         stopScanner();
         const cv = await loadOpenCV();
+
         _scannerState.video = video;
         _scannerState.canvas = canvas;
-        
-        _scannerState.stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+        _scannerState.stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
         });
-        
+
         video.srcObject = _scannerState.stream;
-        
-        return new Promise((resolve) => {
-            video.onloadedmetadata = () => {
-                video.play();
-                _scannerState.isActive = true;
-                requestAnimationFrame(() => _processFrame(cv));
-                resolve(true);
-            };
-        });
+        await _waitForVideoMetadata(video);
+        await video.play();
+
+        _scannerState.isActive = true;
+        _scannerState.animationFrame = requestAnimationFrame(() => _processFrame(cv));
+        return { ok: true, error: null };
     } catch (err) {
         console.error('[SgDocScanner] Error starting scanner:', err);
-        return false;
+        stopScanner();
+        return { ok: false, error: String(err?.message || err) };
     }
 }
 
@@ -95,11 +169,14 @@ export function stopScanner() {
         cancelAnimationFrame(_scannerState.animationFrame);
         _scannerState.animationFrame = null;
     }
+    if (_scannerState.video) {
+        try { _scannerState.video.srcObject = null; } catch (_) { }
+    }
 }
 
 function _processFrame(cv) {
     if (!_scannerState.isActive) return;
-    
+
     const { video, canvas } = _scannerState;
     if (!video || !canvas || video.paused || video.ended || video.readyState < 2) {
         _scannerState.animationFrame = requestAnimationFrame(() => _processFrame(cv));
@@ -112,12 +189,12 @@ function _processFrame(cv) {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
         }
-        
+
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
         let src = cv.imread(canvas);
         let dst = new cv.Mat();
-        
+
         // 1. Preprocessing
         cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
         cv.GaussianBlur(dst, dst, new cv.Size(5, 5), 0);
@@ -173,29 +250,30 @@ function _processFrame(cv) {
 
 export async function captureAndProcess() {
     const cv = await loadOpenCV();
-    const { video, canvas } = _scannerState;
-    
+    const { canvas } = _scannerState;
+    if (!canvas) return null;
+
     // Временно останавливаем трекинг для финальной обработки
     _scannerState.isActive = false;
 
     let src = cv.imread(canvas);
     let dst = new cv.Mat();
-    
+
     // Финальная обработка: Binarization (Otsu) для чистого документа
     cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
     cv.threshold(dst, dst, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU);
-    
+
     cv.imshow(canvas, dst);
     const dataUrl = canvas.toDataURL('image/png');
-    
+
     src.delete();
     dst.delete();
-    
+
     // Возвращаем поток в работу (если не закрываем)
     if (_scannerState.stream) {
         _scannerState.isActive = true;
-        requestAnimationFrame(() => _processFrame(cv));
+        _scannerState.animationFrame = requestAnimationFrame(() => _processFrame(cv));
     }
-    
+
     return dataUrl;
 }

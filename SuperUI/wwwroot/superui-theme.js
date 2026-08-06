@@ -232,6 +232,20 @@
         setInterval(applyCircadian, 600000); // re-check every 10 min
     }
 
+    function prefersReducedMotion() {
+        try {
+            return !!window.matchMedia &&
+                window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        } catch { return false; }
+    }
+
+    function prefersColorSchemeDark() {
+        try {
+            return !!window.matchMedia &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches;
+        } catch { return false; }
+    }
+
     // Expose to the Blazor IIFE namespace.
     window.SuperUI = window.SuperUI || {};
     window.SuperUI.applyThemeCss = applyThemeCss;
@@ -241,6 +255,8 @@
     window.SuperUI.getSavedState = getSavedState;
     window.SuperUI.initAutoMode = initAutoMode;
     window.SuperUI.initCircadianMode = initCircadianMode;
+    window.SuperUI.prefersReducedMotion = prefersReducedMotion;
+    window.SuperUI.prefersColorSchemeDark = prefersColorSchemeDark;
 
     // Named exports for ESM consumers (the file is loaded as a module by
     // Blazor's IJSRuntime `import`). C# will use the global namespace for
@@ -254,5 +270,7 @@
         exports.getSavedState = getSavedState;
         exports.initAutoMode = initAutoMode;
         exports.initCircadianMode = initCircadianMode;
+        exports.prefersReducedMotion = prefersReducedMotion;
+        exports.prefersColorSchemeDark = prefersColorSchemeDark;
     }
 })();

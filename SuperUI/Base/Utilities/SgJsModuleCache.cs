@@ -22,9 +22,10 @@ namespace SuperUI.Base.Utilities;
 /// </remarks>
 public sealed class SgJsModuleCache : IAsyncDisposable
 {
-    // Task<IJSObjectReference> — coalescing: параллельные GetAsync получат один Task.
-    // ConcurrentDictionary: lock-free чтение в fast-path, GetOrAdd с фабрикой для slow-path.
-    private readonly ConcurrentDictionary<string, Task<IJSObjectReference>> _cache = new();
+    // Lazy<Task<IJSObjectReference>> — coalescing: GetOrAdd может дважды вызвать фабрику при
+    // гонке, но Lazy откладывает выполнение до первого .Value, поэтому проигравший экземпляр
+    // так и не импортирует модуль (нет утечки IJSObjectReference) — победитель импортирует один раз.
+    private readonly ConcurrentDictionary<string, Lazy<Task<IJSObjectReference>>> _cache = new();
     private int _disposed;
 
     /// <summary>
@@ -40,23 +41,23 @@ public sealed class SgJsModuleCache : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(js);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        // GetOrAdd с lambda гарантирует, что параллельные вызовы получат один и тот же
-        // Task<IJSObjectReference> (хотя сама фабрика теоретически может быть вызвана
-        // дважды — для import() это безопасно, потому что лишний import просто пропадёт
-        // вместе с проигравшим Task'ом).
-        var task = _cache.GetOrAdd(path, p =>
-            js.InvokeAsync<IJSObjectReference>("import", p).AsTask());
+        // Lazy откладывает import до .Value. При гонке GetOrAdd может создать два Lazy, но
+        // проигравший не будет выполнен — только победитель импортирует, без утечки ресурсов.
+        var lazy = _cache.GetOrAdd(path, p =>
+            new Lazy<Task<IJSObjectReference>>(
+                () => js.InvokeAsync<IJSObjectReference>("import", p).AsTask(),
+                isThreadSafe: true));
 
         try
         {
-            return await task.WaitAsync(ct).ConfigureAwait(false);
+            return await lazy.Value.WaitAsync(ct).ConfigureAwait(false);
         }
         catch
         {
             // При ошибке — удаляем из кеша только если в нём всё ещё лежит наш упавший
-            // Task (другой поток мог уже подложить рабочий).
-            ((ICollection<KeyValuePair<string, Task<IJSObjectReference>>>)_cache)
-                .Remove(new KeyValuePair<string, Task<IJSObjectReference>>(path, task));
+            // Lazy (другой поток мог уже подложить рабочий).
+            ((ICollection<KeyValuePair<string, Lazy<Task<IJSObjectReference>>>>)_cache)
+                .Remove(new KeyValuePair<string, Lazy<Task<IJSObjectReference>>>(path, lazy));
             throw;
         }
     }
@@ -66,7 +67,8 @@ public sealed class SgJsModuleCache : IAsyncDisposable
     /// </summary>
     public async ValueTask InvalidateAsync(string path)
     {
-        if (_cache.TryRemove(path, out var task) && task.IsCompletedSuccessfully)
+        if (_cache.TryRemove(path, out var lazy) &&
+            lazy.Value is { IsCompletedSuccessfully: true } task)
         {
             try { await (await task).DisposeAsync(); }
             catch (JSDisconnectedException) { }
@@ -87,9 +89,9 @@ public sealed class SgJsModuleCache : IAsyncDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
-        foreach (var task in _cache.Values)
+        foreach (var lazy in _cache.Values)
         {
-            if (!task.IsCompletedSuccessfully) continue;
+            if (lazy.Value is not { IsCompletedSuccessfully: true } task) continue;
             try { await (await task).DisposeAsync(); }
             catch (JSDisconnectedException) { }
             catch (TaskCanceledException) { }

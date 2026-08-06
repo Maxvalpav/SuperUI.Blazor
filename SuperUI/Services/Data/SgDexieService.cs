@@ -1,6 +1,7 @@
 using Microsoft.JSInterop;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace SuperUI.Services.Data;
@@ -9,6 +10,8 @@ public class SgDexieService : IAsyncDisposable
 {
     private readonly IJSRuntime _js;
     private IJSObjectReference? _module;
+    private readonly SemaphoreSlim _moduleLock = new(1, 1);
+    private int _disposed;
 
     public SgDexieService(IJSRuntime js)
     {
@@ -17,10 +20,19 @@ public class SgDexieService : IAsyncDisposable
 
     private async Task EnsureModuleAsync()
     {
-        if (_module == null)
+        if (_module != null) return;
+        await _moduleLock.WaitAsync();
+        try
         {
-            _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-dexie.js");
+            if (_module == null)
+            {
+                _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-dexie.js");
+            }
         }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        finally { _moduleLock.Release(); }
     }
 
     public async Task InitializeAsync(string dbName, Dictionary<string, string> schema)
@@ -91,10 +103,16 @@ public class SgDexieService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_module != null)
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        var module = Interlocked.Exchange(ref _module, null);
+        if (module != null)
         {
-            await _module.DisposeAsync();
+            try { await module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
         }
+        _moduleLock.Dispose();
     }
 }
 

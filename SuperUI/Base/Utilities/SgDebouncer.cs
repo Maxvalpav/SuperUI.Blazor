@@ -77,7 +77,22 @@ public sealed class SgDebouncer : IDisposable, IAsyncDisposable
     public Task<T> RunAsync<T>(Func<CancellationToken, Task<T>> func, TimeSpan delay)
     {
         ArgumentNullException.ThrowIfNull(func);
-        return RunAsync(async ct => { _ = await func(ct); }, delay).ContinueWith(_ => default(T)!, TaskScheduler.Default);
+        if (Volatile.Read(ref _disposed) == 1) return Task.FromResult(default(T)!);
+
+        if (_leading)
+        {
+            var now = _time.GetTimestamp();
+            var last = Interlocked.Read(ref _lastTriggerTicks);
+            if (last != 0 && (now - last) < delay.Ticks) return Task.FromResult(default(T)!);
+            Interlocked.Exchange(ref _lastTriggerTicks, now);
+            return SafeInvokeAsync(func);
+        }
+
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _cts, newCts);
+        oldCts?.Cancel();
+        oldCts?.Dispose();
+        return ExecuteAsync(func, delay, newCts.Token);
     }
 
     /// <summary>Cancels the pending call (if any).</summary>
@@ -99,10 +114,30 @@ public sealed class SgDebouncer : IDisposable, IAsyncDisposable
         catch (OperationCanceledException) { }
     }
 
+    private async Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> action, TimeSpan delay, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(delay, _time, ct).ConfigureAwait(false);
+            if (ct.IsCancellationRequested) return default(T)!;
+            return await action(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return default(T)!;
+        }
+    }
+
     private static async Task SafeInvokeAsync(Func<CancellationToken, Task> action)
     {
         try { await action(CancellationToken.None).ConfigureAwait(false); }
         catch (OperationCanceledException) { }
+    }
+
+    private static async Task<T> SafeInvokeAsync<T>(Func<CancellationToken, Task<T>> action)
+    {
+        try { return await action(CancellationToken.None).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return default(T)!; }
     }
 
     /// <inheritdoc/>

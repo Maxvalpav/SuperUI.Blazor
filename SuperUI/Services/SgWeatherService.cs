@@ -1,9 +1,12 @@
 using System;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Globalization;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using SuperUI.Models;
 
 namespace SuperUI.Services;
@@ -11,6 +14,7 @@ namespace SuperUI.Services;
 public class SgWeatherService
 {
     private readonly HttpClient _http;
+    private readonly ILogger<SgWeatherService> _logger;
     private const string ForecastUrl = "https://api.open-meteo.com/v1/forecast";
     private const string ArchiveUrl = "https://archive.open-meteo.com/v1/archive";
     private const string AirQualityUrl = "https://air-quality.open-meteo.com/v1/air-quality";
@@ -19,68 +23,75 @@ public class SgWeatherService
     private const string ElevationUrl = "https://api.open-meteo.com/v1/elevation";
     private const string FloodUrl = "https://flood-api.open-meteo.com/v1/flood";
 
-    public SgWeatherService(HttpClient http)
+    public SgWeatherService(HttpClient http) : this(http, null) { }
+
+    public SgWeatherService(HttpClient http, ILogger<SgWeatherService>? logger)
     {
         _http = http;
+        _logger = logger ?? NullLogger<SgWeatherService>.Instance;
     }
 
-    public async Task<SgWeatherForecast?> GetForecastAsync(double lat, double lon, int forecastDays = 7)
+    public async Task<SgWeatherForecast?> GetForecastAsync(double lat, double lon, int forecastDays = 7, CancellationToken ct = default)
     {
         var url = $"{ForecastUrl}?latitude={lat.ToString(CultureInfo.InvariantCulture)}&longitude={lon.ToString(CultureInfo.InvariantCulture)}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&timezone=auto&forecast_days={forecastDays}";
-        return await FetchAsync<SgWeatherForecast>(url);
+        return await FetchAsync<SgWeatherForecast>(url, ct);
     }
 
-    public async Task<SgWeatherForecast?> GetHistoricalAsync(double lat, double lon, DateTime start, DateTime end)
+    public async Task<SgWeatherForecast?> GetHistoricalAsync(double lat, double lon, DateTime start, DateTime end, CancellationToken ct = default)
     {
         var url = $"{ArchiveUrl}?latitude={lat.ToString(CultureInfo.InvariantCulture)}&longitude={lon.ToString(CultureInfo.InvariantCulture)}&start_date={start:yyyy-MM-dd}&end_date={end:yyyy-MM-dd}&hourly=temperature_2m,precipitation&timezone=auto";
-        return await FetchAsync<SgWeatherForecast>(url);
+        return await FetchAsync<SgWeatherForecast>(url, ct);
     }
 
-    public async Task<SgWeatherForecast?> GetAirQualityAsync(double lat, double lon)
+    public async Task<SgWeatherForecast?> GetAirQualityAsync(double lat, double lon, CancellationToken ct = default)
     {
         var url = $"{AirQualityUrl}?latitude={lat.ToString(CultureInfo.InvariantCulture)}&longitude={lon.ToString(CultureInfo.InvariantCulture)}&hourly=pm10,pm2_5,no2&timezone=auto";
-        return await FetchAsync<SgWeatherForecast>(url);
+        return await FetchAsync<SgWeatherForecast>(url, ct);
     }
 
-    public async Task<SgWeatherForecast?> GetMarineAsync(double lat, double lon)
+    public async Task<SgWeatherForecast?> GetMarineAsync(double lat, double lon, CancellationToken ct = default)
     {
         var url = $"{MarineUrl}?latitude={lat.ToString(CultureInfo.InvariantCulture)}&longitude={lon.ToString(CultureInfo.InvariantCulture)}&hourly=wave_height,wave_direction,wave_period&timezone=auto";
-        return await FetchAsync<SgWeatherForecast>(url);
+        return await FetchAsync<SgWeatherForecast>(url, ct);
     }
 
-    public async Task<SgGeocodingResponse?> SearchCityAsync(string name, int count = 5)
+    public async Task<SgGeocodingResponse?> SearchCityAsync(string name, int count = 5, CancellationToken ct = default)
     {
         var url = $"{GeocodingUrl}?name={Uri.EscapeDataString(name)}&count={count}&language=ru&format=json";
-        return await FetchAsync<SgGeocodingResponse>(url);
+        return await FetchAsync<SgGeocodingResponse>(url, ct);
     }
 
-    public async Task<SgWeatherForecast?> GetFloodAsync(double lat, double lon)
+    public async Task<SgWeatherForecast?> GetFloodAsync(double lat, double lon, CancellationToken ct = default)
     {
-        var url = $"{FloodUrl}?latitude={lat}&longitude={lon}&daily=river_discharge&timezone=auto";
-        return await FetchAsync<SgWeatherForecast>(url);
+        var url = $"{FloodUrl}?latitude={lat.ToString(CultureInfo.InvariantCulture)}&longitude={lon.ToString(CultureInfo.InvariantCulture)}&daily=river_discharge&timezone=auto";
+        return await FetchAsync<SgWeatherForecast>(url, ct);
     }
 
-    public async Task<SgWeatherForecast?> GetClimateAsync(double lat, double lon, DateTime start, DateTime end)
+    public async Task<SgWeatherForecast?> GetClimateAsync(double lat, double lon, DateTime start, DateTime end, CancellationToken ct = default)
     {
-        var url = $"https://climate-api.open-meteo.com/v1/climate?latitude={lat}&longitude={lon}&start_date={start:yyyy-MM-dd}&end_date={end:yyyy-MM-dd}&models=CMIP6_ensemble&daily=temperature_2m_mean&timezone=auto";
-        return await FetchAsync<SgWeatherForecast>(url);
+        var url = $"https://climate-api.open-meteo.com/v1/climate?latitude={lat.ToString(CultureInfo.InvariantCulture)}&longitude={lon.ToString(CultureInfo.InvariantCulture)}&start_date={start:yyyy-MM-dd}&end_date={end:yyyy-MM-dd}&models=CMIP6_ensemble&daily=temperature_2m_mean&timezone=auto";
+        return await FetchAsync<SgWeatherForecast>(url, ct);
     }
 
-    public async Task<SgWeatherForecast?> GetEnsembleAsync(double lat, double lon)
+    public async Task<SgWeatherForecast?> GetEnsembleAsync(double lat, double lon, CancellationToken ct = default)
     {
-        var url = $"https://ensemble-api.open-meteo.com/v1/ensemble?latitude={lat}&longitude={lon}&hourly=temperature_2m&models=icon_seamless&timezone=auto";
-        return await FetchAsync<SgWeatherForecast>(url);
+        var url = $"https://ensemble-api.open-meteo.com/v1/ensemble?latitude={lat.ToString(CultureInfo.InvariantCulture)}&longitude={lon.ToString(CultureInfo.InvariantCulture)}&hourly=temperature_2m&models=icon_seamless&timezone=auto";
+        return await FetchAsync<SgWeatherForecast>(url, ct);
     }
 
-    private async Task<T?> FetchAsync<T>(string url) where T : class
+    private async Task<T?> FetchAsync<T>(string url, CancellationToken ct = default) where T : class
     {
         try
         {
-            return await _http.GetFromJsonAsync<T>(url);
+            return await _http.GetFromJsonAsync<T>(url, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return null;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error fetching data from {url}: {ex.Message}");
+            _logger.LogError(ex, "Error fetching data from {Url}", url);
             return null;
         }
     }

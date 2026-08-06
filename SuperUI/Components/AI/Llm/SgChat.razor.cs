@@ -56,10 +56,23 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
         LlmService.OnChatComplete += HandleComplete;
         LlmService.OnError += HandleError;
 
-        if (LlmService.IsInitialized && LlmService.CurrentConfig != null)
+        if (LlmService.CurrentConfig is null)
+        {
+            try { await LlmService.GetGlobalConfigAsync(); } catch { }
+        }
+
+        if (LlmService.CurrentConfig != null)
         {
             _config = LlmService.CurrentConfig;
-            _isReady = true;
+            try
+            {
+                await LlmService.InitializeAsync(LlmService.CurrentConfig);
+                _isReady = true;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to initialize LLM on chat load");
+            }
         }
 
         await LoadSessionsAsync();

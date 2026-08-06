@@ -141,6 +141,15 @@ public partial class SgCol : ComponentBase
 
     private int Columns => RowContext?.Columns ?? 12;
 
+    /// <summary>
+    /// <c>true</c> when at least one breakpoint span is set. Such columns are sized by the
+    /// <c>.sg-col-{bp}-{n}</c> classes, so <see cref="ComputedStyle"/> must not emit an inline
+    /// width — inline styles outrank classes and would pin the column to its default span.
+    /// </summary>
+    private bool HasResponsiveSpan =>
+        Xs is >= 1 and <= 12 || Sm is >= 1 and <= 12 || Md is >= 1 and <= 12 ||
+        Lg is >= 1 and <= 12 || Xl is >= 1 and <= 12;
+
     private static string Pct(double v) =>
         v.ToString("0.######", CultureInfo.InvariantCulture) + "%";
 
@@ -220,7 +229,7 @@ public partial class SgCol : ComponentBase
             {
                 sb.Append("flex:").Append(Flex).Append(';');
             }
-            else if (span >= 1 && span <= cols)
+            else if (span >= 1 && span <= cols && !(HasResponsiveSpan && cols == 12))
             {
                 var pct = (double)span / cols * 100.0;
                 var gutter = RowContext?.Gutter ?? RowContext?.ColumnGutter ?? LegacyGutter;

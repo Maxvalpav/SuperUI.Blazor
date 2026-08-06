@@ -83,7 +83,7 @@ public enum SgToastPriority
 }
 
 /// <summary>
-/// Сервис показа тостов. Singleton.
+/// Сервис показа тостов. Регистрируется как Scoped (per-circuit / per-session).
 /// Хост (<c>SgToastHost</c>) подписывается на <see cref="Added"/>/<see cref="Removed"/>/<see cref="Updated"/>.
 /// </summary>
 /// <remarks>
@@ -331,8 +331,8 @@ public sealed class SgToastService : IAsyncDisposable
 
     /// <summary>Освобождает сервис.</summary>
     /// <remarks>
-    /// Это singleton DI-сервис — компоненты-хосты НЕ должны вызывать DisposeAsync сами,
-    /// диспозит контейнер при shutdown.
+    /// Это scoped DI-сервис — компоненты-хосты НЕ должны вызывать DisposeAsync сами,
+    /// диспозит контейнер при shutdown / закрытии circuit.
     /// </remarks>
     public ValueTask DisposeAsync()
     {

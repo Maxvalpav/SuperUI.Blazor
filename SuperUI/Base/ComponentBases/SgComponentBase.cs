@@ -146,7 +146,7 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
     {
         _themeChangedHandler = (_, _) =>
         {
-            if (_disposed) return;
+            if (Volatile.Read(ref _disposed)) return;
             try { InvokeAsync(StateHasChanged); }
             catch (ObjectDisposedException) { }
             catch (InvalidOperationException) { }
@@ -159,7 +159,7 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
     {
         _localeChangedHandler = () =>
         {
-            if (_disposed) return;
+            if (Volatile.Read(ref _disposed)) return;
             try { InvokeAsync(StateHasChanged); }
             catch (ObjectDisposedException) { }
             catch (InvalidOperationException) { }
@@ -178,7 +178,7 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
     public virtual void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
+        Volatile.Write(ref _disposed, true);
 
         if (ThemeService is not null && _themeChangedHandler is not null)
             ThemeService.ThemeChanged -= _themeChangedHandler;
@@ -188,6 +188,7 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
         try { _lifetimeCts?.Cancel(); } catch (ObjectDisposedException) { }
         _lifetimeCts?.Dispose();
         _lifetimeCts = null;
+        GC.SuppressFinalize(this);
     }
 
     /// <inheritdoc/>

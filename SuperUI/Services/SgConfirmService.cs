@@ -33,7 +33,7 @@ public sealed class SgConfirmRequest
 }
 
 /// <summary>
-/// Сервис показа confirm-диалогов. Singleton.
+/// Сервис показа confirm-диалогов. Регистрируется как scoped (per-circuit / per-session).
 /// </summary>
 /// <remarks>
 /// <para>Подписчиком должен быть один <c>SgConfirmHost</c>. Если зарегистрировано несколько,

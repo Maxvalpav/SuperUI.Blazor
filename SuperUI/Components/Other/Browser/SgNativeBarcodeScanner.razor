@@ -83,18 +83,17 @@
 
     private async Task TickAsync()
     {
-        if (!_scanning) return;
-        
+        if (!_scanning || IsDisposed) return;
+
         var results = await SafeInvokeAsync<List<BarcodeResult>>("detectBarcodes", _videoId);
-        if (results != null && results.Any())
+        if (IsDisposed || results == null || !results.Any()) return;
+        _lastResult = results.First();
+        await InvokeAsync(async () =>
         {
-            _lastResult = results.First();
-            await InvokeAsync(async () => 
-            {
-                await OnDetected.InvokeAsync(_lastResult);
-                StateHasChanged();
-            });
-        }
+            if (IsDisposed) return;
+            await OnDetected.InvokeAsync(_lastResult);
+            StateHasChanged();
+        });
     }
 
     public override async ValueTask DisposeAsync()

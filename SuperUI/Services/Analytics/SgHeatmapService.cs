@@ -21,6 +21,8 @@ public class SgHeatmapService : IAsyncDisposable
     private DotNetObjectReference<SgHeatmapService>? _dotNetRef;
     private bool _isTracking;
     private bool _isAdminMode;
+    private readonly SemaphoreSlim _moduleLock = new(1, 1);
+    private int _disposed;
 
     public bool IsTracking => _isTracking;
     public bool IsAdminMode => _isAdminMode;
@@ -36,8 +38,11 @@ public class SgHeatmapService : IAsyncDisposable
 
     private async Task EnsureModuleAsync()
     {
-        if (_module == null)
+        if (_module != null) return;
+        await _moduleLock.WaitAsync();
+        try
         {
+            if (_module != null) return;
             // Initialize Dexie for analytics
             await _dexie.InitializeAsync(DbName, new Dictionary<string, string>
             {
@@ -48,6 +53,10 @@ public class SgHeatmapService : IAsyncDisposable
             _dotNetRef = DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync("init", _dotNetRef);
         }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        finally { _moduleLock.Release(); }
     }
 
     public async Task StartTrackingAsync()
@@ -103,15 +112,23 @@ public class SgHeatmapService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_module != null)
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        var module = Interlocked.Exchange(ref _module, null);
+        if (module != null)
         {
             try
             {
-                await _module.InvokeVoidAsync("dispose");
-                await _module.DisposeAsync();
+                await module.InvokeVoidAsync("dispose");
             }
             catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+            try { await module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
         }
         _dotNetRef?.Dispose();
+        _moduleLock.Dispose();
     }
 }

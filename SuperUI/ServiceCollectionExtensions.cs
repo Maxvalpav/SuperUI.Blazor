@@ -94,6 +94,7 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<SgResizeService>();
         services.TryAddScoped<SgErrorService>();
         services.TryAddScoped<SgVersionService>();
+        services.TryAddScoped<Services.FeatureFlags.SgFeatureFlagService>();
 
         Components.DocumentExtractor.Services.DocumentExtractorServiceCollectionExtensions.AddSgDocumentExtractor(services);
 

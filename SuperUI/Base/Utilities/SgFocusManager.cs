@@ -23,6 +23,7 @@ public sealed class SgFocusManager : IAsyncDisposable
 {
     private readonly IJSRuntime _js;
     private readonly Stack<FocusSnapshot> _stack = new();
+    private readonly object _stackLock = new();
     private int _disposed;
 
     /// <summary>Creates a new focus manager.</summary>
@@ -43,7 +44,10 @@ public sealed class SgFocusManager : IAsyncDisposable
             var snapshot = await _js.InvokeAsync<FocusSnapshot?>(
                 "eval",
                 "(() => { const el = document.activeElement; if (!el || el === document.body) return null; return { id: el.id || null, selector: el.tagName.toLowerCase() + (el.id?'#'+el.id:'') }; })()");
-            if (snapshot is not null) _stack.Push(snapshot);
+            if (snapshot is not null)
+            {
+                lock (_stackLock) _stack.Push(snapshot);
+            }
         }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException)   { }
@@ -57,8 +61,12 @@ public sealed class SgFocusManager : IAsyncDisposable
     public async ValueTask RestoreAsync()
     {
         if (Volatile.Read(ref _disposed) == 1) return;
-        if (_stack.Count == 0) return;
-        var snap = _stack.Pop();
+        FocusSnapshot? snap;
+        lock (_stackLock)
+        {
+            if (_stack.Count == 0) return;
+            snap = _stack.Pop();
+        }
         try
         {
             if (!string.IsNullOrEmpty(snap.Id))
@@ -114,7 +122,7 @@ public sealed class SgFocusManager : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return ValueTask.CompletedTask;
-        _stack.Clear();
+        lock (_stackLock) _stack.Clear();
         return ValueTask.CompletedTask;
     }
 
@@ -146,11 +154,21 @@ public sealed class SgFocusManager : IAsyncDisposable
             if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
             var h = Interlocked.Exchange(ref _handle, null);
             if (h is null) return;
-            try { await h.InvokeVoidAsync("release"); await h.DisposeAsync(); }
+            try
+            {
+                await h.InvokeVoidAsync("release");
+            }
             catch (JSDisconnectedException) { }
             catch (TaskCanceledException)   { }
             catch (JSException)             { }
             catch (ObjectDisposedException) { }
+            finally
+            {
+                try { await h.DisposeAsync(); }
+                catch (JSDisconnectedException) { }
+                catch (TaskCanceledException)   { }
+                catch (ObjectDisposedException) { }
+            }
         }
     }
 }

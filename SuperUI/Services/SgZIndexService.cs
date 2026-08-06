@@ -101,7 +101,7 @@ public sealed class SgZIndexService
     public int Allocate(object owner, int baseZIndex)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        object? newTop;
+        object? capturedNew = null;
 
         lock (_lock)
         {
@@ -113,19 +113,19 @@ public sealed class SgZIndexService
             _currentZIndex = Math.Max(_currentZIndex, baseZIndex) + 10;
             _entries.Add(new ZIndexEntry(_currentZIndex, owner));
 
-            newTop = _entries.Count > 0 ? _entries[^1].Owner : null;
+            var newTop = _entries.Count > 0 ? _entries[^1].Owner : null;
 
             if (!ReferenceEquals(oldTop, newTop))
             {
                 // Raise event outside lock to avoid deadlocks if subscribers re-enter the service.
-                var capturedNew = newTop;
-                var capturedOld = oldTop;
-                _ = System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                {
-                    try { TopOwnerChanged?.Invoke(capturedNew); }
-                    catch { /* swallow subscriber errors */ }
-                });
+                capturedNew = newTop;
             }
+        }
+
+        if (capturedNew is not null)
+        {
+            try { TopOwnerChanged?.Invoke(capturedNew); }
+            catch { /* swallow subscriber errors */ }
         }
 
         return _currentZIndex;
@@ -149,12 +149,11 @@ public sealed class SgZIndexService
     public void Release(object owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        object? newTop;
-        object? oldTop;
+        object? capturedNew;
 
         lock (_lock)
         {
-            oldTop = _entries.Count > 0 ? _entries[^1].Owner : null;
+            var oldTop = _entries.Count > 0 ? _entries[^1].Owner : null;
             _entries.RemoveAll(x => ReferenceEquals(x.Owner, owner));
 
             if (_entries.Count == 0)
@@ -162,17 +161,15 @@ public sealed class SgZIndexService
                 _currentZIndex = DefaultInitialZIndex;
             }
 
-            newTop = _entries.Count > 0 ? _entries[^1].Owner : null;
+            capturedNew = _entries.Count > 0 && !ReferenceEquals(oldTop, _entries[^1].Owner)
+                ? _entries[^1].Owner
+                : null;
+        }
 
-            if (!ReferenceEquals(oldTop, newTop))
-            {
-                var capturedNew = newTop;
-                _ = System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                {
-                    try { TopOwnerChanged?.Invoke(capturedNew); }
-                    catch { }
-                });
-            }
+        if (capturedNew is not null)
+        {
+            try { TopOwnerChanged?.Invoke(capturedNew); }
+            catch { }
         }
     }
 

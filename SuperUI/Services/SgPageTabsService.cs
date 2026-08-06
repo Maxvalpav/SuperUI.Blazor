@@ -6,9 +6,18 @@ namespace SuperUI.Services;
 public class SgPageTabsService
 {
     private readonly List<SgPageTab> _tabs = new();
-    public IReadOnlyList<SgPageTab> Tabs => _tabs;
+    private readonly object _lock = new();
+
+    public IReadOnlyList<SgPageTab> Tabs
+    {
+        get
+        {
+            lock (_lock) return _tabs.ToArray();
+        }
+    }
+
     public SgPageTab? ActiveTab { get; private set; }
-    
+
     public event Action? OnChanged;
 
     /// <summary>
@@ -16,20 +25,23 @@ public class SgPageTabsService
     /// </summary>
     public void OpenTab(string href, string title, string? icon = null)
     {
-        var existing = _tabs.FirstOrDefault(t => t.Href.Equals(href, StringComparison.OrdinalIgnoreCase));
-        if (existing == null)
+        lock (_lock)
         {
-            existing = new SgPageTab { Href = href, Title = title, Icon = icon };
-            _tabs.Add(existing);
+            var existing = _tabs.FirstOrDefault(t => t.Href.Equals(href, StringComparison.OrdinalIgnoreCase));
+            if (existing == null)
+            {
+                existing = new SgPageTab { Href = href, Title = title, Icon = icon };
+                _tabs.Add(existing);
+            }
+            else
+            {
+                // Update title/icon if provided
+                if (!string.IsNullOrEmpty(title)) existing.Title = title;
+                if (!string.IsNullOrEmpty(icon)) existing.Icon = icon;
+            }
+
+            ActiveTab = existing;
         }
-        else
-        {
-            // Update title/icon if provided
-            if (!string.IsNullOrEmpty(title)) existing.Title = title;
-            if (!string.IsNullOrEmpty(icon)) existing.Icon = icon;
-        }
-        
-        ActiveTab = existing;
         NotifyChanged();
     }
 
@@ -38,25 +50,20 @@ public class SgPageTabsService
     /// </summary>
     public void RemoveTab(string href)
     {
-        var tab = _tabs.FirstOrDefault(t => t.Href.Equals(href, StringComparison.OrdinalIgnoreCase));
-        if (tab != null)
+        lock (_lock)
         {
+            var tab = _tabs.FirstOrDefault(t => t.Href.Equals(href, StringComparison.OrdinalIgnoreCase));
+            if (tab == null) return;
+
             int index = _tabs.IndexOf(tab);
             _tabs.Remove(tab);
-            
+
             if (ActiveTab == tab)
             {
-                if (_tabs.Count > 0)
-                {
-                    ActiveTab = _tabs[Math.Min(index, _tabs.Count - 1)];
-                }
-                else
-                {
-                    ActiveTab = null;
-                }
+                ActiveTab = _tabs.Count > 0 ? _tabs[Math.Min(index, _tabs.Count - 1)] : null;
             }
-            NotifyChanged();
         }
+        NotifyChanged();
     }
 
     /// <summary>
@@ -64,12 +71,13 @@ public class SgPageTabsService
     /// </summary>
     public void SetActiveTab(string href)
     {
-        var tab = _tabs.FirstOrDefault(t => t.Href.Equals(href, StringComparison.OrdinalIgnoreCase));
-        if (tab != null && ActiveTab != tab)
+        lock (_lock)
         {
+            var tab = _tabs.FirstOrDefault(t => t.Href.Equals(href, StringComparison.OrdinalIgnoreCase));
+            if (tab == null || ActiveTab == tab) return;
             ActiveTab = tab;
-            NotifyChanged();
         }
+        NotifyChanged();
     }
 
     /// <summary>
@@ -77,8 +85,11 @@ public class SgPageTabsService
     /// </summary>
     public void ClearAll()
     {
-        _tabs.Clear();
-        ActiveTab = null;
+        lock (_lock)
+        {
+            _tabs.Clear();
+            ActiveTab = null;
+        }
         NotifyChanged();
     }
 

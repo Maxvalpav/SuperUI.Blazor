@@ -13,12 +13,19 @@
                 {
                     <SgStack Vertical Spacing="12" Align="SgAlignItems.Center">
                         <SgSpinner Size="SgSize.Lg" />
-                        <span style="color: #fff; font-size: 0.9rem;">Загрузка OpenCV.js...</span>
+                        <span style="color: #fff; font-size: 0.9rem;">@Localizer["DocScanner_Loading"]</span>
                     </SgStack>
                 }
                 else
                 {
-                    <SgButton Variant="SgButtonVariant.Primary" OnClick="StartScannerAsync" Text="@Localizer["DocScanner_Start"]" />
+                    <SgStack Vertical Spacing="12" Align="SgAlignItems.Center">
+                        @if (_error is not null)
+                        {
+                            <span class="sgc-doc-scanner-error">@_error</span>
+                        }
+                        <SgButton Variant="SgButtonVariant.Primary" OnClick="StartScannerAsync"
+                                  Text="@Localizer[_error is null ? "DocScanner_Start" : "DocScanner_Retry"]" />
+                    </SgStack>
                 }
             </div>
         }
@@ -75,6 +82,13 @@
         align-items: center;
         gap: 16px;
     }
+    .sgc-doc-scanner-error {
+        max-width: 420px;
+        text-align: center;
+        color: #fca5a5;
+        font-size: 0.85rem;
+        line-height: 1.4;
+    }
     .sgc-doc-scanner-controls {
         position: absolute;
         bottom: 24px;
@@ -92,6 +106,13 @@
     private ElementReference _canvasRef;
     private bool _isStarted;
     private bool _isLoading;
+    private string? _error;
+
+    private sealed class StartResult
+    {
+        public bool Ok { get; set; }
+        public string? Error { get; set; }
+    }
 
     /// <summary>Additional CSS class for the scanner container.</summary>
     [Parameter] public string? Class { get; set; }
@@ -104,11 +125,17 @@
     public async Task StartScannerAsync()
     {
         _isLoading = true;
+        _error = null;
         StateHasChanged();
 
         try
         {
-            _isStarted = await SafeInvokeAsync<bool>("startScanner", _videoRef, _canvasRef);
+            // JS reports failures in the payload rather than throwing, so a null
+            // result here means the module itself never loaded.
+            var result = await SafeInvokeAsync<StartResult>("startScanner", _videoRef, _canvasRef);
+            _isStarted = result?.Ok == true;
+            if (!_isStarted)
+                _error = result?.Error ?? Localizer["DocScanner_LoadFailed"];
         }
         finally
         {
@@ -129,7 +156,8 @@
     public async Task CaptureAsync()
     {
         var dataUrl = await SafeInvokeAsync<string>("captureAndProcess");
-        await OnScan.InvokeAsync(dataUrl);
+        if (!string.IsNullOrEmpty(dataUrl))
+            await OnScan.InvokeAsync(dataUrl);
         await StopScannerAsync();
     }
 

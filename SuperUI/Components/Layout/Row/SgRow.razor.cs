@@ -313,12 +313,18 @@ public partial class SgRow : ComponentBase
             var hasAxisGutter = !string.IsNullOrWhiteSpace(RowGutter) || !string.IsNullOrWhiteSpace(ColumnGutter);
             if (hasAxisGutter)
             {
+                var colGap = ScaleGap(ColumnGutter ?? ResolvedGutter, scale);
                 sb.Append("row-gap:").Append(ScaleGap(RowGutter ?? ResolvedGutter, scale)).Append(';');
-                sb.Append("column-gap:").Append(ScaleGap(ColumnGutter ?? ResolvedGutter, scale)).Append(';');
+                sb.Append("column-gap:").Append(colGap).Append(';');
+                sb.Append("--sg-gutter:").Append(colGap).Append(';');
             }
             else if (!string.IsNullOrWhiteSpace(ResolvedGutter))
             {
-                sb.Append("gap:").Append(ScaleGap(ResolvedGutter, scale)).Append(';');
+                var gap = ScaleGap(ResolvedGutter, scale);
+                sb.Append("gap:").Append(gap).Append(';');
+                // Responsive .sg-col-{bp}-{n} classes subtract this from their
+                // percentage width so N columns + (N-1) gaps still fit one row.
+                sb.Append("--sg-gutter:").Append(gap).Append(';');
             }
 
             if (!string.IsNullOrWhiteSpace(Style)) sb.Append(Style);

@@ -921,16 +921,18 @@
         var min   = data.Min();
         var max   = data.Max();
         var range = max - min;
-        var ch = (ChartHeight ?? 60);
+        var ch = (ChartHeight ?? 64);
         const double W = 200.0;
-        double H = ch, PT = 4.0;
+        // PB keeps the stroke clear of the card's rounded bottom edge — without it
+        // the line is sliced by the corner radius. Area fill still bleeds to H.
+        double H = ch, PT = 5.0, PB = 5.0;
 
-        var color = !string.IsNullOrEmpty(ChartColor) ? ChartColor : "rgba(255,255,255,0.9)";
+        var color = !string.IsNullOrEmpty(ChartColor) ? ChartColor : "rgba(255,255,255,0.92)";
         var ic    = System.Globalization.CultureInfo.InvariantCulture;
 
         var points = Enumerable.Range(0, count).Select(i => (
             x: count == 1 ? W / 2 : W * i / (count - 1),
-            y: range < 1e-9 ? H / 2 : PT + (H - PT) * (1.0 - (data[i] - min) / range)
+            y: range < 1e-9 ? H / 2 : PT + (H - PT - PB) * (1.0 - (data[i] - min) / range)
         )).ToArray();
 
         // ── Bar chart ─────────────────────────────────────────────────────────
@@ -942,21 +944,24 @@
             __builder.AddAttribute(3, "class", "sgc-kpi-wave-svg");
 
             var slot = W / count;
-            var bw   = slot * 0.6;
-            var boff = slot * 0.2;
+            var bw   = slot * 0.56;
+            var boff = (slot - bw) / 2.0;
             for (int i = 0; i < count; i++)
             {
-                var bx = slot * i + boff;
-                var by = range < 1e-9 ? H / 2 : PT + (H - PT) * (1.0 - (data[i] - min) / range);
-                var bh = H - by;
-                var op = 0.5 + 0.5 * (bh / H);
+                // Bars grow from the baseline, so the tallest reaches PT and the
+                // shortest still shows a sliver rather than collapsing to nothing.
+                var norm = range < 1e-9 ? 0.5 : (data[i] - min) / range;
+                var bh   = Math.Max(2.0, (H - PT) * (0.18 + 0.82 * norm));
+                var by   = H - bh;
+                // Only the most recent bar is solid; the rest recede evenly.
+                var op   = i == count - 1 ? 1.0 : 0.55;
                 __builder.OpenElement(5, "rect");
-                __builder.AddAttribute(6,  "x",       bx.ToString("F2", ic));
+                __builder.AddAttribute(6,  "x",       (slot * i + boff).ToString("F2", ic));
                 __builder.AddAttribute(7,  "y",       by.ToString("F2", ic));
                 __builder.AddAttribute(8,  "width",   bw.ToString("F2", ic));
                 __builder.AddAttribute(9,  "height",  bh.ToString("F2", ic));
                 __builder.AddAttribute(10, "fill",    color);
-                __builder.AddAttribute(11, "rx",      "2");
+                __builder.AddAttribute(11, "rx",      "2.5");
                 __builder.AddAttribute(12, "opacity", op.ToString("F2", ic));
                 __builder.CloseElement();
             }
@@ -985,6 +990,7 @@
             __builder.AddAttribute(8, "stroke-width",     "2");
             __builder.AddAttribute(9, "stroke-linecap",   "round");
             __builder.AddAttribute(10, "stroke-linejoin", "round");
+            __builder.AddAttribute(11, "vector-effect",   "non-scaling-stroke");
             __builder.CloseElement();
             __builder.CloseElement();
         }
@@ -1058,12 +1064,12 @@
             __builder.OpenElement(11, "stop");
             __builder.AddAttribute(12, "offset", "0%");
             __builder.AddAttribute(13, "stop-color", color);
-            __builder.AddAttribute(14, "stop-opacity", "0.45");
+            __builder.AddAttribute(14, "stop-opacity", "0.38");
             __builder.CloseElement();
             __builder.OpenElement(15, "stop");
             __builder.AddAttribute(16, "offset", "100%");
             __builder.AddAttribute(17, "stop-color", color);
-            __builder.AddAttribute(18, "stop-opacity", "0.05");
+            __builder.AddAttribute(18, "stop-opacity", "0.02");
             __builder.CloseElement();
             __builder.CloseElement(); // linearGradient
             __builder.CloseElement(); // defs
@@ -1083,6 +1089,7 @@
             __builder.AddAttribute(26, "stroke-width",    "2");
             __builder.AddAttribute(27, "stroke-linecap",  "round");
             __builder.AddAttribute(28, "stroke-linejoin", "round");
+            __builder.AddAttribute(29, "vector-effect",   "non-scaling-stroke");
             __builder.CloseElement();
 
             __builder.CloseElement(); // svg
@@ -1104,6 +1111,7 @@
             __builder.AddAttribute(8, "stroke-width",    "2");
             __builder.AddAttribute(9, "stroke-linecap",  "round");
             __builder.AddAttribute(10, "stroke-linejoin","round");
+            __builder.AddAttribute(11, "vector-effect",  "non-scaling-stroke");
             __builder.CloseElement();
 
             __builder.CloseElement(); // svg

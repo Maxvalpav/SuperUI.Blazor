@@ -49,8 +49,7 @@ public sealed class SgAnimationCoordinator : IAsyncDisposable
         if (_reducedMotionCached) return _reducedMotion;
         try
         {
-            _reducedMotion = await _js.InvokeAsync<bool>("eval",
-                "window.matchMedia('(prefers-reduced-motion: reduce)').matches");
+            _reducedMotion = await _js.InvokeAsync<bool>("SuperUI.prefersReducedMotion");
         }
         catch (JSDisconnectedException) { _reducedMotion = false; }
         catch (TaskCanceledException)   { _reducedMotion = false; }
