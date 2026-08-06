@@ -100,7 +100,7 @@ Targets `net10.0` — works with Blazor WebAssembly, Server, Web App, Hybrid.
 <SgThemeSwitcher />
 ```
 
-**91 built-in themes included** (JSON-defined, see `SuperUI/Themes/json/`): Natura UI, Solaris, Royal, Graphite, Forest, Neon, Glass, Chrono, Calyx, Apex, Zen, Neo, Oasis, Flux, Prism, Cosmos, Fractalis, Wave, Aurea, Sylvan, Medici, Aether, Clarity, Element, Radius, Muse, Forge, Gordian, Inclus, Reader, Signature, Cantus, Biofilia, Circadian, Clarity Clinical, Ergo, Lumina, Veiled, Window, and more. Switch via `SgThemeService.SetThemeAsync("theme-id")`. Themes are JSON-defined and the runtime swaps a single `<link>` element — no per-click CSS push, browser cache does the work.
+
 
 ---
 
@@ -120,27 +120,6 @@ Targets `net10.0` — works with Blazor WebAssembly, Server, Web App, Hybrid.
 
 ---
 
-## Services
-
-| Service | What it does |
-|---------|-------------|
-| `SgToastService` | Show toast notifications from C# code |
-| `SgConfirmService` | Async confirm dialogs |
-| `SgNotificationService` | Notification feed |
-| `SgThemeService` | Switch themes, light/dark mode, custom themes |
-| `SgLlmService` | LLM connector |
-| `SgLangGraphService` | Agentic workflows |
-| `SgRagService` | RAG pipeline |
-| `SgDexieService` | IndexedDB bridge |
-| `SgMqttService` | MQTT / IIoT |
-| `SgFeatureFlagService` | Feature toggles |
-| `SgCalendarService` | Calendar events |
-| `SgPdfService` | PDF generation |
-| `SgWeatherService` | Weather data |
-| `SgHeatmapService` | Heatmap data |
-
----
-
 ## Build & test
 
 ```bash
@@ -152,12 +131,7 @@ dotnet run --project SuperUI.Demo
 
 Requires .NET 10 SDK. Tests use bUnit + xUnit.
 
-To regenerate the per-theme static CSS files (after adding a JSON
-theme or changing `SgThemeGenerator`):
 
-```bash
-dotnet run --project tools/ThemeCssExporter/ThemeCssExporter.csproj -- "SuperUI/wwwroot/themes/css"
-```
 
 ---
 
