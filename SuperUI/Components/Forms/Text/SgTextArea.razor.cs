@@ -432,10 +432,27 @@ public partial class SgTextArea : IDisposable
     public override void Dispose()
     {
         if (_disposed) return;
+        _disposed = true;
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        // Fire-and-forget is intentional here (Dispose is sync) but we still attempt to dispose JS module;
+        // the module will also be disposed via DisposeAsync when the renderer calls it.
+        if (_module is not null)
+            _ = _module.DisposeAsync().AsTask().ContinueWith(t => { if (t.IsFaulted) Console.Error.WriteLine(t.Exception); }, TaskScheduler.Default);
+        base.Dispose();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();
         if (_module is not null)
-            _ = _module.DisposeAsync();
-        base.Dispose();
+        {
+            try { await _module.DisposeAsync(); } catch { }
+            _module = null;
+        }
+        await base.DisposeAsync();
     }
 }

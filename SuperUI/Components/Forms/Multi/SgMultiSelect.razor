@@ -299,6 +299,12 @@
     private ElementReference _searchInput;
     private ElementReference _comboRef;
     private ElementReference _menuRef;
+    private IJSObjectReference? _msModule;
+    private async Task<IJSObjectReference?> GetMsModuleAsync()
+    {
+        try { return _msModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-multiselect.js"); }
+        catch { return null; }
+    }
 
     private List<SgEnumItem>? _enumItems;
     private Type? _lastEnumType;
@@ -772,8 +778,9 @@
         if (!VirtualScroll) return;
         try
         {
-            var st = await JS.InvokeAsync<double>("eval", $"document.getElementById('{_listboxId}')?.scrollTop ?? 0");
-            _scrollTop = st;
+            var m = await GetMsModuleAsync();
+            if (m != null) { var st = await m.InvokeAsync<double>("getScrollTop", _listboxId); _scrollTop = st; }
+            else { var st = await JS.InvokeAsync<double>("eval", $"document.getElementById('{_listboxId}')?.scrollTop ?? 0"); _scrollTop = st; }
         }
         catch { }
     }
@@ -878,12 +885,13 @@
         }
         if (_open)
         {
+            var msMod = await GetMsModuleAsync();
             if (ScrollToSelected)
             {
                 try
                 {
-                    await JS.InvokeVoidAsync("eval",
-                        $"(function(){{var m=document.getElementById('{_listboxId}');if(!m)return;var s=m.querySelector('.sgc-selected');if(s){{var oh=s.offsetTop-m.offsetTop;m.scrollTop=oh-60;}}}})()");
+                    if (msMod != null) await msMod.InvokeVoidAsync("scrollToSelected", _listboxId);
+                    else await JS.InvokeVoidAsync("eval", $"(function(){{var m=document.getElementById('{_listboxId}');if(!m)return;var s=m.querySelector('.sgc-selected');if(s){{var oh=s.offsetTop-m.offsetTop;m.scrollTop=oh-60;}}}})()");
                 }
                 catch { }
             }
@@ -891,7 +899,8 @@
             {
                 try
                 {
-                    await JS.InvokeVoidAsync("eval", $"document.getElementById('{_listboxId}')?.scrollTo(0, {_scrollTop})");
+                    if (msMod != null) await msMod.InvokeVoidAsync("scrollTo", _listboxId, _scrollTop);
+                    else await JS.InvokeVoidAsync("eval", $"document.getElementById('{_listboxId}')?.scrollTo(0, {_scrollTop})");
                 }
                 catch { }
             }
@@ -899,8 +908,8 @@
             {
                 try
                 {
-                    await JS.InvokeVoidAsync("eval",
-                        $"(function(){{var m=document.getElementById('{_listboxId}'),t=document.querySelector('[aria-labelledby={_labelId}]')?.querySelector('.sgc-combo-control');if(!m||!t)return;var r=t.getBoundingClientRect();m.style.position='fixed';m.style.top=(r.bottom+2)+'px';m.style.left=r.left+'px';m.style.width=Math.max(r.width,160)+'px';m.style.minWidth=m.style.width;m.style.maxWidth=Math.min(800,innerWidth-r.left-8)+'px';}})()");
+                    if (msMod != null) await msMod.InvokeVoidAsync("positionPortal", _listboxId, _labelId);
+                    else await JS.InvokeVoidAsync("eval", $"(function(){{var m=document.getElementById('{_listboxId}'),t=document.querySelector('[aria-labelledby={_labelId}]')?.querySelector('.sgc-combo-control');if(!m||!t)return;var r=t.getBoundingClientRect();m.style.position='fixed';m.style.top=(r.bottom+2)+'px';m.style.left=r.left+'px';m.style.width=Math.max(r.width,160)+'px';m.style.minWidth=m.style.width;m.style.maxWidth=Math.min(800,innerWidth-r.left-8)+'px';}})()");
                 }
                 catch { }
             }
@@ -909,7 +918,9 @@
         {
             try
             {
-                await JS.InvokeVoidAsync("eval",
+                var msMod2 = await GetMsModuleAsync();
+                if (msMod2 != null) await msMod2.InvokeVoidAsync("resetPortal", _listboxId);
+                else await JS.InvokeVoidAsync("eval",
                     $"(function(){{var m=document.getElementById('{_listboxId}');if(m){{m.style.position='';m.style.top='';m.style.left='';m.style.width='';m.style.minWidth='';m.style.maxWidth='';}}}})()");
             }
             catch { }
@@ -1006,5 +1017,6 @@
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _binder?.Dispose();
+        if (_msModule is not null) _ = _msModule.DisposeAsync();
     }
 }
