@@ -26,7 +26,7 @@ public class SgDexieService : IAsyncDisposable
         {
             if (_module == null)
             {
-                _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-dexie.js", ct);
+                _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-dexie.js");
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }

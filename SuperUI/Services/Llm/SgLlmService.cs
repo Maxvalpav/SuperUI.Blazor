@@ -324,17 +324,17 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         {
             _instanceId = $"sg-llm-{Guid.NewGuid():N}";
             var jsVersion = typeof(SgLlmService).Assembly.GetName().Version?.ToString() ?? "1";
-            _module = await _js.InvokeAsync<IJSObjectReference>("import", $"./_content/SuperUI/sg-llm.js?v={jsVersion}", ct);
+            _module = await _js.InvokeAsync<IJSObjectReference>("import", $"./_content/SuperUI/sg-llm.js?v={jsVersion}");
             _selfRef = DotNetObjectReference.Create(this);
 
-            await _module.InvokeVoidAsync("init", _selfRef, _instanceId, new { }, ct);
+            await _module.InvokeVoidAsync("init", _selfRef, _instanceId, new { });
         }
 
         CurrentConfig = config;
 
         object overrides = BuildOverrides(config);
 
-        await _module.InvokeVoidAsync("loadLlm", _instanceId, config.Provider.ToString(), config.ModelId, overrides, ct);
+        await _module.InvokeVoidAsync("loadLlm", _instanceId, config.Provider.ToString(), config.ModelId, overrides);
 
         RaiseConfigChanged(config);
     }
@@ -500,7 +500,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         options ??= new SgLlmPromptOptions();
         var sysPrompt = options.SystemPrompt ?? CurrentConfig?.SystemPrompt ?? "You are a helpful assistant.";
 
-        await _module.InvokeVoidAsync("chatDirectStream", _instanceId, message, sysPrompt, options.Attachments, "default-stream", options.Tools, options.ToolChoice, ct);
+        await _module.InvokeVoidAsync("chatDirectStream", _instanceId, message, sysPrompt, options.Attachments, "default-stream", options.Tools, options.ToolChoice);
     }
 
     public async Task<bool> IsReadyAsync()
