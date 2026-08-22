@@ -2,6 +2,7 @@
 @typeparam TItem
 @inherits SuperUI.Base.ComponentBases.SgComponentBase
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Web.Virtualization
 @using SuperUI.Enums
 @using SuperUI.Localization
 @using SortDirection = SuperUI.Enums.SgDataGridSortDirection
@@ -209,6 +210,53 @@
                             }
                         </tr>
                     }
+                }
+                else if (EnableVirtualization)
+                {
+                    // MS perf: Virtualize per learn.microsoft.com/aspnet/core/blazor/performance#virtualization
+                    <Virtualize Items="FilteredAndSortedItems" Context="item" ItemSize="VirtualizeItemHeight" OverscanCount="10">
+                        <ChildContent>
+                            @{
+                                var rowClass = "sg-tr";
+                                if (IsSelected(item)) rowClass += " sg-selected";
+                                if (RowClass != null)
+                                {
+                                    var rc = RowClass(item);
+                                    if (!string.IsNullOrEmpty(rc)) rowClass += " " + rc;
+                                }
+                                var rowStyle = RowStyle != null ? RowStyle(item) : null;
+                            }
+                            <tr class="@rowClass" style="@rowStyle" @key="item" @onclick="async () => await OnRowClick(item)" @ondblclick="async () => await OnRowDoubleClick(item)">
+                                @if (AllowSelection)
+                                {
+                                    <td class="sg-td sg-align-center" style="width: 40px;">
+                                        <input type="checkbox" class="sg-checkbox" checked="@IsSelected(item)" @onchange="async () => await ToggleSelection(item)" @onclick:stopPropagation="true" />
+                                    </td>
+                                }
+                                @if (ShowRowNumbers)
+                                {
+                                    <td class="sg-td sg-align-center" style="width: 50px;">-</td>
+                                }
+                                @foreach (var col in Columns)
+                                {
+                                    var value = col.GetValue(item);
+                                    var isBool = value is bool;
+                                    var isNumeric = col.IsNumericColumn;
+                                    var effectiveHAlign = col.HAlign == SgHAlign.Default ? (isNumeric ? SgHAlign.Right : SgHAlign.Left) : col.HAlign;
+                                    var tdClass = "sg-td";
+                                    tdClass += effectiveHAlign switch { SgHAlign.Left => " sg-align-left", SgHAlign.Center => " sg-align-center", SgHAlign.Right => " sg-align-right", _ => string.Empty };
+                                    tdClass += col.VAlign switch { SgVAlign.Top => " sg-valign-top", SgVAlign.Middle => " sg-valign-middle", SgVAlign.Bottom => " sg-valign-bottom", _ => string.Empty };
+                                    if (col.CellClass != null) { var cc = col.CellClass(item); if (!string.IsNullOrEmpty(cc)) tdClass += " " + cc; }
+                                    var tdStyle = col.CellStyle != null ? col.CellStyle(item) : null;
+                                    <td class="@tdClass" style="@tdStyle">
+                                        @if (col.Template != null) { @col.Template(item) }
+                                        else if (isBool && col.Template == null) { <input type="checkbox" class="sg-checkbox" checked="@(value is true)" disabled /> }
+                                        else { @col.GetDisplay(item) }
+                                    </td>
+                                }
+                            </tr>
+                        </ChildContent>
+                    </Virtualize>
                 }
                 else if (PagedItems.Any())
                 {

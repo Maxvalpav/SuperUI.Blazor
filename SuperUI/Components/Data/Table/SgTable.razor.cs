@@ -73,6 +73,10 @@ public partial class SgTable<TItem> : SgComponentBase
     [Parameter] public bool ShowRowNumbers { get; set; }
     /// <summary>Whether to enable pagination.</summary>
     [Parameter] public bool EnablePaging { get; set; }
+    /// <summary>When true, uses Virtualize for the body (MS perf guidance). Requires fixed Height. Ignores pagination.</summary>
+    [Parameter] public bool EnableVirtualization { get; set; }
+    /// <summary>Estimated row height for Virtualize (px).</summary>
+    [Parameter] public float VirtualizeItemHeight { get; set; } = 40;
     /// <summary>The number of rows per page.</summary>
     [Parameter] public int PageSize { get; set; } = 20;
     /// <summary>Fired when the page size changes.</summary>
