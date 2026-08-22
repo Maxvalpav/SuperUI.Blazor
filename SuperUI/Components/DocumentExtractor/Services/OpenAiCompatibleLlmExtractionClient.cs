@@ -58,7 +58,7 @@ public sealed class OpenAiCompatibleLlmExtractionClient : ILlmExtractionClient
             }
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, JoinUrl(config.BaseUrl, "chat/completions"))
+        using var req = new HttpRequestMessage(HttpMethod.Post, JoinUrl(config.BaseUrl ?? "", "chat/completions"))
         {
             Content = JsonContent.Create(payload)
         };
@@ -84,7 +84,7 @@ public sealed class OpenAiCompatibleLlmExtractionClient : ILlmExtractionClient
     {
         ArgumentNullException.ThrowIfNull(config);
 
-        using var req = new HttpRequestMessage(HttpMethod.Get, JoinUrl(config.BaseUrl, "models"));
+        using var req = new HttpRequestMessage(HttpMethod.Get, JoinUrl(config.BaseUrl ?? "", "models"));
         ApplyHeaders(req, config);
 
         using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
