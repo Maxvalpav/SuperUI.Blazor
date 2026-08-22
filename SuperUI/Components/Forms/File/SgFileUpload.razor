@@ -258,14 +258,32 @@
         _isDragOver = false;
         _files.Clear();
         _previews.Clear();
-        if (Multiple)
+        ErrorText = null;
+        var max = MaxFiles.GetValueOrDefault(100);
+        var candidates = Multiple ? e.GetMultipleFiles(max) : new[] { e.File };
+        foreach (var f in candidates)
         {
-            var max = MaxFiles.GetValueOrDefault(100);
-            foreach (var f in e.GetMultipleFiles(max)) { if (_files.Count >= max) break; _files.Add(f); }
-        }
-        else
-        {
-            _files.Add(e.File);
+            if (_files.Count >= max) break;
+            // Size check
+            if (MaxFileSizeBytes.HasValue && f.Size > MaxFileSizeBytes.Value)
+            {
+                ErrorText = string.Format(Localizer["FileUpload_TooLarge"] ?? "File {0} exceeds max size", f.Name);
+                continue;
+            }
+            // Accept / MIME allow-list
+            if (!IsAllowedByAccept(f))
+            {
+                ErrorText = string.Format(Localizer["FileUpload_InvalidType"] ?? "File type not allowed: {0}", f.Name);
+                continue;
+            }
+            // Magic bytes check (reject HTML masquerading as image)
+            var ok = await ValidateMagicBytesAsync(f);
+            if (!ok)
+            {
+                ErrorText = string.Format(Localizer["FileUpload_InvalidType"] ?? "File type not allowed: {0}", f.Name);
+                continue;
+            }
+            _files.Add(f);
         }
 
         foreach (var f in _files)
@@ -289,6 +307,58 @@
         _binder?.NotifyFieldChanged();
         if (OnFilesSelected.HasDelegate) await OnFilesSelected.InvokeAsync(fileList);
         if (OnChange.HasDelegate) await OnChange.InvokeAsync(fileList);
+    }
+
+    private bool IsAllowedByAccept(IBrowserFile f)
+    {
+        if (string.IsNullOrWhiteSpace(Accept)) return true;
+        // Block HTML masquerading
+        if (f.ContentType == "text/html" || f.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase) || f.Name.EndsWith(".htm", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var accept = Accept.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var ext = System.IO.Path.GetExtension(f.Name).ToLowerInvariant();
+        var mime = f.ContentType ?? "";
+        foreach (var a in accept)
+        {
+            if (a.StartsWith(".") && ext == a.ToLowerInvariant()) return true;
+            if (a.EndsWith("/*") && mime.StartsWith(a[..^1], StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(a, mime, StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(a, ext, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        // If Accept contains wildcard image/* etc, already covered. Otherwise strict.
+        return false;
+    }
+
+    private async Task<bool> ValidateMagicBytesAsync(IBrowserFile f)
+    {
+        try
+        {
+            using var stream = f.OpenReadStream(maxAllowedSize: Math.Min(f.Size, 256));
+            var buf = new byte[8];
+            var read = await stream.ReadAsync(buf);
+            if (read == 0) return true;
+            // HTML sniff: <!DOCTYPE, <html, <script
+            if (buf[0] == (byte)'<' )
+            {
+                var head = System.Text.Encoding.ASCII.GetString(buf, 0, read).TrimStart().ToLowerInvariant();
+                if (head.StartsWith("<!doctype") || head.StartsWith("<html") || head.StartsWith("<script") || head.StartsWith("<!"))
+                    return false;
+            }
+            // If claimed image/*, ensure magic matches
+            if (f.ContentType?.StartsWith("image/") == true)
+            {
+                var isPng = read >= 8 && buf[0] == 0x89 && buf[1] == 0x50 && buf[2] == 0x4E && buf[3] == 0x47;
+                var isJpg = read >= 3 && buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF;
+                var isGif = read >= 6 && buf[0] == 0x47 && buf[1] == 0x49 && buf[2] == 0x46;
+                var isWebp = read >= 4 && buf[0] == 0x52 && buf[1] == 0x49 && buf[2] == 0x46 && buf[3] == 0x46;
+                var isBmp = read >= 2 && buf[0] == 0x42 && buf[1] == 0x4D;
+                var isSvg = System.Text.Encoding.ASCII.GetString(buf, 0, read).TrimStart().StartsWith("<svg", StringComparison.OrdinalIgnoreCase);
+                if (!(isPng || isJpg || isGif || isWebp || isBmp || isSvg))
+                    return false;
+            }
+            return true;
+        }
+        catch { return true; }
     }
 
     private async Task RemoveFileAsync(IBrowserFile file)
