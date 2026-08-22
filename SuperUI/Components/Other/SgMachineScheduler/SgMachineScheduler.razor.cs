@@ -1,3 +1,4 @@
+#pragma warning disable CS0618, CA1416
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
