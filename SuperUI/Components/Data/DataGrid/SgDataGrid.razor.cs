@@ -634,7 +634,7 @@ public sealed class SgDataGridCellClickEventArgs<TItem> where TItem : notnull
     public required MouseEventArgs MouseArgs { get; init; }
 }
 
-/// <summary>Describes a property of <typeparamref name="TItem"/> used by the auto-detail panel.</summary>
+/// <summary>Describes a property used by the auto-detail panel.</summary>
 public sealed class AutoDetailProperty
 {
     /// <summary>Initializes a new <see cref="AutoDetailProperty"/> with property metadata.</summary>
