@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
@@ -49,7 +50,7 @@ public sealed class SgEnumItem
 /// </summary>
 public static class SgEnumHelper
 {
-    private static readonly Dictionary<Type, List<SgEnumItem>> _cache = new();
+    private static readonly ConcurrentDictionary<Type, List<SgEnumItem>> _cache = new();
 
     /// <summary>
     /// Returns all members of <typeparamref name="TEnum"/> as <see cref="SgEnumItem"/> list.
@@ -69,44 +70,47 @@ public static class SgEnumHelper
         if (_cache.TryGetValue(enumType, out var cached))
             return cached;
 
-        var items = new List<SgEnumItem>();
-
-        foreach (var field in enumType.GetFields(BindingFlags.Public | BindingFlags.Static))
+        // Atomic GetOrAdd to avoid race; factory executes at most once per key
+        return _cache.GetOrAdd(enumType, static key =>
         {
-            var intVal = Convert.ToInt32(field.GetValue(null));
+            var items = new List<SgEnumItem>();
 
-            // [Display] attribute (DataAnnotations)
-            var display = field.GetCustomAttribute<DisplayAttribute>();
-            // [Description] attribute (ComponentModel)
-            var desc = field.GetCustomAttribute<DescriptionAttribute>();
-
-            var label = display?.GetName()
-                     ?? desc?.Description
-                     ?? field.Name;
-
-            var description = display?.GetDescription()
-                           ?? (desc is not null && desc.Description != label ? desc.Description : null);
-
-            var groupName = display?.GetGroupName();
-            var order     = display?.GetOrder() ?? 0;
-
-            items.Add(new SgEnumItem
+            foreach (var field in key.GetFields(BindingFlags.Public | BindingFlags.Static))
             {
-                Name        = field.Name,
-                IntValue    = intVal,
-                Label       = label,
-                Description = description,
-                GroupName   = groupName,
-                Order       = order
-            });
-        }
+                var intVal = Convert.ToInt32(field.GetValue(null));
 
-        // Sort by Order if any Display(Order) was set, otherwise keep declaration order
-        if (items.Any(i => i.Order != 0))
-            items = items.OrderBy(i => i.Order).ToList();
+                // [Display] attribute (DataAnnotations)
+                var display = field.GetCustomAttribute<DisplayAttribute>();
+                // [Description] attribute (ComponentModel)
+                var desc = field.GetCustomAttribute<DescriptionAttribute>();
 
-        _cache[enumType] = items;
-        return items;
+                var label = display?.GetName()
+                         ?? desc?.Description
+                         ?? field.Name;
+
+                var description = display?.GetDescription()
+                               ?? (desc is not null && desc.Description != label ? desc.Description : null);
+
+                var groupName = display?.GetGroupName();
+                var order     = display?.GetOrder() ?? 0;
+
+                items.Add(new SgEnumItem
+                {
+                    Name        = field.Name,
+                    IntValue    = intVal,
+                    Label       = label,
+                    Description = description,
+                    GroupName   = groupName,
+                    Order       = order
+                });
+            }
+
+            // Sort by Order if any Display(Order) was set, otherwise keep declaration order
+            if (items.Any(i => i.Order != 0))
+                items = items.OrderBy(i => i.Order).ToList();
+
+            return items;
+        });
     }
 
     /// <summary>

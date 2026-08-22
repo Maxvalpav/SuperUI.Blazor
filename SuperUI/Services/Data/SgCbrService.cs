@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Xml.Serialization;
 using Microsoft.Extensions.Logging;
@@ -11,6 +12,7 @@ namespace SuperUI.Services.Data;
 public class SgCbrService
 {
     private static int _encodingProviderRegistered;
+    private static readonly ConcurrentDictionary<Type, XmlSerializer> _serializerCache = new();
     private readonly HttpClient _http;
     private readonly ILogger<SgCbrService> _logger;
 
@@ -20,79 +22,59 @@ public class SgCbrService
     {
         _http = http;
         _logger = logger ?? NullLogger<SgCbrService>.Instance;
-        // CBR uses windows-1251 encoding for XML. Register once per process.
         if (Interlocked.Exchange(ref _encodingProviderRegistered, 1) == 0)
-        {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        }
     }
 
-    /// <summary>
-    /// Gets daily exchange rates.
-    /// </summary>
-    /// <param name="date">Optional date. If null, current rates are returned.</param>
-    public async Task<SgCbrDailyRates?> GetDailyRatesAsync(DateTime? date = null)
+    public async Task<SgCbrDailyRates?> GetDailyRatesAsync(DateTime? date = null, CancellationToken ct = default)
     {
         var url = "https://www.cbr.ru/scripts/XML_daily.asp";
-        if (date.HasValue)
-        {
-            url += $"?date_req={date.Value:dd/MM/yyyy}";
-        }
-
-        return await FetchAndDeserializeAsync<SgCbrDailyRates>(url);
+        if (date.HasValue) url += $"?date_req={date.Value:dd/MM/yyyy}";
+        return await FetchAndDeserializeAsync<SgCbrDailyRates>(url, ct);
     }
 
-    /// <summary>
-    /// Gets historical exchange rates for a specific currency.
-    /// </summary>
-    /// <param name="fromDate">Start date.</param>
-    /// <param name="toDate">End date.</param>
-    /// <param name="valuteId">CBR internal currency ID (e.g. R01235 for USD).</param>
-    public async Task<SgCbrDynamicRates?> GetDynamicRatesAsync(DateTime fromDate, DateTime toDate, string valuteId)
+    public async Task<SgCbrDynamicRates?> GetDynamicRatesAsync(DateTime fromDate, DateTime toDate, string valuteId, CancellationToken ct = default)
     {
         var url = $"https://www.cbr.ru/scripts/XML_dynamic.asp?date_req1={fromDate:dd/MM/yyyy}&date_req2={toDate:dd/MM/yyyy}&VAL_NM_RQ={valuteId}";
-        return await FetchAndDeserializeAsync<SgCbrDynamicRates>(url);
+        return await FetchAndDeserializeAsync<SgCbrDynamicRates>(url, ct);
     }
 
-    /// <summary>
-    /// Gets precious metals prices.
-    /// </summary>
-    public async Task<SgCbrMetals?> GetMetalsAsync(DateTime fromDate, DateTime toDate)
+    public async Task<SgCbrMetals?> GetMetalsAsync(DateTime fromDate, DateTime toDate, CancellationToken ct = default)
     {
         var url = $"https://www.cbr.ru/scripts/xml_metall.asp?date_req1={fromDate:dd/MM/yyyy}&date_req2={toDate:dd/MM/yyyy}";
-        return await FetchAndDeserializeAsync<SgCbrMetals>(url);
+        return await FetchAndDeserializeAsync<SgCbrMetals>(url, ct);
     }
 
-    private async Task<T?> FetchAndDeserializeAsync<T>(string url) where T : class
+    private async Task<T?> FetchAndDeserializeAsync<T>(string url, CancellationToken ct) where T : class
     {
         try
         {
-            // Try different proxies and formats
-            var result = await TryFetchWithProxies(url);
-            if (result != null)
-            {
-                return DeserializeXml<T>(result);
-            }
+            var result = await TryFetchWithProxies(url, ct);
+            if (result != null) return DeserializeXml<T>(result);
             return null;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (!IsCritical(ex))
         {
             _logger.LogError(ex, "Fatal error fetching {Url}", url);
             return null;
         }
     }
 
-    private async Task<string?> TryFetchWithProxies(string targetUrl)
+    private async Task<string?> TryFetchWithProxies(string targetUrl, CancellationToken outerCt)
     {
-        // 1. Сначала пробуем прямой запрос (быстро, без задержки)
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(outerCt);
+        linked.CancelAfter(TimeSpan.FromSeconds(30));
+        var ct = linked.Token;
+
         try
         {
-            var result = await FetchStringAsync(targetUrl);
+            var result = await FetchStringAsync(targetUrl, ct);
             if (IsValidXml(result)) return result;
         }
-        catch (Exception ex) { _logger.LogDebug(ex, "Direct fetch failed for {Url}", targetUrl); }
+        catch (OperationCanceledException) when (outerCt.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (!IsCritical(ex)) { _logger.LogDebug(ex, "Direct fetch failed for {Url}", targetUrl); }
 
-        // 2. Все прокси запускаем параллельно — берём первый успешный
         var proxies = new[]
         {
             $"https://api.allorigins.win/raw?url={Uri.EscapeDataString(targetUrl)}",
@@ -101,24 +83,25 @@ public class SgCbrService
             $"https://shcors.vercel.app/api?url={Uri.EscapeDataString(targetUrl)}",
         };
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var ct = cts.Token;
+        using var proxyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        proxyCts.CancelAfter(TimeSpan.FromSeconds(10));
+        var pct = proxyCts.Token;
 
         var tasks = proxies.Select(async proxy =>
         {
             try
             {
-                var r = await FetchStringAsync(proxy);
+                var r = await FetchStringAsync(proxy, pct);
                 return IsValidXml(r) ? r : null;
             }
-            catch (Exception ex)
+            catch (OperationCanceledException) { return null; }
+            catch (Exception ex) when (!IsCritical(ex))
             {
                 _logger.LogDebug(ex, "Proxy fetch failed: {Proxy}", proxy);
                 return null;
             }
         }).ToList();
 
-        // Ждём первый успешный результат, остальные отменяем
         try
         {
             while (tasks.Count > 0)
@@ -128,41 +111,41 @@ public class SgCbrService
                 var result = await completed;
                 if (result != null)
                 {
-                    cts.Cancel();
+                    proxyCts.Cancel();
                     return result;
                 }
             }
         }
-        catch (OperationCanceledException) { /* timeout */ }
+        catch (OperationCanceledException) { }
 
-        // 3. Fallback: AllOrigins JSON wrapper
         try
         {
-            var json = await _http.GetStringAsync(
-                $"https://api.allorigins.win/get?url={Uri.EscapeDataString(targetUrl)}");
+            var json = await _http.GetStringAsync($"https://api.allorigins.win/get?url={Uri.EscapeDataString(targetUrl)}", ct);
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             var content = doc.RootElement.GetProperty("contents").GetString();
             if (IsValidXml(content)) return content;
         }
-        catch (Exception ex) { _logger.LogDebug(ex, "AllOrigins JSON fallback failed"); }
+        catch (OperationCanceledException) when (outerCt.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (!IsCritical(ex)) { _logger.LogDebug(ex, "AllOrigins JSON fallback failed"); }
 
         return null;
     }
 
     private bool IsValidXml(string? xml) => !string.IsNullOrWhiteSpace(xml) && xml.Trim().StartsWith("<");
 
-    private async Task<string?> FetchStringAsync(string url)
+    private async Task<string?> FetchStringAsync(string url, CancellationToken ct)
     {
-        var bytes = await _http.GetByteArrayAsync(url);
+        var bytes = await _http.GetByteArrayAsync(url, ct);
         return Encoding.GetEncoding("windows-1251").GetString(bytes);
     }
 
     private T? DeserializeXml<T>(string xml) where T : class
     {
         if (string.IsNullOrWhiteSpace(xml) || !xml.Trim().StartsWith("<")) return null;
-        
-        var serializer = new XmlSerializer(typeof(T));
+        var serializer = _serializerCache.GetOrAdd(typeof(T), static t => new XmlSerializer(t));
         using var reader = new StringReader(xml);
         return (T?)serializer.Deserialize(reader);
     }
+
+    private static bool IsCritical(Exception ex) => ex is OutOfMemoryException or StackOverflowException or ThreadAbortException;
 }

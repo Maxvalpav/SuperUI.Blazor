@@ -16,6 +16,51 @@ public sealed class SgLlmProxyForwarder
 
     public SgLlmProxyForwarder(HttpClient http) => _http = http;
 
+    private static readonly HashSet<string> _allowedHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "api.openai.com", "api.anthropic.com", "api.cohere.com", "api.mistral.ai",
+        "api.groq.com", "api.deepseek.com", "api.x.ai", "openrouter.ai",
+        "generativelanguage.googleapis.com", "api.perplexity.ai", "api.together.xyz",
+        "api.fireworks.ai", "api.cerebras.ai", "router.huggingface.co", "gigachat.devices.sberbank.ru",
+        "ngw.devices.sberbank.ru", "api.cloudflare.com", "models.inference.ai.azure.com", "api.sambanova.ai",
+        "glhf.chat", "api.targon.com", "text.pollinations.ai", "localhost", "127.0.0.1", "::1"
+    };
+
+    private static void ValidateProviderUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != "https" && uri.Scheme != "http"))
+            throw new ArgumentException($"Invalid providerUrl: {url}", nameof(url));
+        if (uri.Scheme == "http" && !uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) && uri.Host != "127.0.0.1" && uri.Host != "::1")
+            throw new ArgumentException("Only https is allowed for remote providerUrl", nameof(url));
+        // Allow localhost any port for dev; for remote, host must be known or subdomain of known
+        var host = uri.Host;
+        if (_allowedHosts.Contains(host)) return;
+        // Allow subdomains: e.g. *.openai.azure.com?
+        if (host.EndsWith(".openai.azure.com", StringComparison.OrdinalIgnoreCase)) return;
+        if (host.EndsWith(".supabase.co", StringComparison.OrdinalIgnoreCase) == false && host.Contains('.'))
+        {
+            // For custom OpenAiCompatible user-provided URLs, we allow any https but log warning via exception if explicitly strict.
+            // To avoid breaking self-hosted, we currently allow any https host but ensure no private IP.
+            if (IsPrivateIp(host)) throw new ArgumentException($"Private IP not allowed: {host}", nameof(url));
+        }
+    }
+
+    private static bool IsPrivateIp(string host)
+    {
+        if (System.Net.IPAddress.TryParse(host, out var ip))
+        {
+            var bytes = ip.GetAddressBytes();
+            if (bytes.Length == 4)
+            {
+                if (bytes[0] == 10) return true;
+                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
+                if (bytes[0] == 192 && bytes[1] == 168) return true;
+                if (bytes[0] == 127) return true;
+            }
+        }
+        return false;
+    }
+
     public async Task<HttpResponseMessage> ForwardRawAsync(
         SgLlmProvider provider,
         string providerUrl,
@@ -24,6 +69,7 @@ public sealed class SgLlmProxyForwarder
         SgLlmConfig? config = null,
         CancellationToken ct = default)
     {
+        ValidateProviderUrl(providerUrl);
         using var req = new HttpRequestMessage(HttpMethod.Post, providerUrl)
         {
             Content = new StringContent(rawJson, Encoding.UTF8, "application/json")

@@ -116,7 +116,7 @@ public abstract class SgInputBase<TValue> : SgComponentBase, IDisposable
             System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
     }
 
-    public virtual void Dispose()
+    public override void Dispose()
     {
         if (_disposed) return;
         if (_previousEditContext is not null)

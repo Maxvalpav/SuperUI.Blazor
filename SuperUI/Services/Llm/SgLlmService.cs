@@ -315,25 +315,26 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         _logger = logger ?? NullLogger<SgLlmService>.Instance;
     }
 
-    public async Task InitializeAsync(SgLlmConfig config)
+    public Task InitializeAsync(SgLlmConfig config) => InitializeAsync(config, CancellationToken.None);
+
+    public async Task InitializeAsync(SgLlmConfig config, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         if (_module is null)
         {
             _instanceId = $"sg-llm-{Guid.NewGuid():N}";
             var jsVersion = typeof(SgLlmService).Assembly.GetName().Version?.ToString() ?? "1";
-            _module = await _js.InvokeAsync<IJSObjectReference>("import", $"./_content/SuperUI/sg-llm.js?v={jsVersion}");
+            _module = await _js.InvokeAsync<IJSObjectReference>("import", $"./_content/SuperUI/sg-llm.js?v={jsVersion}", ct);
             _selfRef = DotNetObjectReference.Create(this);
 
-            await _module.InvokeVoidAsync("init", _selfRef, _instanceId, new { });
+            await _module.InvokeVoidAsync("init", _selfRef, _instanceId, new { }, ct);
         }
 
         CurrentConfig = config;
 
-        // Build overrides. Base is always sent; advanced fields are only included when
-        // UseAdvanced is true. JS side ignores undefined/null params.
         object overrides = BuildOverrides(config);
 
-        await _module.InvokeVoidAsync("loadLlm", _instanceId, config.Provider.ToString(), config.ModelId, overrides);
+        await _module.InvokeVoidAsync("loadLlm", _instanceId, config.Provider.ToString(), config.ModelId, overrides, ct);
 
         RaiseConfigChanged(config);
     }
@@ -490,14 +491,16 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         return dict;
     }
 
-    public async Task ChatAsync(string message, SgLlmPromptOptions? options = null)
+    public Task ChatAsync(string message, SgLlmPromptOptions? options = null) => ChatAsync(message, options, CancellationToken.None);
+
+    public async Task ChatAsync(string message, SgLlmPromptOptions? options, CancellationToken ct)
     {
         if (_module is null || _instanceId is null) throw new InvalidOperationException("LLM Service not initialized");
 
         options ??= new SgLlmPromptOptions();
         var sysPrompt = options.SystemPrompt ?? CurrentConfig?.SystemPrompt ?? "You are a helpful assistant.";
 
-        await _module.InvokeVoidAsync("chatDirectStream", _instanceId, message, sysPrompt, options.Attachments, "default-stream", options.Tools, options.ToolChoice);
+        await _module.InvokeVoidAsync("chatDirectStream", _instanceId, message, sysPrompt, options.Attachments, "default-stream", options.Tools, options.ToolChoice, ct);
     }
 
     public async Task<bool> IsReadyAsync()
@@ -1554,6 +1557,8 @@ public class SgLlmService : ILlmService, IAsyncDisposable
 
         return "Video analysis is only implemented for Google Gemini in this build.";
     }
+
+    private static bool IsCritical(Exception ex) => ex is OutOfMemoryException or StackOverflowException or ThreadAbortException;
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s.Substring(0, max) + "…";
     private static string GuessExt(string mime) => mime switch

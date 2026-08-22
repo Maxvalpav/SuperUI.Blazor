@@ -583,7 +583,7 @@ public partial class SgTable<TItem> : SgComponentBase
         await InvokeAsync(StateHasChanged);
     }
 
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;

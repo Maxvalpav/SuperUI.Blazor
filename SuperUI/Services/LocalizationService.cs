@@ -9,6 +9,9 @@ namespace SuperUI.Localization;
 
 public sealed class LocalizationService : ISuperUILocalizer
 {
+    private static readonly string[] s_localeResources = typeof(LocalizationService).Assembly
+        .GetManifestResourceNames().Where(r => r.StartsWith("SuperUI.Resources.locales.") && r.EndsWith(".json")).ToArray();
+
     private readonly ConcurrentDictionary<string, string> _translations = new();
     private readonly ConcurrentDictionary<string, string> _overrides = new();
     private readonly Dictionary<string, LocaleEntry> _catalog = new();
@@ -27,7 +30,7 @@ public sealed class LocalizationService : ISuperUILocalizer
         var opts = options?.Value;
         _defaultLanguage = opts?.DefaultLanguage ?? "en";
         _fallbackLanguage = opts?.FallbackLanguage ?? "en";
-        _supportedLanguages = opts?.SupportedLanguages ?? ["en", "ru"];
+        _supportedLanguages = (opts?.SupportedLanguages?.ToArray()) ?? ["en", "ru"];
         _currentLang = _defaultLanguage;
         _assembly = typeof(LocalizationService).Assembly;
         BuildCatalog();
@@ -115,8 +118,7 @@ public sealed class LocalizationService : ISuperUILocalizer
     private void BuildCatalog()
     {
         _catalog.Clear();
-        var resources = _assembly.GetManifestResourceNames()
-            .Where(r => r.StartsWith("SuperUI.Resources.locales.") && r.EndsWith(".json"));
+        var resources = s_localeResources.Where(r => r.StartsWith("SuperUI.Resources.locales.") && r.EndsWith(".json"));
 
         foreach (var resource in resources)
         {

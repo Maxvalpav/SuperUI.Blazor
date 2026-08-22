@@ -16,7 +16,11 @@ public static class DocumentExtractorServiceCollectionExtensions
         services.TryAddScoped<SgLlmEndpointConfigStore>();
         services.TryAddScoped<ILlmExtractionClient>(sp =>
         {
-            var http = sp.GetService<HttpClient>() ?? new HttpClient();
+            var factory = sp.GetService<IHttpClientFactory>();
+            var http = factory?.CreateClient(nameof(ILlmExtractionClient))
+                       ?? sp.GetService<HttpClient>()
+                       ?? throw new InvalidOperationException(
+                           "No HttpClient available for ILlmExtractionClient. Register AddHttpClient() or provide HttpClient via DI.");
             return new OpenAiCompatibleLlmExtractionClient(http);
         });
 
