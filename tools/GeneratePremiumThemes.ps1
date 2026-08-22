@@ -134,6 +134,9 @@ foreach ($t in $themes) {
     $json = $json.Replace($DQ + "default" + $DQ + ": " + $DQ + $inter.lightFont + $DQ, ($DQ + "default" + $DQ + ": " + $DQ + $f.lightFont + $DQ))
     $json = $json.Replace($DQ + "default" + $DQ + ": " + $DQ + $inter.darkFont + $DQ, ($DQ + "default" + $DQ + ": " + $DQ + $f.darkFont + $DQ))
 
+    # Fix additionalCss selector: natura-ui -> actual theme id (escaped JSON)
+    $json = $json.Replace('[data-theme-id=\"natura-ui\"]', '[data-theme-id=\"' + $t.id + '\"]')
+
     # Write
     $outFile = Join-Path $outDir "$($t.id).json"
     if ($WhatIf) {
