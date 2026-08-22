@@ -1,3 +1,4 @@
+#pragma warning disable CS0618
 namespace SuperUI.Themes;
 
 /// <summary>
@@ -113,7 +114,7 @@ public sealed class ThemeBuilder
             "clay"   => ("oklch(0.58 0.12 42)",  "oklch(0.62 0.08 42)"),
             "mineral" => ("oklch(0.52 0.10 280)", "oklch(0.58 0.06 280)"),
             "sunset" => ("oklch(0.58 0.16 28)",  "oklch(0.64 0.12 28)"),
-            _ => (light: "oklch(0.56 0.14 230)", dark: "oklch(0.60 0.08 230)")
+            _ => ("oklch(0.56 0.14 230)", "oklch(0.60 0.08 230)")
         };
         _primaryColor = light;
         _primaryColorDark = dark;

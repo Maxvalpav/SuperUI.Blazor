@@ -112,7 +112,7 @@ public sealed class LocalizationService : ISuperUILocalizer
     public string GetOriginalValue(string key) =>
         _catalog.TryGetValue(key, out var entry) ? entry.OriginalValue : key;
 
-    public string GetOverrideOrNull(string key) =>
+    public string? GetOverrideOrNull(string key) =>
         _overrides.TryGetValue(key, out var val) ? val : null;
 
     private void BuildCatalog()
