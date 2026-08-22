@@ -1,6 +1,7 @@
 @namespace SuperUI.Components
 @implements IAsyncDisposable
 @inject SgRagService RagService
+@inject PersistentComponentState AppState
 
 <CascadingValue Value="_context" IsFixed="false">
     @ChildContent
@@ -11,6 +12,7 @@
     private SgRagContext _context = default!;
     private bool _initialized;
     private bool _isDisposed;
+    private PersistingComponentStateSubscription _persistSub;
 
     // ── Parameters ────────────────────────────────────────────────────────────
 
@@ -33,6 +35,14 @@
 
     protected override void OnInitialized()
     {
+        // MS prerendering: restore persisted state (learn.microsoft.com/aspnet/core/blazor/state-management#persist-prerendered-state)
+        if (AppState.TryTakeFromJson<SgRagOptions>("sg-rag-options", out var restored) && restored != null)
+            Options = restored;
+        _persistSub = AppState.RegisterOnPersisting(() =>
+        {
+            AppState.PersistAsJson("sg-rag-options", Options);
+            return Task.CompletedTask;
+        });
         _context = new SgRagContext(RagService, _readyState);
         RagService.OnStateChanged += HandleStateChanged;
     }
@@ -70,6 +80,7 @@
     {
         if (_isDisposed) return;
         _isDisposed = true;
+        _persistSub.Dispose();
         RagService.OnStateChanged -= HandleStateChanged;
         await RagService.DisposeAsync();
     }
