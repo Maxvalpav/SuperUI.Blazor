@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SuperUI.Base.Utilities;
@@ -63,7 +64,11 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<Services.AI.SgLangGraphService>();
         services.TryAddScoped<Services.AI.SgMarkovChainService>();
         services.TryAddScoped<Services.Data.SgDexieService>();
-        services.TryAddScoped<Services.Data.SgCbrService>();
+        // MS HttpClientFactory guidance: pooled handler, avoid socket exhaustion (learn.microsoft.com/dotnet/fundamentals/networking/http/httpclient-guidelines)
+        services.AddHttpClient<Services.Data.SgCbrService>(c => c.Timeout = TimeSpan.FromSeconds(30))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) });
+        services.AddHttpClient<SgWeatherService>(c => c.Timeout = TimeSpan.FromSeconds(15))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) });
         services.TryAddScoped<Services.Network.SgFirewallService>();
         services.TryAddScoped<Services.Network.SgTracerouteService>();
         services.TryAddScoped<Services.Analytics.SgHeatmapService>();
@@ -73,7 +78,6 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<Services.Llm.SgPuterService>();
         services.TryAddScoped<Services.Llm.SgLlmProxyForwarder>();
         services.TryAddScoped<SgJsModuleCache>();
-        services.TryAddScoped<SgWeatherService>();
 
         // ── Cross-cutting infrastructure (Phase 3) ──────────────────────────
         // Scoped: per-circuit on Blazor Server, per-session on Blazor WASM.
