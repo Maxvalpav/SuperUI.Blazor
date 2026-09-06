@@ -31,13 +31,27 @@
     /// <summary>Gets the underlying Dexie service used for database operations.</summary>
     public SgDexieService Service => DexieService;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Schema.Count > 0)
+        if (!firstRender || _isInitialized) return;
+        if (Schema.Count == 0) return;
+        try
         {
+            // Deferred to OnAfterRender: JS/IndexedDB is only available
+            // once the renderer is interactive (never during prerender).
             await DexieService.InitializeAsync(DbName, Schema);
+        }
+        catch (Microsoft.JSInterop.JSException) { /* optional storage must never crash render */ }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+        finally
+        {
+            // Always unblock ChildContent — storage is best-effort.
             _isInitialized = true;
             await OnInitialized.InvokeAsync();
+            StateHasChanged();
         }
     }
 

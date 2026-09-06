@@ -36,14 +36,15 @@ public class SgHeatmapService : IAsyncDisposable
         _dexie = dexie;
     }
 
-    private async Task EnsureModuleAsync()
+    private async Task<bool> EnsureModuleAsync()
     {
-        if (_module != null) return;
+        if (_module != null) return true;
         await _moduleLock.WaitAsync();
         try
         {
-            if (_module != null) return;
-            // Initialize Dexie for analytics
+            if (_module != null) return true;
+            // Initialize Dexie for analytics (fail-soft: never crash renderer
+            // when IndexedDB is unavailable — private mode, blocked storage, etc.)
             await _dexie.InitializeAsync(DbName, new Dictionary<string, string>
             {
                 { TableName, "++id, path, timestamp" }
@@ -52,62 +53,93 @@ public class SgHeatmapService : IAsyncDisposable
             _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-heatmap.js");
             _dotNetRef = DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync("init", _dotNetRef);
+            return _module != null;
         }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
-        catch (ObjectDisposedException) { }
+        catch (JSException) { return false; }
+        catch (JSDisconnectedException) { return false; }
+        catch (TaskCanceledException) { return false; }
+        catch (ObjectDisposedException) { return false; } catch (Exception) { return false; }
         finally { _moduleLock.Release(); }
     }
 
     public async Task StartTrackingAsync()
     {
-        await EnsureModuleAsync();
-        await _module!.InvokeVoidAsync("startTracking");
-        _isTracking = true;
+        try
+        {
+            if (!await EnsureModuleAsync()) return;
+            await _module!.InvokeVoidAsync("startTracking");
+            _isTracking = true;
+        }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     public async Task StopTrackingAsync()
     {
-        if (_module != null)
+        try
         {
-            await _module.InvokeVoidAsync("stopTracking");
+            if (_module != null)
+            {
+                await _module.InvokeVoidAsync("stopTracking");
+            }
         }
-        _isTracking = false;
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+        finally { _isTracking = false; }
     }
 
     public async Task ToggleAdminModeAsync(bool active)
     {
-        await EnsureModuleAsync();
-        _isAdminMode = active;
+        try
+        {
+            if (!await EnsureModuleAsync()) return;
+            _isAdminMode = active;
 
-        if (active)
-        {
-            // Fetch clicks for current path from IndexedDB
-            var currentPath = await _js.InvokeAsync<string>("eval", "window.location.pathname");
-            var clicks = await _dexie.GetAllAsync<SgClickData>(DbName, TableName);
-            var filteredClicks = clicks.Where(c => c.Path == currentPath).ToList();
-            
-            await _module!.InvokeVoidAsync("showHeatmap", filteredClicks);
+            if (active)
+            {
+                // Fetch clicks for current path from IndexedDB
+                var currentPath = await _js.InvokeAsync<string>("eval", "window.location.pathname");
+                var clicks = await _dexie.GetAllAsync<SgClickData>(DbName, TableName);
+                var filteredClicks = clicks.Where(c => c.Path == currentPath).ToList();
+
+                await _module!.InvokeVoidAsync("showHeatmap", filteredClicks);
+            }
+            else
+            {
+                await _module!.InvokeVoidAsync("hideHeatmap");
+            }
         }
-        else
-        {
-            await _module!.InvokeVoidAsync("hideHeatmap");
-        }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     [JSInvokable]
     public async Task SaveClicks(List<SgClickData> clicks)
     {
-        await _dexie.BulkAddAsync(DbName, TableName, clicks);
+        try { await _dexie.BulkAddAsync(DbName, TableName, clicks); }
+        catch (JSException) { } catch (JSDisconnectedException) { } catch (TaskCanceledException) { } catch (ObjectDisposedException) { } catch (InvalidOperationException) { }
     }
 
     public async Task ClearDataAsync()
     {
-        await _dexie.ClearTableAsync(DbName, TableName);
-        if (_isAdminMode)
+        try
         {
-            await ToggleAdminModeAsync(true); // Refresh
+            await _dexie.ClearTableAsync(DbName, TableName);
+            if (_isAdminMode)
+            {
+                await ToggleAdminModeAsync(true); // Refresh
+            }
         }
+        catch (JSException) { } catch (JSDisconnectedException) { } catch (TaskCanceledException) { } catch (ObjectDisposedException) { } catch (InvalidOperationException) { }
     }
 
     public async ValueTask DisposeAsync()
@@ -122,11 +154,11 @@ public class SgHeatmapService : IAsyncDisposable
             }
             catch (JSDisconnectedException) { }
             catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
+            catch (Exception) { }
             try { await module.DisposeAsync(); }
             catch (JSDisconnectedException) { }
             catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         }
         _dotNetRef?.Dispose();
         _moduleLock.Dispose();

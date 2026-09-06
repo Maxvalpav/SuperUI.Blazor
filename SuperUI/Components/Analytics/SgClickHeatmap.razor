@@ -13,28 +13,37 @@
     [Parameter] public bool InitialAdminMode { get; set; }
 
     private bool _disposed;
+    private bool _started;
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        if (AutoStart)
-        {
-            await HeatmapService.StartTrackingAsync();
-        }
+        // JS interop is not safe here (prerender / renderer not yet interactive).
+        // All JS work is deferred to OnAfterRenderAsync.
         NavManager.LocationChanged += HandleLocationChanged;
-        
-        if (InitialAdminMode)
-        {
-            await HeatmapService.ToggleAdminModeAsync(true);
-        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && HeatmapService.IsAdminMode)
+        if (!firstRender || _disposed || _started) return;
+        _started = true;
+        try
         {
-            await Task.Delay(1000); // Give some time for the page to stabilize
-            await HeatmapService.ToggleAdminModeAsync(true);
+            if (AutoStart)
+            {
+                await HeatmapService.StartTrackingAsync();
+            }
+            if (InitialAdminMode || HeatmapService.IsAdminMode)
+            {
+                await Task.Delay(1000); // Give some time for the page to stabilize
+                if (_disposed) return;
+                await HeatmapService.ToggleAdminModeAsync(true);
+            }
         }
+        catch (Microsoft.JSInterop.JSException) { /* optional analytics must never crash render */ }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private async void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -42,14 +51,22 @@
         if (_disposed) return;
         if (HeatmapService.IsAdminMode)
         {
-            // Refresh heatmap for new page
-            await Task.Delay(500); // Wait for page to render
-            if (_disposed) return;
-            await InvokeAsync(async () =>
+            try
             {
+                // Refresh heatmap for new page
+                await Task.Delay(500); // Wait for page to render
                 if (_disposed) return;
-                await HeatmapService.ToggleAdminModeAsync(true);
-            });
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    await HeatmapService.ToggleAdminModeAsync(true);
+                });
+            }
+            catch (Microsoft.JSInterop.JSException) { }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
         }
     }
 
